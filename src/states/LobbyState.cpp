@@ -14,78 +14,34 @@ LobbyState::LobbyState(Game* game)
         lobbyName = "Lobby";
     }
 
-    game->GetHUD().addElement(
-         "lobbyHeader",
-         lobbyName,
-         32, 
-         sf::Vector2f(SCREEN_WIDTH * 0.5f, 20.f),
-         GameState::Lobby,
-         HUD::RenderMode::ScreenSpace,
-         true
-    );
+    game->GetHUD().addElement("lobbyHeader", lobbyName, 32, sf::Vector2f(SCREEN_WIDTH * 0.5f, 20.f), GameState::Lobby, HUD::RenderMode::ScreenSpace, true);
     game->GetHUD().updateBaseColor("lobbyHeader", sf::Color::White);
-
-    game->GetHUD().addElement(
-         "playerLoading",
-         "Loading player...",
-         24,
-         sf::Vector2f(50.f, SCREEN_HEIGHT - 150.f),
-         GameState::Lobby,
-         HUD::RenderMode::ScreenSpace,
-         false
-    );
-
-    game->GetHUD().addElement(
-        "startGame",
-        "",
-        24,
-        sf::Vector2f(SCREEN_WIDTH * 0.5f, SCREEN_HEIGHT - 100.f),
-        GameState::Lobby,
-        HUD::RenderMode::ScreenSpace,
-        true
-    );
+    game->GetHUD().addElement("playerLoading", "Loading player...", 24, sf::Vector2f(50.f, SCREEN_HEIGHT - 150.f), GameState::Lobby, HUD::RenderMode::ScreenSpace, false);
+    game->GetHUD().addElement("startGame", "", 24, sf::Vector2f(SCREEN_WIDTH * 0.5f, SCREEN_HEIGHT - 100.f), GameState::Lobby, HUD::RenderMode::ScreenSpace, true);
     game->GetHUD().updateBaseColor("startGame", sf::Color::Black);
-
-    game->GetHUD().addElement(
-        "returnMain",
-        "Press M to Return to Main Menu",
-        24,
-        sf::Vector2f(SCREEN_WIDTH * 0.5f, SCREEN_HEIGHT - 60.f),
-        GameState::Lobby,
-        HUD::RenderMode::ScreenSpace,
-        true
-    );
+    game->GetHUD().addElement("returnMain", "Press M to Return to Main Menu", 24, sf::Vector2f(SCREEN_WIDTH * 0.5f, SCREEN_HEIGHT - 60.f), GameState::Lobby, HUD::RenderMode::ScreenSpace, true);
     game->GetHUD().updateBaseColor("returnMain", sf::Color::Black);
-
-    game->GetHUD().addElement(
-        "chat",
-        "Chat:\n",
-        20,
-        sf::Vector2f(50.f, SCREEN_HEIGHT - 200.f),
-        GameState::Lobby,
-        HUD::RenderMode::ScreenSpace,
-        false
-    );
+    game->GetHUD().addElement("chat", "Chat:\n", 20, sf::Vector2f(50.f, SCREEN_HEIGHT - 200.f), GameState::Lobby, HUD::RenderMode::ScreenSpace, false);
 
     game->GetNetworkManager().SetMessageHandler([this, game](const std::string& msg, CSteamID sender) {
         ParsedMessage parsed = MessageHandler::ParseMessage(msg);
+        CSteamID myID = SteamUser()->GetSteamID();
+        CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+
         if (parsed.type == MessageType::Connection) {
-            if (SteamUser()->GetSteamID() == SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID())) {
+            if (myID == hostID) { // Host processes new player
                 std::string key = parsed.steamID;
                 if (remotePlayers.find(key) == remotePlayers.end()) {
                     RemotePlayer newPlayer;
-                    newPlayer.player.SetPosition(sf::Vector2f(200.f, 200.f));
+                    newPlayer.player.SetPosition(sf::Vector2f(200.f, 200.f)); // Initial position for new players
                     newPlayer.player.GetShape().setFillColor(parsed.color);
                     newPlayer.nameText.setFont(game->GetFont());
                     newPlayer.nameText.setString(parsed.steamName);
                     newPlayer.nameText.setCharacterSize(16);
                     newPlayer.nameText.setFillColor(sf::Color::Black);
                     remotePlayers[key] = newPlayer;
-                    std::cout << "[HOST] New connection: " << parsed.steamID << " (" << parsed.steamName << ")" << std::endl;
-                    BroadcastPlayersList();
-                } else {
-                    remotePlayers[key].nameText.setString(parsed.steamName);
-                    remotePlayers[key].player.GetShape().setFillColor(parsed.color);
+                    std::cout << "[HOST] New player added: " << parsed.steamID << " (" << parsed.steamName << ")\n";
+                    BroadcastPlayersList(); // Broadcast updated list
                 }
             }
         } else if (parsed.type == MessageType::Movement) {
@@ -93,12 +49,15 @@ LobbyState::LobbyState(Game* game)
             auto it = remotePlayers.find(key);
             if (it != remotePlayers.end()) {
                 it->second.player.SetPosition(parsed.position);
+                std::cout << "[LOBBY] Updated position for " << key << " to (" << parsed.position.x << ", " << parsed.position.y << ")\n";
             }
         } else if (parsed.type == MessageType::Chat) {
             chatMessages += parsed.chatMessage + "\n";
             game->GetHUD().updateText("chat", "Chat:\n" + chatMessages);
         }
     });
+
+    
 }
 
 void LobbyState::BroadcastPlayersList() {
@@ -107,12 +66,12 @@ void LobbyState::BroadcastPlayersList() {
     
     for (const auto& pair : remotePlayers) {
         const RemotePlayer& rp = pair.second;
-        std::string msg = MessageHandler::FormatConnectionMessage(
+        std::string msg = MessageHandler::FormatMovementMessage(
             pair.first,
-            rp.nameText.getString().toAnsiString(),
-            rp.player.GetShape().getFillColor()
-        );
+            rp.player.GetPosition()
+        ); // Use Movement message to send position
         game->GetNetworkManager().BroadcastMessage(msg);
+        std::cout << "[HOST] Broadcasted position for " << pair.first << ": " << msg << "\n";
     }
 }
 
@@ -124,8 +83,7 @@ void LobbyState::UpdateRemotePlayers() {
     }
 }
 
-void LobbyState::Update(float dt)
-{
+void LobbyState::Update(float dt) {
     if (!playerLoaded) {
         loadingTimer += dt;
         if (loadingTimer >= 2.0f) {
@@ -134,6 +92,29 @@ void LobbyState::Update(float dt)
         }
     } else {
         localPlayer.Update(dt);
+        // Send local player's position to host if not the host
+        CSteamID myID = SteamUser()->GetSteamID();
+        CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+        if (myID != hostID) {
+            static float sendTimer = 0.f;
+            sendTimer += dt;
+            if (sendTimer >= 0.1f) { // Send every 100ms
+                std::string msg = MessageHandler::FormatMovementMessage(
+                    std::to_string(myID.ConvertToUint64()),
+                    localPlayer.GetPosition()
+                );
+                game->GetNetworkManager().SendMessage(hostID, msg);
+                sendTimer = 0.f;
+            }
+        } else {
+            // Host broadcasts periodically
+            static float broadcastTimer = 0.f;
+            broadcastTimer += dt;
+            if (broadcastTimer >= 0.5f) { // Broadcast every 500ms
+                BroadcastPlayersList();
+                broadcastTimer = 0.f;
+            }
+        }
     }
     UpdateRemotePlayers();
     if (SteamUser()->GetSteamID() == SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID())) {
@@ -143,16 +124,15 @@ void LobbyState::Update(float dt)
     }
 }
 
-void LobbyState::Render()
-{
+void LobbyState::Render() {
     game->GetWindow().clear(sf::Color::White);
     if (playerLoaded) {
         game->GetWindow().draw(localPlayer.GetShape());
     }
     for (const auto& pair : remotePlayers) {
         const RemotePlayer& rp = pair.second;
-        game->GetWindow().draw(rp.player.GetShape());
-        game->GetWindow().draw(rp.nameText);
+        game->GetWindow().draw(rp.player.GetShape()); // Draw the cube
+        game->GetWindow().draw(rp.nameText);          // Draw the name above the cube
     }
     game->GetHUD().render(game->GetWindow(), game->GetWindow().getDefaultView(), game->GetCurrentState());
     game->GetWindow().display();

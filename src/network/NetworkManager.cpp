@@ -134,10 +134,22 @@ void NetworkManager::OnLobbyEnter(LobbyEnter_t* pParam) {
 
     CSteamID myID = SteamUser()->GetSteamID();
     CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(m_currentLobbyID);
-    if (myID == hostID) {
+    
+    // Send initial player data to the host
+    std::string steamIDStr = std::to_string(myID.ConvertToUint64());
+    std::string steamName = SteamFriends()->GetPersonaName();
+    sf::Color playerColor = sf::Color::Blue; // Default color; customize as needed
+    sf::Vector2f initialPos(400.f, 300.f);  // Default position; customize as needed
+    std::string connectMsg = MessageHandler::FormatConnectionMessage(steamIDStr, steamName, playerColor);
+    if (myID != hostID) {
+        SendMessage(hostID, connectMsg);
+        std::cout << "[NETWORK] Sent connection message to host: " << connectMsg << "\n";
+    } else {
+        // Host welcomes itself
         SendChatMessage(myID, "Welcome to " + std::string(SteamMatchmaking()->GetLobbyData(m_currentLobbyID, "name")));
     }
 }
+
 void NetworkManager::OnLobbyMatchList(LobbyMatchList_t* pParam) {
     lobbyList.clear();
     std::cout << "[LOBBY] Lobby list received, matching count: " << pParam->m_nLobbiesMatching << "\n";
@@ -155,6 +167,8 @@ void NetworkManager::OnLobbyMatchList(LobbyMatchList_t* pParam) {
     lobbyListUpdated = true;
     std::cout << "[LOBBY] Found " << lobbyList.size() << " lobbies with names\n";
 }
+
+
 void NetworkManager::OnGameLobbyJoinRequested(GameLobbyJoinRequested_t* pParam) {
     JoinLobbyFromNetwork(pParam->m_steamIDLobby);
 }

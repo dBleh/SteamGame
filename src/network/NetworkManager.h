@@ -7,6 +7,7 @@
 #include <unordered_map>
 #include <functional>
 #include "../utils/SteamHelpers.h"
+#include "../utils/MessageHandler.h"
 #include "../Game.h"
 
 class Game;
