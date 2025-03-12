@@ -117,15 +117,6 @@ void LobbyState::ProcessEvent(const sf::Event& event) {
     }
 }
 
-void LobbyState::ProcessEvents(const sf::Event& event) {
-    if (event.type == sf::Event::KeyPressed) {
-        if (event.key.code == sf::Keyboard::S &&
-            SteamUser()->GetSteamID() == SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID()))
-        {
-            std::cout << "User wants to start game" << std::endl;
-        }
-    }
-}
 
 void LobbyState::UpdateLobbyMembers() {
     if (!game->IsInLobby()) return;
