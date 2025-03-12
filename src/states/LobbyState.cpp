@@ -27,9 +27,11 @@ LobbyState::LobbyState(Game* game)
         ParsedMessage parsed = MessageHandler::ParseMessage(msg);
         CSteamID myID = SteamUser()->GetSteamID();
         CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+        std::cout << "[LOBBY] Received message from " << sender.ConvertToUint64() << ": " << msg 
+                  << ", I am " << myID.ConvertToUint64() << ", host is " << hostID.ConvertToUint64() << "\n";
 
         if (parsed.type == MessageType::Connection) {
-            if (myID == hostID) { // Host processes new player
+            if (myID == hostID) {
                 std::string key = parsed.steamID;
                 if (remotePlayers.find(key) == remotePlayers.end()) {
                     RemotePlayer newPlayer;
@@ -41,10 +43,12 @@ LobbyState::LobbyState(Game* game)
                     newPlayer.nameText.setFillColor(sf::Color::Black);
                     remotePlayers[key] = newPlayer;
                     std::cout << "[HOST] New player added: " << parsed.steamID << " (" << parsed.steamName << ")\n";
-                    BroadcastPlayersList(); // Broadcast updated list
+                    BroadcastPlayersList();
                 } else {
                     std::cout << "[HOST] Player already exists: " << parsed.steamID << "\n";
                 }
+            } else {
+                std::cout << "[LOBBY] Ignoring Connection message as not host\n";
             }
         } else if (parsed.type == MessageType::Movement) {
             std::string key = parsed.steamID;
@@ -57,11 +61,23 @@ LobbyState::LobbyState(Game* game)
             chatMessages += parsed.chatMessage + "\n";
             game->GetHUD().updateText("chat", "Chat:\n" + chatMessages);
         } else {
-            std::cout << "[LOBBY] Unknown message type received: " << msg << "\n";
+            std::cout << "[LOBBY] Unknown message type: " << msg << "\n";
         }
     });
 
-
+    // Host adds itself
+    CSteamID myID = SteamUser()->GetSteamID();
+    if (myID == SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID())) {
+        std::string key = std::to_string(myID.ConvertToUint64());
+        RemotePlayer hostPlayer;
+        hostPlayer.player = localPlayer;
+        hostPlayer.nameText.setFont(game->GetFont());
+        hostPlayer.nameText.setString(SteamFriends()->GetPersonaName());
+        hostPlayer.nameText.setCharacterSize(16);
+        hostPlayer.nameText.setFillColor(sf::Color::Black);
+        remotePlayers[key] = hostPlayer;
+        BroadcastPlayersList();
+    }
 }
 
 void LobbyState::BroadcastPlayersList() {
