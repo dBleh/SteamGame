@@ -38,17 +38,36 @@ void NetworkManager::ReceiveMessages() {
     while (m_networking->IsP2PPacketAvailable(&msgSize)) {
         char buffer[1024];
         CSteamID sender;
-        if (msgSize > sizeof(buffer) - 1) continue;
-
+        if (msgSize > sizeof(buffer) - 1) {
+            std::cerr << "[NETWORK] Packet too large: " << msgSize << "\n";
+            continue;
+        }
         if (m_networking->ReadP2PPacket(buffer, sizeof(buffer), &msgSize, &sender)) {
             buffer[msgSize] = '\0';
             std::string msg(buffer);
+            // Accept session if not already connected (like CubeGame)
             if (m_connectedClients.find(sender) == m_connectedClients.end()) {
-                AcceptSession(sender);
+                if (m_networking->AcceptP2PSessionWithUser(sender)) {
+                    m_connectedClients[sender] = true;
+                    std::cout << "[NETWORK] Accepted new P2P session with " << sender.ConvertToUint64() << "\n";
+                } else {
+                    std::cerr << "[NETWORK] Failed to accept P2P session with " << sender.ConvertToUint64() << "\n";
+                }
             }
             if (messageHandler) {
                 messageHandler(msg, sender);
+                std::cout << "[NETWORK] Processed message from " << sender.ConvertToUint64() << ": " << msg << "\n";
             }
+        }
+    }
+
+    // Retry sending connection message if pending
+    if (m_pendingConnectionMessage && m_pendingHostID != k_steamIDNil) {
+        if (SendMessage(m_pendingHostID, m_connectionMessage)) {
+            std::cout << "[NETWORK] Retry succeeded: " << m_connectionMessage << "\n";
+            m_pendingConnectionMessage = false;
+        } else {
+            std::cout << "[NETWORK] Retry failed, will try again: " << m_connectionMessage << "\n";
         }
     }
 }
@@ -56,9 +75,29 @@ void NetworkManager::ReceiveMessages() {
 bool NetworkManager::SendMessage(CSteamID target, const std::string& msg) {
     if (!m_networking || !SteamUser()) return false;
     uint32 msgSize = static_cast<uint32>(msg.size() + 1);
-    return m_networking->SendP2PPacket(target, msg.c_str(), msgSize, k_EP2PSendReliable);
+    bool success = m_networking->SendP2PPacket(target, msg.c_str(), msgSize, k_EP2PSendReliable);
+    if (!success) {
+        std::cout << "[NETWORK] Failed to send message to " << target.ConvertToUint64() << ": " << msg << "\n";
+    }
+    return success;
 }
-
+void NetworkManager::SendConnectionMessageOnJoin(CSteamID hostID) {
+    CSteamID myID = SteamUser()->GetSteamID();
+    std::string steamIDStr = std::to_string(myID.ConvertToUint64());
+    std::string steamName = SteamFriends()->GetPersonaName();
+    sf::Color playerColor = sf::Color::Blue; // Customize as needed
+    std::string connectMsg = MessageHandler::FormatConnectionMessage(steamIDStr, steamName, playerColor);
+    
+    if (SendMessage(hostID, connectMsg)) {
+        std::cout << "[NETWORK] Sent connection message to host: " << connectMsg << "\n";
+        m_pendingConnectionMessage = false;
+    } else {
+        std::cout << "[NETWORK] Failed to send connection message initially, queuing for retry: " << connectMsg << "\n";
+        m_pendingConnectionMessage = true;
+        m_connectionMessage = connectMsg;
+        m_pendingHostID = hostID;
+    }
+}
 bool NetworkManager::BroadcastMessage(const std::string& msg) {
     bool success = true;
     for (const auto& client : m_connectedClients) {
@@ -135,15 +174,9 @@ void NetworkManager::OnLobbyEnter(LobbyEnter_t* pParam) {
     CSteamID myID = SteamUser()->GetSteamID();
     CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(m_currentLobbyID);
     
-    // Send initial player data to the host
-    std::string steamIDStr = std::to_string(myID.ConvertToUint64());
-    std::string steamName = SteamFriends()->GetPersonaName();
-    sf::Color playerColor = sf::Color::Blue; // Default color; customize as needed
-    sf::Vector2f initialPos(400.f, 300.f);  // Default position; customize as needed
-    std::string connectMsg = MessageHandler::FormatConnectionMessage(steamIDStr, steamName, playerColor);
+    // Send initial player data to the host if not the host
     if (myID != hostID) {
-        SendMessage(hostID, connectMsg);
-        std::cout << "[NETWORK] Sent connection message to host: " << connectMsg << "\n";
+        SendConnectionMessageOnJoin(hostID);
     } else {
         // Host welcomes itself
         SendChatMessage(myID, "Welcome to " + std::string(SteamMatchmaking()->GetLobbyData(m_currentLobbyID, "name")));
@@ -176,10 +209,14 @@ void NetworkManager::OnGameLobbyJoinRequested(GameLobbyJoinRequested_t* pParam) 
 void NetworkManager::OnP2PSessionRequest(P2PSessionRequest_t* pParam) {
     if (m_networking && m_networking->AcceptP2PSessionWithUser(pParam->m_steamIDRemote)) {
         m_connectedClients[pParam->m_steamIDRemote] = true;
+        std::cout << "[NETWORK] Accepted P2P session with " << pParam->m_steamIDRemote.ConvertToUint64() << "\n";
+        // If host, send welcome message (optional)
         if (SteamUser()->GetSteamID() == SteamMatchmaking()->GetLobbyOwner(m_currentLobbyID)) {
             std::string lobbyName = SteamMatchmaking()->GetLobbyData(m_currentLobbyID, "name");
             SendChatMessage(pParam->m_steamIDRemote, "Welcome to " + lobbyName);
         }
+    } else {
+        std::cerr << "[NETWORK] Failed to accept P2P session with " << pParam->m_steamIDRemote.ConvertToUint64() << "\n";
     }
 }
 

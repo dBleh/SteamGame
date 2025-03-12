@@ -33,7 +33,7 @@ LobbyState::LobbyState(Game* game)
                 std::string key = parsed.steamID;
                 if (remotePlayers.find(key) == remotePlayers.end()) {
                     RemotePlayer newPlayer;
-                    newPlayer.player.SetPosition(sf::Vector2f(200.f, 200.f)); // Initial position for new players
+                    newPlayer.player.SetPosition(sf::Vector2f(200.f, 200.f));
                     newPlayer.player.GetShape().setFillColor(parsed.color);
                     newPlayer.nameText.setFont(game->GetFont());
                     newPlayer.nameText.setString(parsed.steamName);
@@ -42,6 +42,8 @@ LobbyState::LobbyState(Game* game)
                     remotePlayers[key] = newPlayer;
                     std::cout << "[HOST] New player added: " << parsed.steamID << " (" << parsed.steamName << ")\n";
                     BroadcastPlayersList(); // Broadcast updated list
+                } else {
+                    std::cout << "[HOST] Player already exists: " << parsed.steamID << "\n";
                 }
             }
         } else if (parsed.type == MessageType::Movement) {
@@ -54,10 +56,23 @@ LobbyState::LobbyState(Game* game)
         } else if (parsed.type == MessageType::Chat) {
             chatMessages += parsed.chatMessage + "\n";
             game->GetHUD().updateText("chat", "Chat:\n" + chatMessages);
+        } else {
+            std::cout << "[LOBBY] Unknown message type received: " << msg << "\n";
         }
     });
 
-    
+    // Host adds itself
+    if (myID == SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID())) {
+        std::string key = std::to_string(myID.ConvertToUint64());
+        RemotePlayer hostPlayer;
+        hostPlayer.player = localPlayer;
+        hostPlayer.nameText.setFont(game->GetFont());
+        hostPlayer.nameText.setString(SteamFriends()->GetPersonaName());
+        hostPlayer.nameText.setCharacterSize(16);
+        hostPlayer.nameText.setFillColor(sf::Color::Black);
+        remotePlayers[key] = hostPlayer;
+        BroadcastPlayersList();
+    }
 }
 
 void LobbyState::BroadcastPlayersList() {

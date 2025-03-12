@@ -37,11 +37,13 @@ public:
 
     // Getter for current lobby ID
     CSteamID GetCurrentLobbyID() const { return m_currentLobbyID; }
-
+    void SendConnectionMessageOnJoin(CSteamID hostID); // New method for retry logic
 private:
     // Callback handlers
     void ProcessNetworkMessages(const std::string& msg, CSteamID sender);
-
+    bool m_pendingConnectionMessage{false}; // Flag for retry
+    std::string m_connectionMessage;        // Store message for retry
+    CSteamID m_pendingHostID;               // Host to send to
     Game* game;
     ISteamNetworking* m_networking;
     bool isConnectedToHost{false};
