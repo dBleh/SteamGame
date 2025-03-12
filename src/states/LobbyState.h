@@ -43,7 +43,8 @@ private:
 
     std::unique_ptr<PlayerManager> playerManager;
     std::unique_ptr<PlayerRenderer> playerRenderer;
-
+    std::chrono::steady_clock::time_point lastReadyToggle; // For debounce
+    static constexpr float READY_TOGGLE_COOLDOWN = 0.2f;
     bool connectionSent = false;
 };
 

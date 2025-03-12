@@ -26,6 +26,7 @@ private:
     std::unordered_map<std::string, RemotePlayer> players;
     std::string localPlayerID;
     std::chrono::steady_clock::time_point lastFrameTime; // Track frame timing
+    
 };
 
 #endif // PLAYER_MANAGER_H

@@ -21,7 +21,8 @@ void HostNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
         RemotePlayer rp;
         rp.player = Player(sf::Vector2f(200.f, 200.f), parsed.color);
         rp.nameText.setFont(game->GetFont());
-        rp.nameText.setString(parsed.steamName); // Use Steam name
+        rp.nameText.setString(parsed.steamName);
+        rp.baseName = parsed.steamName; // Set baseName
         rp.nameText.setCharacterSize(16);
         rp.nameText.setFillColor(sf::Color::Black);
         playerManager->AddOrUpdatePlayer(parsed.steamID, rp);
@@ -34,12 +35,13 @@ void HostNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
         RemotePlayer rp;
         rp.player = Player(parsed.position, sf::Color::Blue);
         rp.nameText.setFont(game->GetFont());
-        // Fix: Use playerManager->GetPlayers() to get the existing name
         auto& playersMap = playerManager->GetPlayers();
         if (playersMap.find(parsed.steamID) != playersMap.end()) {
-            rp.nameText.setString(playersMap[parsed.steamID].nameText.getString()); // Preserve Steam name
+            rp.nameText.setString(playersMap[parsed.steamID].nameText.getString());
+            rp.baseName = playersMap[parsed.steamID].baseName; // Preserve baseName
         } else {
-            rp.nameText.setString("Player_" + parsed.steamID); // Fallback if not found
+            rp.nameText.setString("Player_" + parsed.steamID);
+            rp.baseName = "Player_" + parsed.steamID; // Fallback
         }
         rp.nameText.setCharacterSize(16);
         rp.nameText.setFillColor(sf::Color::Black);
@@ -49,6 +51,8 @@ void HostNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
     } else if (parsed.type == MessageType::Chat) {
         ProcessChatMessage(parsed.chatMessage, sender);
     } else if (parsed.type == MessageType::ReadyStatus) {
+        std::cout << "[HOST] Received ready status for " << parsed.steamID << ": " 
+                  << (parsed.isReady ? "true" : "false") << "\n";
         playerManager->SetReadyStatus(parsed.steamID, parsed.isReady);
         std::string broadcastMsg = MessageHandler::FormatReadyStatusMessage(parsed.steamID, parsed.isReady);
         game->GetNetworkManager().BroadcastMessage(broadcastMsg);
@@ -75,13 +79,5 @@ void HostNetwork::Update() {
         BroadcastPlayersList();
         lastBroadcastTime = now;
     }
-    // Check for ready toggle (host only)
-    if (sf::Keyboard::isKeyPressed(sf::Keyboard::R) && elapsed >= 0.2f) {
-        std::string myID = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
-        bool currentReady = playerManager->GetLocalPlayer().isReady;
-        playerManager->SetReadyStatus(myID, !currentReady);
-        std::string msg = MessageHandler::FormatReadyStatusMessage(myID, !currentReady);
-        game->GetNetworkManager().BroadcastMessage(msg);
-        lastBroadcastTime = now; // Debounce
-    }
+    // Removed "R" key logic, handled in LobbyState
 }

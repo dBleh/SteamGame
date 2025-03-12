@@ -22,7 +22,14 @@ void ClientNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
             RemotePlayer rp;
             rp.player = Player(parsed.position, sf::Color::Blue);
             rp.nameText.setFont(game->GetFont());
-            rp.nameText.setString(parsed.steamName.empty() ? "Player_" + parsed.steamID : parsed.steamName); // Use steamName if available
+            auto& playersMap = playerManager->GetPlayers();
+            if (playersMap.find(parsed.steamID) != playersMap.end()) {
+                rp.nameText.setString(playersMap[parsed.steamID].nameText.getString());
+                rp.baseName = playersMap[parsed.steamID].baseName; // Preserve baseName
+            } else {
+                rp.nameText.setString(parsed.steamName.empty() ? "Player_" + parsed.steamID : parsed.steamName);
+                rp.baseName = parsed.steamName.empty() ? "Player_" + parsed.steamID : parsed.steamName;
+            }
             rp.nameText.setCharacterSize(16);
             rp.nameText.setFillColor(sf::Color::Black);
             playerManager->AddOrUpdatePlayer(parsed.steamID, rp);
@@ -67,8 +74,12 @@ void ClientNetwork::SendConnectionMessage() {
 void ClientNetwork::SendReadyStatus(bool isReady) {
     std::string steamIDStr = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
     std::string msg = MessageHandler::FormatReadyStatusMessage(steamIDStr, isReady);
-    game->GetNetworkManager().SendMessage(hostID, msg);
-    playerManager->SetReadyStatus(steamIDStr, isReady); // Update locally immediately
+    if (game->GetNetworkManager().SendMessage(hostID, msg)) {
+        std::cout << "[CLIENT] Sent ready status: " << (isReady ? "true" : "false") << "\n";
+        playerManager->SetReadyStatus(steamIDStr, isReady); // Update locally
+    } else {
+        std::cout << "[CLIENT] Failed to send ready status!\n";
+    }
 }
 
 void ClientNetwork::Update() {
@@ -85,10 +96,5 @@ void ClientNetwork::Update() {
             pendingConnectionMessage = false;
         }
     }
-    // Check for ready toggle
-    if (sf::Keyboard::isKeyPressed(sf::Keyboard::R) && elapsed >= 0.2f) { // Debounce with 0.2s
-        bool currentReady = playerManager->GetLocalPlayer().isReady;
-        SendReadyStatus(!currentReady);
-        lastSendTime = now; // Reuse to debounce
-    }
+    // Removed "R" key logic, handled in LobbyState
 }

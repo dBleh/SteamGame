@@ -27,15 +27,9 @@ void PlayerManager::Update() {
             pos = rp.previousPosition + (rp.targetPosition - rp.previousPosition) * t;
             rp.player.SetPosition(pos);
         }
-        // Fix: Set nameText to base name + status, don't append
-        std::string baseName = rp.nameText.getString().toAnsiString();
-        // Strip any existing status to avoid duplication
-        size_t statusPos = baseName.find_last_of(" X✓");
-        if (statusPos != std::string::npos && statusPos >= baseName.length() - 2) {
-            baseName = baseName.substr(0, statusPos - 1); // Remove old " X" or " ✓"
-        }
+        // Rebuild nameText from baseName + status
         std::string status = rp.isReady ? " ✓" : " X";
-        rp.nameText.setString(baseName + status);
+        rp.nameText.setString(rp.baseName + status);
         rp.nameText.setPosition(pos.x, pos.y - 20.f);
     }
 }
@@ -48,6 +42,7 @@ void PlayerManager::AddOrUpdatePlayer(const std::string& id, const RemotePlayer&
     auto now = std::chrono::steady_clock::now();
     if (players.find(id) == players.end()) {
         players[id] = player;
+        players[id].baseName = player.nameText.getString().toAnsiString(); // Set baseName once
         players[id].previousPosition = player.player.GetPosition();
         players[id].targetPosition = player.player.GetPosition();
         players[id].lastUpdateTime = now;
@@ -57,8 +52,12 @@ void PlayerManager::AddOrUpdatePlayer(const std::string& id, const RemotePlayer&
         players[id].targetPosition = player.player.GetPosition();
         players[id].lastUpdateTime = now;
         players[id].player = player.player;
-        players[id].nameText = player.nameText; // Preserve Steam name
-        players[id].isReady = player.isReady; // Sync ready status
+        // Only set baseName if it’s a new player (Connection message sets it initially)
+        if (players[id].baseName.empty()) {
+            players[id].baseName = player.nameText.getString().toAnsiString();
+        }
+        players[id].nameText = player.nameText; // Update font, size, etc.
+        players[id].isReady = player.isReady;
     }
 }
 
@@ -66,7 +65,8 @@ void PlayerManager::AddLocalPlayer(const std::string& id, const std::string& nam
     RemotePlayer rp;
     rp.player = Player(position, color);
     rp.nameText.setFont(game->GetFont());
-    rp.nameText.setString(name); // Use Steam name
+    rp.nameText.setString(name);
+    rp.baseName = name; // Set baseName here
     rp.nameText.setCharacterSize(16);
     rp.nameText.setFillColor(sf::Color::Black);
     rp.previousPosition = position;

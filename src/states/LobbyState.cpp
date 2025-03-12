@@ -116,6 +116,27 @@ void LobbyState::ProcessEvent(const sf::Event& event) {
             SteamUser()->GetSteamID() == SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID())) {
             std::cout << "User wants to start game" << std::endl;
         }
+        else if (event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::R) {
+            auto now = std::chrono::steady_clock::now();
+            float elapsed = std::chrono::duration<float>(now - lastReadyToggle).count();
+            if (elapsed >= READY_TOGGLE_COOLDOWN) {
+                std::string myID = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
+                bool currentReady = playerManager->GetLocalPlayer().isReady;
+                std::cout << "[LOBBY] Toggling ready status for " << myID << " from " 
+                          << (currentReady ? "true" : "false") << " to " 
+                          << (!currentReady ? "true" : "false") << "\n";
+                playerManager->SetReadyStatus(myID, !currentReady);
+                std::string msg = MessageHandler::FormatReadyStatusMessage(myID, !currentReady);
+                if (hostNetwork) {
+                    game->GetNetworkManager().BroadcastMessage(msg);
+                    std::cout << "[LOBBY] Host broadcasted ready status\n";
+                } else if (clientNetwork) {
+                    clientNetwork->SendReadyStatus(!currentReady);
+                    std::cout << "[LOBBY] Client sent ready status to host\n";
+                }
+                lastReadyToggle = now;
+            }
+        }
     }
 }
 

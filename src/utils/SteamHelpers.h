@@ -28,6 +28,7 @@ struct RemotePlayer {
     std::chrono::steady_clock::time_point lastUpdateTime; // Timestamp of last update
     float interpDuration; // Fixed duration between updates (e.g., 0.1s)
     bool isReady = false; 
+    std::string baseName;
 };
 
 #endif // STEAM_HELPERS_H
