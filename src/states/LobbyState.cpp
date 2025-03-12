@@ -111,12 +111,13 @@ void LobbyState::Render() {
 
 
 void LobbyState::ProcessEvent(const sf::Event& event) {
+    static bool rKeyPressed = false; // Track key state
     if (event.type == sf::Event::KeyPressed) {
         if (event.key.code == sf::Keyboard::S &&
             SteamUser()->GetSteamID() == SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID())) {
             std::cout << "User wants to start game" << std::endl;
         }
-        else if (event.key.code == sf::Keyboard::R) {
+        else if (event.key.code == sf::Keyboard::R && !rKeyPressed) {
             auto now = std::chrono::steady_clock::now();
             float elapsed = std::chrono::duration<float>(now - lastReadyToggle).count();
             if (elapsed >= READY_TOGGLE_COOLDOWN) {
@@ -132,17 +133,20 @@ void LobbyState::ProcessEvent(const sf::Event& event) {
                     if (game->GetNetworkManager().BroadcastMessage(msg)) {
                         std::cout << "[LOBBY] Host broadcasted ready status: " << msg << "\n";
                     } else {
-                        std::cout << "[LOBBY] Host failed to broadcast ready status!\n";
+                        std::cout << "[LOBBY] Host failed to broadcast ready status: " << msg << "\n";
                     }
                 } else if (clientNetwork) {
                     clientNetwork->SendReadyStatus(newReady);
                     std::cout << "[LOBBY] Client sent ready status to host: " << msg << "\n";
                 }
                 lastReadyToggle = now;
+                rKeyPressed = true; // Mark as pressed
             } else {
                 std::cout << "[LOBBY] Ready toggle on cooldown (elapsed: " << elapsed << "s)\n";
             }
         }
+    } else if (event.type == sf::Event::KeyReleased && event.key.code == sf::Keyboard::R) {
+        rKeyPressed = false; // Reset on release
     }
 }
 

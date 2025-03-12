@@ -47,7 +47,7 @@ void NetworkManager::ReceiveMessages() {
             buffer[msgSize] = '\0';
             std::string msg(buffer);
             CSteamID myID = SteamUser()->GetSteamID();
-            if (sender == myID && msg.find("CHAT:") != 0) { // Allow chat messages from self
+            if (sender == myID && msg.find("T|") != 0) { // Allow chat messages from self
                 std::cout << "[NETWORK] Ignoring unexpected self-message: " << msg << "\n";
                 continue;
             }
@@ -60,13 +60,15 @@ void NetworkManager::ReceiveMessages() {
                     std::cerr << "[NETWORK] Failed to accept P2P session with " << sender.ConvertToUint64() << "\n";
                 }
             }
+            std::cout << "[NETWORK] Received message: " << msg << " from " << sender.ConvertToUint64() << "\n";
             if (messageHandler) {
                 messageHandler(msg, sender);
             }
+        } else {
+            std::cerr << "[NETWORK] Failed to read P2P packet of size " << msgSize << "\n";
         }
     }
 
-    // Retry sending connection message if pending
     if (m_pendingConnectionMessage && m_pendingHostID != k_steamIDNil) {
         if (SendMessage(m_pendingHostID, m_connectionMessage)) {
             std::cout << "[NETWORK] Retry succeeded: " << m_connectionMessage << "\n";

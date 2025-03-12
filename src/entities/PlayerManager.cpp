@@ -80,12 +80,11 @@ void PlayerManager::AddLocalPlayer(const std::string& id, const std::string& nam
 void PlayerManager::SetReadyStatus(const std::string& id, bool ready) {
     if (players.find(id) != players.end()) {
         players[id].isReady = ready;
-        std::cout << "[DEBUG] Set ready status for " << id << " to " << (ready ? "true" : "false") << "\n";
-        // Force immediate name update for debugging
+        std::cout << "[PM] Set ready status for " << id << " to " << (ready ? "true" : "false") << "\n";
         std::string status = ready ? " ✓" : " X";
         players[id].nameText.setString(players[id].baseName + status);
     } else {
-        std::cout << "[DEBUG] Player " << id << " not found for ready status update\n";
+        std::cout << "[PM] Player " << id << " not found for ready status update\n";
     }
 }
 

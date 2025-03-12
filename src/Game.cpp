@@ -45,29 +45,24 @@ Game::~Game() {
 
 void Game::Run() {
     sf::Clock clock;
+    window.setKeyRepeatEnabled(false); // Disable key repeat
     while (window.isOpen()) {
-        // Process Steam callbacks
         if (steamInitialized) {
             SteamAPI_RunCallbacks();
         }
 
         networkManager->ReceiveMessages();
 
-        // Calculate delta time
         float dt = clock.restart().asSeconds();
 
-
-        // Handle events
         sf::Event event;
         while (window.pollEvent(event)) {
             ProcessEvents(event);
             if (state) state->ProcessEvent(event);
         }
 
-        // Update state
         if (state) state->Update(dt);
 
-        // State transition
         switch (currentState) {
             case GameState::MainMenu:
                 if (!dynamic_cast<MainMenuState*>(state.get()))
@@ -83,13 +78,12 @@ void Game::Run() {
                 break;
             case GameState::Lobby:
                 if (!dynamic_cast<LobbyState*>(state.get()))
-                state = std::make_unique<LobbyState>(this);
+                    state = std::make_unique<LobbyState>(this);
                 break;
             default:
                 break;
         }
 
-        // Render
         if (state) state->Render();
     }
 }

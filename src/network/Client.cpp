@@ -81,7 +81,7 @@ void ClientNetwork::SendReadyStatus(bool isReady) {
         playerManager->SetReadyStatus(steamIDStr, isReady); // Update locally
     } else {
         std::cout << "[CLIENT] Failed to send ready status: " << msg << " - will retry\n";
-        // Optional: Queue for retry in Update if needed
+        pendingReadyMessage = msg; // Queue for retry
     }
 }
 
@@ -99,5 +99,10 @@ void ClientNetwork::Update() {
             pendingConnectionMessage = false;
         }
     }
-    // Removed "R" key logic, handled in LobbyState
+    if (!pendingReadyMessage.empty()) {
+        if (game->GetNetworkManager().SendMessage(hostID, pendingReadyMessage)) {
+            std::cout << "[CLIENT] Pending ready status sent: " << pendingReadyMessage << "\n";
+            pendingReadyMessage.clear();
+        }
+    }
 }
