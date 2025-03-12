@@ -8,6 +8,7 @@
 #include <functional>
 #include <unordered_map>
 #include <string>
+#include <chrono>
 /**
  * @brief Hash functor for CSteamID.
  *
@@ -22,10 +23,10 @@ struct CSteamIDHash {
 struct RemotePlayer {
     Player player;
     sf::Text nameText;
-    sf::Vector2f previousPosition; // Last known position
-    sf::Vector2f targetPosition;   // Next position to reach
-    float interpTime;              // Time since last update (for interpolation)
-    float interpDuration;          // Time between updates (e.g., 0.5s)
+    sf::Vector2f previousPosition;
+    sf::Vector2f targetPosition;
+    std::chrono::steady_clock::time_point lastUpdateTime; // Timestamp of last update
+    float interpDuration; // Fixed duration between updates (e.g., 0.1s)
 };
 
 #endif // STEAM_HELPERS_H

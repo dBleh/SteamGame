@@ -5,8 +5,7 @@
 #include <iostream>
 
 HostNetwork::HostNetwork(Game* game, PlayerManager* manager)
-    : game(game), playerManager(manager)
-{
+    : game(game), playerManager(manager), lastBroadcastTime(std::chrono::steady_clock::now()) {
 }
 
 HostNetwork::~HostNetwork() {}
@@ -19,32 +18,29 @@ void HostNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
                       << ": steamID='" << parsed.steamID << "', steamName='" << parsed.steamName << "'\n";
             return;
         }
-        std::string key = parsed.steamID;
         RemotePlayer rp;
-        rp.player.SetPosition(sf::Vector2f(200.f, 200.f));
-        rp.player.GetShape().setFillColor(parsed.color); // Should be Blue from client
+        rp.player = Player(sf::Vector2f(200.f, 200.f), parsed.color);
         rp.nameText.setFont(game->GetFont());
         rp.nameText.setString(parsed.steamName);
         rp.nameText.setCharacterSize(16);
         rp.nameText.setFillColor(sf::Color::Black);
-        playerManager->AddOrUpdatePlayer(key, rp);
-        
+        playerManager->AddOrUpdatePlayer(parsed.steamID, rp);
         BroadcastPlayersList();
     } else if (parsed.type == MessageType::Movement) {
         if (parsed.steamID.empty()) {
             std::cout << "[HOST] Invalid movement message from " << sender.ConvertToUint64() << ": " << msg << "\n";
             return;
         }
-        std::string key = parsed.steamID;
         RemotePlayer rp;
-        rp.player.SetPosition(parsed.position);
-        rp.player.GetShape().setFillColor(sf::Color::Blue);
+        rp.player = Player(parsed.position, sf::Color::Blue);
         rp.nameText.setFont(game->GetFont());
         rp.nameText.setString("Player_" + parsed.steamID);
         rp.nameText.setCharacterSize(16);
         rp.nameText.setFillColor(sf::Color::Black);
-        playerManager->AddOrUpdatePlayer(key, rp);
-        
+        playerManager->AddOrUpdatePlayer(parsed.steamID, rp);
+        // Broadcast immediately to reduce latency
+        std::string broadcastMsg = MessageHandler::FormatMovementMessage(parsed.steamID, parsed.position);
+        game->GetNetworkManager().BroadcastMessage(broadcastMsg);
     } else if (parsed.type == MessageType::Chat) {
         ProcessChatMessage(parsed.chatMessage, sender);
     }
@@ -53,16 +49,11 @@ void HostNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
 void HostNetwork::BroadcastPlayersList() {
     auto& players = playerManager->GetPlayers();
     for (auto& pair : players) {
-        std::string key = pair.first;
-        // Use the current position from the player manager.
-        RemotePlayer rp = pair.second; // For simplicity; ideally use a reference if safe.
         std::string msg = MessageHandler::FormatMovementMessage(
-            key,
-            rp.player.GetPosition()
+            pair.first,
+            pair.second.player.GetPosition()
         );
-        if (game->GetNetworkManager().BroadcastMessage(msg)) {
-            //std::cout << "[HOST] Broadcasted position for " << key << "\n";
-        }
+        game->GetNetworkManager().BroadcastMessage(msg);
     }
 }
 
@@ -74,10 +65,11 @@ void HostNetwork::ProcessChatMessage(const std::string& message, CSteamID sender
     game->GetNetworkManager().BroadcastMessage(msg);
 }
 
-void HostNetwork::Update(float dt) {
-    broadcastTimer += dt;
-    if (broadcastTimer >= 0.1f) { // Changed from 0.5f to 0.1f
+void HostNetwork::Update() {
+    auto now = std::chrono::steady_clock::now();
+    float elapsed = std::chrono::duration<float>(now - lastBroadcastTime).count();
+    if (elapsed >= BROADCAST_INTERVAL) {
         BroadcastPlayersList();
-        broadcastTimer = 0.f;
+        lastBroadcastTime = now;
     }
 }

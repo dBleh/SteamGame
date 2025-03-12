@@ -78,22 +78,20 @@ void LobbyState::UpdateRemotePlayers() {
 
 void LobbyState::Update(float dt) {
     if (!playerLoaded) {
-        loadingTimer += dt;
+        loadingTimer += dt; // Keep this for simplicity, though could use timestamps
         if (loadingTimer >= 2.0f) {
             playerLoaded = true;
             game->GetHUD().updateText("playerLoading", "");
-            // Send connection message after loading for clients
             if (clientNetwork && !connectionSent) {
                 clientNetwork->SendConnectionMessage();
-                connectionSent = true; // Add bool member to track this
+                connectionSent = true;
             }
         }
     } else {
-        auto& localPlayer = playerManager->GetLocalPlayer().player;
-        localPlayer.Update(dt);
-        if (clientNetwork) clientNetwork->Update(dt);
-        if (hostNetwork) hostNetwork->Update(dt);
-        playerManager->Update(dt);
+        // Update PlayerManager (includes local player movement)
+        playerManager->Update();
+        if (clientNetwork) clientNetwork->Update();
+        if (hostNetwork) hostNetwork->Update();
     }
     if (SteamUser()->GetSteamID() == SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID())) {
         game->GetHUD().updateText("startGame", "Press S to Start Game (Host Only)");
