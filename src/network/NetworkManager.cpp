@@ -5,6 +5,7 @@
 #include <sstream>
 #include <vector>
 #include <chrono>
+#include "../Game.h"
 
 #define GAME_ID "SteamGame_v1"
 

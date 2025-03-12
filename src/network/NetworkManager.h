@@ -8,7 +8,7 @@
 #include <functional>
 #include "../utils/SteamHelpers.h"
 #include "../utils/MessageHandler.h"
-#include "../Game.h"
+
 
 class Game;
 class NetworkManager {
@@ -36,7 +36,6 @@ public:
     void SendChatMessage(CSteamID target, const std::string& message);
     CSteamID GetCurrentLobbyID() const { return m_currentLobbyID; } // Add getter
     // Getter for current lobby ID
-    CSteamID GetCurrentLobbyID() const { return m_currentLobbyID; }
     void SendConnectionMessageOnJoin(CSteamID hostID); // New method for retry logic
 private:
     // Callback handlers

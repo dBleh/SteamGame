@@ -24,15 +24,13 @@ public:
     std::string& GetLobbyNameInput() { return lobbyNameInput; }
     bool IsSteamInitialized() const { return steamInitialized; }
     bool IsInLobby() const { return inLobby; }
-    CSteamID GetLobbyID() const { return currentLobby; }
     
     // --- Steam Connection Variables ---
     // Local Steam ID getter and setter.
     void SetLocalSteamID(const CSteamID& id) { localSteamID = id; }
     CSteamID GetLocalSteamID() const { return localSteamID; }
-    CSteamID GetLobbyID() const { return networkManager.GetCurrentLobbyID(); } // Update to use NetworkManager
-
-    const sf::Font& GetFont() const { return font; }
+    CSteamID GetLobbyID() const { return networkManager->GetCurrentLobbyID(); } // Use -> for unique_ptr
+        const sf::Font& GetFont() const { return font; }
 private:
     void ProcessEvents(sf::Event& event);
     void AdjustViewToWindow();
@@ -41,6 +39,7 @@ private:
     sf::Font font;
     HUD hud;
     std::unique_ptr<State> state;
+    
     std::unique_ptr<NetworkManager> networkManager;
 
     GameState currentState{GameState::MainMenu};
