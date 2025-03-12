@@ -18,7 +18,8 @@ private:
     void UpdateLobbyListDisplay();
     void JoinLobby(CSteamID lobby);
     void JoinLobbyByIndex(int index);
-
+    
+    std::vector<std::pair<CSteamID, std::string>> localLobbyList
     std::vector<std::pair<CSteamID, std::string>> lobbyList;
     bool lobbyListUpdated{false};
 };

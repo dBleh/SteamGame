@@ -18,7 +18,7 @@ void LobbySearchState::Update(float dt) {
 
     if (game->GetNetworkManager().IsLobbyListUpdated()) {
         UpdateLobbyListDisplay();
-        game->GetNetworkManager().ResetLobbyListUpdated(); // Reset the flag in NetworkManager
+        game->GetNetworkManager().ResetLobbyListUpdated(); // Reset NetworkManager flag
     }
 }
 
@@ -58,11 +58,13 @@ void LobbySearchState::SearchLobbies() {
 
 void LobbySearchState::UpdateLobbyListDisplay() {
     const auto& networkLobbyList = game->GetNetworkManager().GetLobbyList();
+    localLobbyList = networkLobbyList; // Store locally
     std::string lobbyText = "Available Lobbies (Press 0-9 to join, ESC to cancel):\n";
     std::cout << "[LOBBY] Updating UI, found " << networkLobbyList.size() << " lobbies\n";
     for (size_t i = 0; i < networkLobbyList.size() && i < 10; ++i) {
         lobbyText += std::to_string(i) + ": " + networkLobbyList[i].second + "\n";
-        std::cout << "[LOBBY] UI Lobby " << i << ": " << networkLobbyList[i].second << " (ID: " << networkLobbyList[i].first.ConvertToUint64() << ")\n";
+        std::cout << "[LOBBY] UI Lobby " << i << ": " << networkLobbyList[i].second 
+                  << " (ID: " << networkLobbyList[i].first.ConvertToUint64() << ")\n";
     }
     if (networkLobbyList.empty()) {
         lobbyText += "No lobbies available.";
@@ -70,8 +72,6 @@ void LobbySearchState::UpdateLobbyListDisplay() {
     }
     game->GetHUD().updateText("lobbyList", lobbyText);
     game->GetHUD().updateText("searchStatus", "Lobby Search Complete");
-    lobbyListUpdated = false; // Reset local flag
-    // Note: We don’t reset NetworkManager’s flag here directly; consider adding a setter in NetworkManager if needed
 }
 
 void LobbySearchState::JoinLobby(CSteamID lobby) {
@@ -84,9 +84,15 @@ void LobbySearchState::JoinLobby(CSteamID lobby) {
 }
 
 void LobbySearchState::JoinLobbyByIndex(int index) {
-    if (index >= 0 && index < static_cast<int>(lobbyList.size())) {
-        JoinLobby(lobbyList[index].first);
+    const auto& networkLobbyList = game->GetNetworkManager().GetLobbyList();
+    std::cout << "[LOBBY] Attempting to join lobby at index " << index 
+              << ", list size: " << networkLobbyList.size() << "\n";
+    if (index >= 0 && index < static_cast<int>(networkLobbyList.size())) {
+        std::cout << "[LOBBY] Valid index, joining lobby: " << networkLobbyList[index].second 
+                  << " (ID: " << networkLobbyList[index].first.ConvertToUint64() << ")\n";
+        JoinLobby(networkLobbyList[index].first);
     } else {
+        std::cout << "[LOBBY] Invalid lobby index: " << index << ", list size: " << networkLobbyList.size() << "\n";
         game->GetHUD().updateText("searchStatus", "Invalid lobby selection");
     }
 }
