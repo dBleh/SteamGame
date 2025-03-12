@@ -76,7 +76,7 @@ void LobbyCreationState::onLobbyEnter(CSteamID lobbyID) {
     CSteamID myID = SteamUser()->GetSteamID();
     std::string hostStr = std::to_string(myID.ConvertToUint64());
     SteamMatchmaking()->SetLobbyData(lobbyID, "host_steam_id", hostStr.c_str());
-
+    SteamMatchmaking()->SetLobbyJoinable(lobbyID, true);
 
     // Add the local player to the NetworkManager's connected clients
     game->GetNetworkManager().AcceptSession(myID);
