@@ -9,6 +9,12 @@ LobbySearchState::LobbySearchState(Game* game) : State(game) {
 }
 
 void LobbySearchState::Update(float dt) {
+    static float searchTimer = 0.f;
+    searchTimer += dt;
+    if (searchTimer >= 2.0f) { // Search every 2 seconds
+        SearchLobbies();
+        searchTimer = 0.f;
+    }
     if (lobbyListUpdated) {
         UpdateLobbyListDisplay();
         lobbyListUpdated = false;
