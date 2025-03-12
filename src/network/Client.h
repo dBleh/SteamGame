@@ -30,6 +30,7 @@ private:
     CSteamID hostID;
     bool pendingConnectionMessage{false};
     std::string pendingMessage;
+    std::string pendingReadyMessage;
     std::unordered_map<std::string, RemotePlayer> remotePlayers;
     static constexpr float SEND_INTERVAL = 0.1f;
 };
