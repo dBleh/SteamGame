@@ -29,6 +29,7 @@ public:
     void JoinLobbyFromNetwork(CSteamID lobby);
     const std::vector<std::pair<CSteamID, std::string>>& GetLobbyList() const { return lobbyList; }
     bool IsLobbyListUpdated() const { return lobbyListUpdated; }
+    void ResetLobbyListUpdated() { lobbyListUpdated = false; }
 
     // New method for chat messages
     void SendChatMessage(CSteamID target, const std::string& message);

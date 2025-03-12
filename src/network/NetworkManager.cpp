@@ -138,7 +138,6 @@ void NetworkManager::OnLobbyEnter(LobbyEnter_t* pParam) {
         SendChatMessage(myID, "Welcome to " + std::string(SteamMatchmaking()->GetLobbyData(m_currentLobbyID, "name")));
     }
 }
-
 void NetworkManager::OnLobbyMatchList(LobbyMatchList_t* pParam) {
     lobbyList.clear();
     std::cout << "[LOBBY] Lobby list received, matching count: " << pParam->m_nLobbiesMatching << "\n";
@@ -156,7 +155,6 @@ void NetworkManager::OnLobbyMatchList(LobbyMatchList_t* pParam) {
     lobbyListUpdated = true;
     std::cout << "[LOBBY] Found " << lobbyList.size() << " lobbies with names\n";
 }
-
 void NetworkManager::OnGameLobbyJoinRequested(GameLobbyJoinRequested_t* pParam) {
     JoinLobbyFromNetwork(pParam->m_steamIDLobby);
 }

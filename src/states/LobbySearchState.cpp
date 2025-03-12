@@ -11,13 +11,14 @@ LobbySearchState::LobbySearchState(Game* game) : State(game) {
 void LobbySearchState::Update(float dt) {
     static float searchTimer = 0.f;
     searchTimer += dt;
-    if (searchTimer >= 2.0f) { // Search every 2 seconds
+    if (searchTimer >= 2.0f) {
         SearchLobbies();
         searchTimer = 0.f;
     }
-    if (lobbyListUpdated) {
+
+    if (game->GetNetworkManager().IsLobbyListUpdated()) {
         UpdateLobbyListDisplay();
-        lobbyListUpdated = false;
+        game->GetNetworkManager().ResetLobbyListUpdated(); // Reset the flag in NetworkManager
     }
 }
 
@@ -56,16 +57,21 @@ void LobbySearchState::SearchLobbies() {
 }
 
 void LobbySearchState::UpdateLobbyListDisplay() {
+    const auto& networkLobbyList = game->GetNetworkManager().GetLobbyList();
     std::string lobbyText = "Available Lobbies (Press 0-9 to join, ESC to cancel):\n";
-    std::cout << "[LOBBY] Updating lobby list display, size: " << lobbyList.size() << "\n";
-    for (size_t i = 0; i < lobbyList.size() && i < 10; ++i) {
-        lobbyText += std::to_string(i) + ": " + lobbyList[i].second + "\n";
-        std::cout << "[LOBBY] Adding lobby " << i << ": " << lobbyList[i].second << "\n";
+    std::cout << "[LOBBY] Updating UI, found " << networkLobbyList.size() << " lobbies\n";
+    for (size_t i = 0; i < networkLobbyList.size() && i < 10; ++i) {
+        lobbyText += std::to_string(i) + ": " + networkLobbyList[i].second + "\n";
+        std::cout << "[LOBBY] UI Lobby " << i << ": " << networkLobbyList[i].second << " (ID: " << networkLobbyList[i].first.ConvertToUint64() << ")\n";
     }
-    if (lobbyList.empty()) {
+    if (networkLobbyList.empty()) {
         lobbyText += "No lobbies available.";
+        std::cout << "[LOBBY] No lobbies to display\n";
     }
     game->GetHUD().updateText("lobbyList", lobbyText);
+    game->GetHUD().updateText("searchStatus", "Lobby Search Complete");
+    lobbyListUpdated = false; // Reset local flag
+    // Note: We don’t reset NetworkManager’s flag here directly; consider adding a setter in NetworkManager if needed
 }
 
 void LobbySearchState::JoinLobby(CSteamID lobby) {
