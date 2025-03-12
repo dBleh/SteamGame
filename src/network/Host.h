@@ -30,6 +30,7 @@ public:
     void Update(float dt);
 
 private:
+float broadcastTimer = 0.f;
     Game* game;
     PlayerManager* playerManager;
     std::unordered_map<std::string, RemotePlayer> remotePlayers;

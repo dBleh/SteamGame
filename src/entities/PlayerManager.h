@@ -10,9 +10,10 @@ class Game; // Forward declaration
 
 class PlayerManager {
 public:
-    PlayerManager(Game* game);
+    PlayerManager(Game* game, const std::string& localID);
     ~PlayerManager();
-
+    void AddLocalPlayer(const std::string& id, const std::string& name, const sf::Vector2f& position, const sf::Color& color);
+    RemotePlayer& GetLocalPlayer();
     // Update all players (e.g. adjust name positions or animations)
     void Update(float dt);
 
@@ -28,6 +29,7 @@ public:
 private:
     Game* game;
     std::unordered_map<std::string, RemotePlayer> players;
+    std::string localPlayerID; // New member to track local player
 };
 
 #endif // PLAYER_MANAGER_H

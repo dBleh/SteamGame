@@ -4,18 +4,14 @@
 #include "../network/Client.h"
 #include "../network/Host.h"
 #include "../render/PlayerRenderer.h"
+#include "../entities/PlayerManager.h"
 LobbyState::LobbyState(Game* game)
-    : State(game),
-      playerLoaded(false),
-      loadingTimer(0.f),
-      localPlayer(sf::Vector2f(400.f, 300.f), sf::Color::Blue),
-      chatMessages("")
-{
+    : State(game), playerLoaded(false), loadingTimer(0.f), chatMessages("") {
+    // HUD initialization (unchanged)
     std::string lobbyName = SteamMatchmaking()->GetLobbyData(game->GetLobbyID(), "name");
     if (lobbyName.empty()) {
         lobbyName = "Lobby";
     }
-
     game->GetHUD().addElement("lobbyHeader", lobbyName, 32, sf::Vector2f(SCREEN_WIDTH * 0.5f, 20.f), GameState::Lobby, HUD::RenderMode::ScreenSpace, true);
     game->GetHUD().updateBaseColor("lobbyHeader", sf::Color::White);
     game->GetHUD().addElement("playerLoading", "Loading player...", 24, sf::Vector2f(50.f, SCREEN_HEIGHT - 150.f), GameState::Lobby, HUD::RenderMode::ScreenSpace, false);
@@ -25,40 +21,32 @@ LobbyState::LobbyState(Game* game)
     game->GetHUD().updateBaseColor("returnMain", sf::Color::Black);
     game->GetHUD().addElement("chat", "Chat:\n", 20, sf::Vector2f(50.f, SCREEN_HEIGHT - 200.f), GameState::Lobby, HUD::RenderMode::ScreenSpace, false);
 
-    localPlayerName.setFont(game->GetFont());
-    localPlayerName.setString(SteamFriends()->GetPersonaName());
-    localPlayerName.setCharacterSize(16);
-    localPlayerName.setFillColor(sf::Color::Black);
-
-    // Create the player manager and renderer.
-    playerManager = std::make_unique<PlayerManager>(game);
+    // Initialize PlayerManager with local ID
+    CSteamID myID = SteamUser()->GetSteamID();
+    std::string myIDStr = std::to_string(myID.ConvertToUint64());
+    playerManager = std::make_unique<PlayerManager>(game, myIDStr);
     playerRenderer = std::make_unique<PlayerRenderer>(playerManager.get());
 
-    // Determine role: host or client.
-    CSteamID myID = SteamUser()->GetSteamID();
+    // Add local player to PlayerManager
+    std::string myName = SteamFriends()->GetPersonaName();
+    playerManager->AddLocalPlayer(myIDStr, myName, sf::Vector2f(400.f, 300.f), sf::Color::Blue);
+
+    // Network setup
     CSteamID hostIDSteam = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
     if (myID == hostIDSteam) {
-        // Instantiate HostNetwork with the player manager.
         hostNetwork = std::make_unique<HostNetwork>(game, playerManager.get());
         game->GetNetworkManager().SetMessageHandler(
             [this](const std::string& msg, CSteamID sender) {
                 hostNetwork->ProcessMessage(msg, sender);
             }
         );
-        // Add the host (local player) to the player manager.
-        RemotePlayer rp;
-        rp.player = localPlayer;
-        rp.nameText = localPlayerName;
-        playerManager->AddOrUpdatePlayer(std::to_string(myID.ConvertToUint64()), rp);
     } else {
-        // Instantiate ClientNetwork with the player manager.
         clientNetwork = std::make_unique<ClientNetwork>(game, playerManager.get());
         game->GetNetworkManager().SetMessageHandler(
             [this](const std::string& msg, CSteamID sender) {
                 clientNetwork->ProcessMessage(msg, sender);
             }
         );
-        // Client sends its connection message to the host.
         clientNetwork->SendConnectionMessage();
     }
 }
@@ -90,61 +78,43 @@ void LobbyState::Update(float dt) {
             game->GetHUD().updateText("playerLoading", "");
         }
     } else {
-        localPlayer.Update(dt);
-        CSteamID myID = SteamUser()->GetSteamID();
-        CSteamID hostIDSteam = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
-        if (myID != hostIDSteam) {
-            // Client sends movement updates to the host.
-            static float sendTimer = 0.f;
-            sendTimer += dt;
-            if (sendTimer >= 0.1f && clientNetwork) {
-                clientNetwork->SendMovementUpdate(localPlayer.GetPosition());
-                sendTimer = 0.f;
-            }
-        } else {
-            // Host updates its own position and broadcasts the updated players list.
-            static float broadcastTimer = 0.f;
-            broadcastTimer += dt;
-            if (broadcastTimer >= 0.5f && hostNetwork) {
-                hostNetwork->ProcessMessage(
-                    MessageHandler::FormatMovementMessage(
-                        std::to_string(myID.ConvertToUint64()),
-                        localPlayer.GetPosition()
-                    ),
-                    myID
-                );
-                hostNetwork->BroadcastPlayersList();
-                broadcastTimer = 0.f;
-            }
-        }
+        // Update local player's position
+        auto& localPlayer = playerManager->GetLocalPlayer().player;
+        localPlayer.Update(dt); // Handles input
+
+        // Delegate network updates
+        if (clientNetwork) clientNetwork->Update(dt);
+        if (hostNetwork) hostNetwork->Update(dt);
+
+        // Update player list (name text positions)
+        playerManager->Update(dt);
     }
-    // Update the player manager (e.g., reposition names).
-    playerManager->Update(dt);
-    localPlayerName.setPosition(localPlayer.GetPosition().x, localPlayer.GetPosition().y - 20.f);
+
+    // Update HUD for host
     if (SteamUser()->GetSteamID() == SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID())) {
         game->GetHUD().updateText("startGame", "Press S to Start Game (Host Only)");
     } else {
         game->GetHUD().updateText("startGame", "");
     }
-    if (clientNetwork) clientNetwork->Update(dt);
-    if (hostNetwork) hostNetwork->Update(dt);
 }
 
 void LobbyState::Render() {
     game->GetWindow().clear(sf::Color::White);
     if (playerLoaded) {
-        game->GetWindow().draw(localPlayer.GetShape());
-        game->GetWindow().draw(localPlayerName);
+        playerRenderer->Render(game->GetWindow()); // Renders all players
     }
-    // Delegate all player rendering to the PlayerRenderer.
-    playerRenderer->Render(game->GetWindow());
     game->GetHUD().render(game->GetWindow(), game->GetWindow().getDefaultView(), game->GetCurrentState());
     game->GetWindow().display();
 }
 
 
 void LobbyState::ProcessEvent(const sf::Event& event) {
-    ProcessEvents(event);
+    if (event.type == sf::Event::KeyPressed) {
+        if (event.key.code == sf::Keyboard::S &&
+            SteamUser()->GetSteamID() == SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID())) {
+            std::cout << "User wants to start game" << std::endl;
+        }
+    }
 }
 
 void LobbyState::ProcessEvents(const sf::Event& event) {

@@ -7,7 +7,6 @@
 #include "../utils/MessageHandler.h"
 #include "../network/Host.h"
 #include "../network/Client.h"
-#include "../entities/PlayerManager.h"  // Use PlayerManager instead of a local map
 
 #include <steam/steam_api.h>
 #include <SFML/Graphics.hpp>

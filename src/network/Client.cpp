@@ -78,6 +78,13 @@ void ClientNetwork::SendConnectionMessage() {
 }
 
 void ClientNetwork::Update(float dt) {
+    sendTimer += dt;
+    if (sendTimer >= 0.1f) {
+        auto& localPlayer = playerManager->GetLocalPlayer().player;
+        SendMovementUpdate(localPlayer.GetPosition());
+        sendTimer = 0.f;
+    }
+    // Handle pending connection message (existing logic)
     if (pendingConnectionMessage) {
         if (game->GetNetworkManager().SendMessage(hostID, pendingMessage)) {
             std::cout << "[CLIENT] Pending connection message sent successfully.\n";

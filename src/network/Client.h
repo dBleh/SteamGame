@@ -34,6 +34,7 @@ public:
 
 private:
     Game* game;
+    float sendTimer = 0.f;
     PlayerManager* playerManager;
     CSteamID hostID;
     bool pendingConnectionMessage{false};

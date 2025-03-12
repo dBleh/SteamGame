@@ -70,5 +70,9 @@ void HostNetwork::ProcessChatMessage(const std::string& message, CSteamID sender
 }
 
 void HostNetwork::Update(float dt) {
-    // Optionally implement periodic tasks.
+    broadcastTimer += dt;
+    if (broadcastTimer >= 0.5f) {
+        BroadcastPlayersList();
+        broadcastTimer = 0.f;
+    }
 }

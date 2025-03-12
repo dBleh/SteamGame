@@ -2,9 +2,8 @@
 #include "../Game.h"
 #include <iostream>
 
-PlayerManager::PlayerManager(Game* game)
-    : game(game)
-{
+PlayerManager::PlayerManager(Game* game, const std::string& localID)
+    : game(game), localPlayerID(localID) {
 }
 
 PlayerManager::~PlayerManager() {
@@ -29,4 +28,20 @@ void PlayerManager::RemovePlayer(const std::string& id) {
 
 std::unordered_map<std::string, RemotePlayer>& PlayerManager::GetPlayers() {
     return players;
+}
+
+void PlayerManager::AddLocalPlayer(const std::string& id, const std::string& name, const sf::Vector2f& position, const sf::Color& color) {
+    RemotePlayer rp;
+    rp.player.SetPosition(position);
+    rp.player.GetShape().setFillColor(color);
+    rp.nameText.setFont(game->GetFont());
+    rp.nameText.setString(name);
+    rp.nameText.setCharacterSize(16);
+    rp.nameText.setFillColor(sf::Color::Black);
+    players[id] = rp;
+    localPlayerID = id;
+}
+
+RemotePlayer& PlayerManager::GetLocalPlayer() {
+    return players[localPlayerID];
 }
