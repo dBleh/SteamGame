@@ -43,6 +43,8 @@ private:
 
     std::unique_ptr<PlayerManager> playerManager;
     std::unique_ptr<PlayerRenderer> playerRenderer;
+
+    bool connectionSent = false;
 };
 
 #endif // LOBBYSTATE_H

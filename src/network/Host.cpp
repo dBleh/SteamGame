@@ -14,19 +14,28 @@ HostNetwork::~HostNetwork() {}
 void HostNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
     ParsedMessage parsed = MessageHandler::ParseMessage(msg);
     if (parsed.type == MessageType::Connection) {
+        if (parsed.steamID.empty() || parsed.steamName.empty()) {
+            std::cout << "[HOST] Invalid connection message from " << sender.ConvertToUint64() 
+                      << ": steamID='" << parsed.steamID << "', steamName='" << parsed.steamName << "'\n";
+            return;
+        }
         std::string key = parsed.steamID;
         RemotePlayer rp;
         rp.player.SetPosition(sf::Vector2f(200.f, 200.f));
-        rp.player.GetShape().setFillColor(parsed.color);
+        rp.player.GetShape().setFillColor(parsed.color); // Should be Blue from client
         rp.nameText.setFont(game->GetFont());
         rp.nameText.setString(parsed.steamName);
         rp.nameText.setCharacterSize(16);
         rp.nameText.setFillColor(sf::Color::Black);
         playerManager->AddOrUpdatePlayer(key, rp);
-        std::cout << "[HOST] New player added: " << parsed.steamID << " (" << parsed.steamName << ")\n";
+        std::cout << "[HOST] New player added: " << parsed.steamID << " (" << parsed.steamName << ") with color ("
+                  << (int)parsed.color.r << ", " << (int)parsed.color.g << ", " << (int)parsed.color.b << ")\n";
         BroadcastPlayersList();
-    }
-    else if (parsed.type == MessageType::Movement) {
+    } else if (parsed.type == MessageType::Movement) {
+        if (parsed.steamID.empty()) {
+            std::cout << "[HOST] Invalid movement message from " << sender.ConvertToUint64() << ": " << msg << "\n";
+            return;
+        }
         std::string key = parsed.steamID;
         RemotePlayer rp;
         rp.player.SetPosition(parsed.position);
@@ -37,8 +46,7 @@ void HostNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
         rp.nameText.setFillColor(sf::Color::Black);
         playerManager->AddOrUpdatePlayer(key, rp);
         std::cout << "[HOST] Processed movement for " << parsed.steamID << "\n";
-    }
-    else if (parsed.type == MessageType::Chat) {
+    } else if (parsed.type == MessageType::Chat) {
         ProcessChatMessage(parsed.chatMessage, sender);
     }
 }

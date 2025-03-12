@@ -46,7 +46,14 @@ void NetworkManager::ReceiveMessages() {
         if (m_networking->ReadP2PPacket(buffer, sizeof(buffer), &msgSize, &sender)) {
             buffer[msgSize] = '\0';
             std::string msg(buffer);
-            // Accept session if not already connected (like CubeGame)
+            std::cout << "[DEBUG] Raw packet from " << sender.ConvertToUint64() << ": " << msg << "\n";
+
+            CSteamID myID = SteamUser()->GetSteamID();
+            if (sender == myID && msg.find("CHAT:") != 0) { // Allow chat messages from self
+                std::cout << "[NETWORK] Ignoring unexpected self-message: " << msg << "\n";
+                continue;
+            }
+
             if (m_connectedClients.find(sender) == m_connectedClients.end()) {
                 if (m_networking->AcceptP2PSessionWithUser(sender)) {
                     m_connectedClients[sender] = true;
@@ -123,10 +130,11 @@ bool NetworkManager::BroadcastMessage(const std::string& msg) {
 }
 
 void NetworkManager::SendChatMessage(CSteamID target, const std::string& message) {
-    std::string formattedMsg = "CHAT:" + message;
+    CSteamID myID = SteamUser()->GetSteamID();
+    std::string steamIDStr = std::to_string(myID.ConvertToUint64());
+    std::string formattedMsg = MessageHandler::FormatChatMessage(steamIDStr, message);
     SendMessage(target, formattedMsg);
 }
-
 void NetworkManager::ProcessCallbacks() {
     SteamAPI_RunCallbacks();
 }
@@ -188,12 +196,11 @@ void NetworkManager::OnLobbyEnter(LobbyEnter_t* pParam) {
     CSteamID myID = SteamUser()->GetSteamID();
     CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(m_currentLobbyID);
     
-    // Send initial player data to the host if not the host
     if (myID != hostID) {
-        SendConnectionMessageOnJoin(hostID);
+        SendConnectionMessageOnJoin(hostID); // Client case
     } else {
-        // Host welcomes itself
-        SendChatMessage(myID, "Welcome to " + std::string(SteamMatchmaking()->GetLobbyData(m_currentLobbyID, "name")));
+        std::string lobbyName = SteamMatchmaking()->GetLobbyData(m_currentLobbyID, "name");
+        SendChatMessage(myID, "Welcome to " + lobbyName); // Now uses FormatChatMessage
     }
 }
 

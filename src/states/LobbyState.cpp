@@ -7,7 +7,9 @@
 #include "../entities/PlayerManager.h"
 LobbyState::LobbyState(Game* game)
     : State(game), playerLoaded(false), loadingTimer(0.f), chatMessages("") {
-    // HUD initialization (unchanged)
+    std::cout << "[DEBUG] LobbyState constructor start\n";
+    
+    // HUD initialization
     std::string lobbyName = SteamMatchmaking()->GetLobbyData(game->GetLobbyID(), "name");
     if (lobbyName.empty()) {
         lobbyName = "Lobby";
@@ -21,19 +23,21 @@ LobbyState::LobbyState(Game* game)
     game->GetHUD().updateBaseColor("returnMain", sf::Color::Black);
     game->GetHUD().addElement("chat", "Chat:\n", 20, sf::Vector2f(50.f, SCREEN_HEIGHT - 200.f), GameState::Lobby, HUD::RenderMode::ScreenSpace, false);
 
-    // Initialize PlayerManager with local ID
+    // PlayerManager setup
     CSteamID myID = SteamUser()->GetSteamID();
     std::string myIDStr = std::to_string(myID.ConvertToUint64());
+    std::cout << "[DEBUG] Local Steam ID: " << myIDStr << "\n";
     playerManager = std::make_unique<PlayerManager>(game, myIDStr);
     playerRenderer = std::make_unique<PlayerRenderer>(playerManager.get());
 
-    // Add local player to PlayerManager
     std::string myName = SteamFriends()->GetPersonaName();
+    std::cout << "[DEBUG] Adding local player: " << myIDStr << " (" << myName << ")\n";
     playerManager->AddLocalPlayer(myIDStr, myName, sf::Vector2f(400.f, 300.f), sf::Color::Blue);
 
     // Network setup
     CSteamID hostIDSteam = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
     if (myID == hostIDSteam) {
+        std::cout << "[DEBUG] Setting up as host\n";
         hostNetwork = std::make_unique<HostNetwork>(game, playerManager.get());
         game->GetNetworkManager().SetMessageHandler(
             [this](const std::string& msg, CSteamID sender) {
@@ -41,6 +45,7 @@ LobbyState::LobbyState(Game* game)
             }
         );
     } else {
+        std::cout << "[DEBUG] Setting up as client\n";
         clientNetwork = std::make_unique<ClientNetwork>(game, playerManager.get());
         game->GetNetworkManager().SetMessageHandler(
             [this](const std::string& msg, CSteamID sender) {
@@ -49,6 +54,7 @@ LobbyState::LobbyState(Game* game)
         );
         clientNetwork->SendConnectionMessage();
     }
+    std::cout << "[DEBUG] LobbyState constructor end\n";
 }
 
 void LobbyState::UpdateRemotePlayers() {
@@ -76,21 +82,19 @@ void LobbyState::Update(float dt) {
         if (loadingTimer >= 2.0f) {
             playerLoaded = true;
             game->GetHUD().updateText("playerLoading", "");
+            // Send connection message after loading for clients
+            if (clientNetwork && !connectionSent) {
+                clientNetwork->SendConnectionMessage();
+                connectionSent = true; // Add bool member to track this
+            }
         }
     } else {
-        // Update local player's position
         auto& localPlayer = playerManager->GetLocalPlayer().player;
-        localPlayer.Update(dt); // Handles input
-
-        // Delegate network updates
+        localPlayer.Update(dt);
         if (clientNetwork) clientNetwork->Update(dt);
         if (hostNetwork) hostNetwork->Update(dt);
-
-        // Update player list (name text positions)
         playerManager->Update(dt);
     }
-
-    // Update HUD for host
     if (SteamUser()->GetSteamID() == SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID())) {
         game->GetHUD().updateText("startGame", "Press S to Start Game (Host Only)");
     } else {

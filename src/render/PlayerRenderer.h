@@ -2,7 +2,7 @@
 #define PLAYER_RENDERER_H
 
 #include <SFML/Graphics.hpp>
-
+#include <iostream>
 class PlayerManager; // Forward declaration
 
 class PlayerRenderer {

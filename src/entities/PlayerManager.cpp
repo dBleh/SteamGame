@@ -19,9 +19,19 @@ void PlayerManager::Update(float dt) {
 }
 
 void PlayerManager::AddOrUpdatePlayer(const std::string& id, const RemotePlayer& player) {
-    players[id] = player;
+    if (id.empty()) {
+        std::cout << "[ERROR] Attempted to add player with empty ID!\n";
+        return; // Skip adding
+    }
+    if (id == localPlayerID) {
+        players[id].player.SetPosition(player.player.GetPosition());
+        std::cout << "[DEBUG] Updated local player position to (" 
+                  << player.player.GetPosition().x << ", " << player.player.GetPosition().y << ")\n";
+    } else {
+        players[id] = player;
+        std::cout << "[DEBUG] Added/Updated remote player ID: " << id << "\n";
+    }
 }
-
 void PlayerManager::RemovePlayer(const std::string& id) {
     players.erase(id);
 }
