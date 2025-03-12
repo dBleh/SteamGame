@@ -22,6 +22,10 @@ struct CSteamIDHash {
 struct RemotePlayer {
     Player player;
     sf::Text nameText;
+    sf::Vector2f previousPosition; // Last known position
+    sf::Vector2f targetPosition;   // Next position to reach
+    float interpTime;              // Time since last update (for interpolation)
+    float interpDuration;          // Time between updates (e.g., 0.5s)
 };
 
 #endif // STEAM_HELPERS_H

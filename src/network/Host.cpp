@@ -76,7 +76,7 @@ void HostNetwork::ProcessChatMessage(const std::string& message, CSteamID sender
 
 void HostNetwork::Update(float dt) {
     broadcastTimer += dt;
-    if (broadcastTimer >= 0.5f) {
+    if (broadcastTimer >= 0.1f) { // Changed from 0.5f to 0.1f
         BroadcastPlayersList();
         broadcastTimer = 0.f;
     }

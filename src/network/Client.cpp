@@ -17,15 +17,11 @@ void ClientNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
     ParsedMessage parsed = MessageHandler::ParseMessage(msg);
     if (parsed.type == MessageType::Chat) {
         // Optionally update chat UI here.
-    }
-    else if (parsed.type == MessageType::Connection) {
+    } else if (parsed.type == MessageType::Connection) {
         std::cout << "[CLIENT] Connection acknowledgment received." << std::endl;
-    }
-    else if (parsed.type == MessageType::Movement) {
-        // Update the player manager with new movement info.
+    } else if (parsed.type == MessageType::Movement) {
         RemotePlayer rp;
-        rp.player.SetPosition(parsed.position);
-        rp.player.GetShape().setFillColor(sf::Color::Blue);
+        rp.player = Player(parsed.position, sf::Color::Blue); // Create with new position
         rp.nameText.setFont(game->GetFont());
         rp.nameText.setString("Player_" + parsed.steamID);
         rp.nameText.setCharacterSize(16);
@@ -33,7 +29,6 @@ void ClientNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
         playerManager->AddOrUpdatePlayer(parsed.steamID, rp);
     }
 }
-
 void ClientNetwork::SendMovementUpdate(const sf::Vector2f& position) {
     std::string msg = MessageHandler::FormatMovementMessage(
         std::to_string(SteamUser()->GetSteamID().ConvertToUint64()),
