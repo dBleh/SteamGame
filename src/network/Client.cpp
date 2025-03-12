@@ -37,7 +37,6 @@ void ClientNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
     } else if (parsed.type == MessageType::ReadyStatus) {
         std::cout << "[CLIENT] Received ready status for " << parsed.steamID << ": " 
                   << (parsed.isReady ? "true" : "false") << "\n";
-        playerManager->SetReadyStatus(parsed.steamID, parsed.isReady);
     }
 }
 
@@ -78,7 +77,6 @@ void ClientNetwork::SendReadyStatus(bool isReady) {
     std::string msg = MessageHandler::FormatReadyStatusMessage(steamIDStr, isReady);
     if (game->GetNetworkManager().SendMessage(hostID, msg)) {
         std::cout << "[CLIENT] Sent ready status: " << (isReady ? "true" : "false") << " (" << msg << ")\n";
-        playerManager->SetReadyStatus(steamIDStr, isReady); // Update locally
     } else {
         std::cout << "[CLIENT] Failed to send ready status: " << msg << " - will retry\n";
         pendingReadyMessage = msg; // Queue for retry
