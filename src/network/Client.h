@@ -20,17 +20,18 @@ public:
     void SendMovementUpdate(const sf::Vector2f& position);
     void SendChatMessage(const std::string& message);
     void SendConnectionMessage();
-    void Update(); // Time-based update
+    void SendReadyStatus(bool isReady); // New method
+    void Update();
 
 private:
     Game* game;
-    std::chrono::steady_clock::time_point lastSendTime; // Time-based sending
+    std::chrono::steady_clock::time_point lastSendTime;
     PlayerManager* playerManager;
     CSteamID hostID;
     bool pendingConnectionMessage{false};
     std::string pendingMessage;
     std::unordered_map<std::string, RemotePlayer> remotePlayers;
-    static constexpr float SEND_INTERVAL = 0.1f; // Send every 0.1s
+    static constexpr float SEND_INTERVAL = 0.1f;
 };
 
 #endif // CLIENT_H

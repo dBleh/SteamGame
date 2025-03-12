@@ -16,9 +16,7 @@ static std::vector<std::string> splitString(const std::string& s, char delimiter
 std::string MessageHandler::FormatConnectionMessage(const std::string& steamID, const std::string& steamName, const sf::Color& color) {
     std::stringstream ss;
     ss << "C|" << steamID << "|" << steamName << "|" 
-       << static_cast<int>(color.r) << "," 
-       << static_cast<int>(color.g) << "," 
-       << static_cast<int>(color.b);
+       << static_cast<int>(color.r) << "," << static_cast<int>(color.g) << "," << static_cast<int>(color.b);
     return ss.str();
 }
 
@@ -31,6 +29,12 @@ std::string MessageHandler::FormatMovementMessage(const std::string& steamID, co
 std::string MessageHandler::FormatChatMessage(const std::string& steamID, const std::string& message) {
     std::stringstream ss;
     ss << "T|" << steamID << "|" << message;
+    return ss.str();
+}
+
+std::string MessageHandler::FormatReadyStatusMessage(const std::string& steamID, bool isReady) {
+    std::stringstream ss;
+    ss << "R|" << steamID << "|" << (isReady ? "1" : "0");
     return ss.str();
 }
 
@@ -50,25 +54,26 @@ ParsedMessage MessageHandler::ParseMessage(const std::string& msg) {
             parsed.steamName = parts[2];
             auto colorParts = splitString(parts[3], ',');
             if (colorParts.size() >= 3) {
-                int r = std::stoi(colorParts[0]);
-                int g = std::stoi(colorParts[1]);
-                int b = std::stoi(colorParts[2]);
-                parsed.color = sf::Color(r, g, b);
+                parsed.color = sf::Color(std::stoi(colorParts[0]), std::stoi(colorParts[1]), std::stoi(colorParts[2]));
             }
         }
     } else if (msgType == 'P') {
         parsed.type = MessageType::Movement;
         if (parts.size() >= 4) {
             parsed.steamID = parts[1];
-            float x = std::stof(parts[2]);
-            float y = std::stof(parts[3]);
-            parsed.position = sf::Vector2f(x, y);
+            parsed.position = sf::Vector2f(std::stof(parts[2]), std::stof(parts[3]));
         }
     } else if (msgType == 'T') {
         parsed.type = MessageType::Chat;
         if (parts.size() >= 3) {
             parsed.steamID = parts[1];
             parsed.chatMessage = parts[2];
+        }
+    } else if (msgType == 'R') {
+        parsed.type = MessageType::ReadyStatus;
+        if (parts.size() >= 3) {
+            parsed.steamID = parts[1];
+            parsed.isReady = (parts[2] == "1");
         }
     } else {
         parsed.type = MessageType::Unknown;

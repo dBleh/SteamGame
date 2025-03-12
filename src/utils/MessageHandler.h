@@ -7,24 +7,27 @@
 enum class MessageType {
     Connection,
     Movement,
-    Chat,    // New type for chat messages
+    Chat,
+    ReadyStatus, // New type
     Unknown
 };
 
 struct ParsedMessage {
     MessageType type;
-    std::string steamID;      // For Connection, Movement, and Chat
-    std::string steamName;    // Only for Connection
-    sf::Color color;          // Only for Connection
-    sf::Vector2f position;    // Only for Movement
-    std::string chatMessage;  // Only for Chat
+    std::string steamID;
+    std::string steamName;
+    sf::Color color;
+    sf::Vector2f position;
+    std::string chatMessage;
+    bool isReady; // New field for ReadyStatus
 };
 
 class MessageHandler {
 public:
     static std::string FormatConnectionMessage(const std::string& steamID, const std::string& steamName, const sf::Color& color);
     static std::string FormatMovementMessage(const std::string& steamID, const sf::Vector2f& position);
-    static std::string FormatChatMessage(const std::string& steamID, const std::string& message); // New method
+    static std::string FormatChatMessage(const std::string& steamID, const std::string& message);
+    static std::string FormatReadyStatusMessage(const std::string& steamID, bool isReady); // New method
     static ParsedMessage ParseMessage(const std::string& msg);
 };
 

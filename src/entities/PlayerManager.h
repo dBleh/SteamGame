@@ -20,7 +20,7 @@ public:
     void AddOrUpdatePlayer(const std::string& id, const RemotePlayer& player);
     void RemovePlayer(const std::string& id);
     std::unordered_map<std::string, RemotePlayer>& GetPlayers();
-
+    void SetReadyStatus(const std::string& id, bool ready);
 private:
     Game* game;
     std::unordered_map<std::string, RemotePlayer> players;

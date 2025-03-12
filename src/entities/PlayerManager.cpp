@@ -18,18 +18,24 @@ void PlayerManager::Update() {
         RemotePlayer& rp = pair.second;
         sf::Vector2f pos;
         if (pair.first == localPlayerID) {
-            // Local player updates immediately
             rp.player.Update(dt);
             pos = rp.player.GetPosition();
         } else {
-            // Interpolate remote players based on time
             float elapsed = std::chrono::duration<float>(now - rp.lastUpdateTime).count();
             float t = elapsed / rp.interpDuration;
-            if (t > 1.0f) t = 1.0f; // Clamp to target position
+            if (t > 1.0f) t = 1.0f;
             pos = rp.previousPosition + (rp.targetPosition - rp.previousPosition) * t;
             rp.player.SetPosition(pos);
-            //std::cout << "[DEBUG] Interpolating " << pair.first << " to " << pos.x << "," << pos.y << " (t=" << t << ")\n";
         }
+        // Fix: Set nameText to base name + status, don't append
+        std::string baseName = rp.nameText.getString().toAnsiString();
+        // Strip any existing status to avoid duplication
+        size_t statusPos = baseName.find_last_of(" X✓");
+        if (statusPos != std::string::npos && statusPos >= baseName.length() - 2) {
+            baseName = baseName.substr(0, statusPos - 1); // Remove old " X" or " ✓"
+        }
+        std::string status = rp.isReady ? " ✓" : " X";
+        rp.nameText.setString(baseName + status);
         rp.nameText.setPosition(pos.x, pos.y - 20.f);
     }
 }
@@ -45,23 +51,22 @@ void PlayerManager::AddOrUpdatePlayer(const std::string& id, const RemotePlayer&
         players[id].previousPosition = player.player.GetPosition();
         players[id].targetPosition = player.player.GetPosition();
         players[id].lastUpdateTime = now;
-        players[id].interpDuration = 0.1f; // Match broadcast rate
+        players[id].interpDuration = 0.1f;
     } else if (id != localPlayerID) {
-        // Remote player: update interpolation targets
         players[id].previousPosition = players[id].player.GetPosition();
         players[id].targetPosition = player.player.GetPosition();
         players[id].lastUpdateTime = now;
-        players[id].player = player.player; // Update shape, color, etc.
-        players[id].nameText = player.nameText;
+        players[id].player = player.player;
+        players[id].nameText = player.nameText; // Preserve Steam name
+        players[id].isReady = player.isReady; // Sync ready status
     }
-    // Local player position is updated locally, not overridden here
 }
 
 void PlayerManager::AddLocalPlayer(const std::string& id, const std::string& name, const sf::Vector2f& position, const sf::Color& color) {
     RemotePlayer rp;
     rp.player = Player(position, color);
     rp.nameText.setFont(game->GetFont());
-    rp.nameText.setString(name);
+    rp.nameText.setString(name); // Use Steam name
     rp.nameText.setCharacterSize(16);
     rp.nameText.setFillColor(sf::Color::Black);
     rp.previousPosition = position;
@@ -70,6 +75,13 @@ void PlayerManager::AddLocalPlayer(const std::string& id, const std::string& nam
     rp.interpDuration = 0.1f;
     players[id] = rp;
     localPlayerID = id;
+}
+
+void PlayerManager::SetReadyStatus(const std::string& id, bool ready) {
+    if (players.find(id) != players.end()) {
+        players[id].isReady = ready;
+        // Name will update in next Update() call
+    }
 }
 
 RemotePlayer& PlayerManager::GetLocalPlayer() {

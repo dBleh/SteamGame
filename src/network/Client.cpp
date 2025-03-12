@@ -19,15 +19,16 @@ void ClientNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
         std::cout << "[CLIENT] Connection acknowledgment received." << std::endl;
     } else if (parsed.type == MessageType::Movement) {
         if (parsed.steamID != std::to_string(SteamUser()->GetSteamID().ConvertToUint64())) {
-            // Only update remote players, not self
             RemotePlayer rp;
             rp.player = Player(parsed.position, sf::Color::Blue);
             rp.nameText.setFont(game->GetFont());
-            rp.nameText.setString("Player_" + parsed.steamID);
+            rp.nameText.setString(parsed.steamName.empty() ? "Player_" + parsed.steamID : parsed.steamName); // Use steamName if available
             rp.nameText.setCharacterSize(16);
             rp.nameText.setFillColor(sf::Color::Black);
             playerManager->AddOrUpdatePlayer(parsed.steamID, rp);
         }
+    } else if (parsed.type == MessageType::ReadyStatus) {
+        playerManager->SetReadyStatus(parsed.steamID, parsed.isReady);
     }
 }
 
@@ -36,9 +37,7 @@ void ClientNetwork::SendMovementUpdate(const sf::Vector2f& position) {
         std::to_string(SteamUser()->GetSteamID().ConvertToUint64()),
         position
     );
-    if (!game->GetNetworkManager().SendMessage(hostID, msg)) {
-        std::cout << "[CLIENT] Failed to send movement update.\n";
-    }
+    game->GetNetworkManager().SendMessage(hostID, msg);
 }
 
 void ClientNetwork::SendChatMessage(const std::string& message) {
@@ -46,9 +45,7 @@ void ClientNetwork::SendChatMessage(const std::string& message) {
         std::to_string(SteamUser()->GetSteamID().ConvertToUint64()),
         message
     );
-    if (!game->GetNetworkManager().SendMessage(hostID, msg)) {
-        std::cout << "[CLIENT] Chat message failed to send.\n";
-    }
+    game->GetNetworkManager().SendMessage(hostID, msg);
 }
 
 void ClientNetwork::SendConnectionMessage() {
@@ -57,7 +54,6 @@ void ClientNetwork::SendConnectionMessage() {
     std::string steamName = SteamFriends()->GetPersonaName();
     sf::Color color = sf::Color::Blue;
     std::string connectMsg = MessageHandler::FormatConnectionMessage(steamIDStr, steamName, color);
-    
     if (game->GetNetworkManager().SendMessage(hostID, connectMsg)) {
         std::cout << "[CLIENT] Connection message sent: " << connectMsg << "\n";
         pendingConnectionMessage = false;
@@ -66,6 +62,13 @@ void ClientNetwork::SendConnectionMessage() {
         pendingConnectionMessage = true;
         pendingMessage = connectMsg;
     }
+}
+
+void ClientNetwork::SendReadyStatus(bool isReady) {
+    std::string steamIDStr = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
+    std::string msg = MessageHandler::FormatReadyStatusMessage(steamIDStr, isReady);
+    game->GetNetworkManager().SendMessage(hostID, msg);
+    playerManager->SetReadyStatus(steamIDStr, isReady); // Update locally immediately
 }
 
 void ClientNetwork::Update() {
@@ -81,5 +84,11 @@ void ClientNetwork::Update() {
             std::cout << "[CLIENT] Pending connection message sent successfully.\n";
             pendingConnectionMessage = false;
         }
+    }
+    // Check for ready toggle
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::R) && elapsed >= 0.2f) { // Debounce with 0.2s
+        bool currentReady = playerManager->GetLocalPlayer().isReady;
+        SendReadyStatus(!currentReady);
+        lastSendTime = now; // Reuse to debounce
     }
 }

@@ -27,6 +27,7 @@ struct RemotePlayer {
     sf::Vector2f targetPosition;
     std::chrono::steady_clock::time_point lastUpdateTime; // Timestamp of last update
     float interpDuration; // Fixed duration between updates (e.g., 0.1s)
+    bool isReady = false; 
 };
 
 #endif // STEAM_HELPERS_H
