@@ -28,8 +28,7 @@ void HostNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
         rp.nameText.setCharacterSize(16);
         rp.nameText.setFillColor(sf::Color::Black);
         playerManager->AddOrUpdatePlayer(key, rp);
-        std::cout << "[HOST] New player added: " << parsed.steamID << " (" << parsed.steamName << ") with color ("
-                  << (int)parsed.color.r << ", " << (int)parsed.color.g << ", " << (int)parsed.color.b << ")\n";
+        
         BroadcastPlayersList();
     } else if (parsed.type == MessageType::Movement) {
         if (parsed.steamID.empty()) {
@@ -45,7 +44,7 @@ void HostNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
         rp.nameText.setCharacterSize(16);
         rp.nameText.setFillColor(sf::Color::Black);
         playerManager->AddOrUpdatePlayer(key, rp);
-        std::cout << "[HOST] Processed movement for " << parsed.steamID << "\n";
+        
     } else if (parsed.type == MessageType::Chat) {
         ProcessChatMessage(parsed.chatMessage, sender);
     }
@@ -62,14 +61,12 @@ void HostNetwork::BroadcastPlayersList() {
             rp.player.GetPosition()
         );
         if (game->GetNetworkManager().BroadcastMessage(msg)) {
-            std::cout << "[HOST] Broadcasted position for " << key << "\n";
+            //std::cout << "[HOST] Broadcasted position for " << key << "\n";
         }
     }
 }
 
 void HostNetwork::ProcessChatMessage(const std::string& message, CSteamID sender) {
-    std::cout << "[HOST] Chat message from " << sender.ConvertToUint64() 
-              << ": " << message << "\n";
     std::string msg = MessageHandler::FormatChatMessage(
         std::to_string(sender.ConvertToUint64()), 
         message

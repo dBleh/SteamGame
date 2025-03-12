@@ -16,7 +16,6 @@ ClientNetwork::~ClientNetwork() {}
 void ClientNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
     ParsedMessage parsed = MessageHandler::ParseMessage(msg);
     if (parsed.type == MessageType::Chat) {
-        std::cout << "[CLIENT] Chat message received: " << parsed.chatMessage << std::endl;
         // Optionally update chat UI here.
     }
     else if (parsed.type == MessageType::Connection) {
@@ -32,7 +31,6 @@ void ClientNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
         rp.nameText.setCharacterSize(16);
         rp.nameText.setFillColor(sf::Color::Black);
         playerManager->AddOrUpdatePlayer(parsed.steamID, rp);
-        std::cout << "[CLIENT] Processed movement for " << parsed.steamID << "\n";
     }
 }
 
@@ -43,8 +41,6 @@ void ClientNetwork::SendMovementUpdate(const sf::Vector2f& position) {
     );
     if (!game->GetNetworkManager().SendMessage(hostID, msg)) {
         std::cout << "[CLIENT] Failed to send movement update.\n";
-    } else {
-        std::cout << "[CLIENT] Movement update sent: " << msg << "\n";
     }
 }
 
@@ -55,9 +51,7 @@ void ClientNetwork::SendChatMessage(const std::string& message) {
     );
     if (!game->GetNetworkManager().SendMessage(hostID, msg)) {
         std::cout << "[CLIENT] Chat message failed to send.\n";
-    } else {
-        std::cout << "[CLIENT] Chat message sent: " << message << "\n";
-    }
+    } 
 }
 
 void ClientNetwork::SendConnectionMessage() {

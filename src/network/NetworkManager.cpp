@@ -46,8 +46,6 @@ void NetworkManager::ReceiveMessages() {
         if (m_networking->ReadP2PPacket(buffer, sizeof(buffer), &msgSize, &sender)) {
             buffer[msgSize] = '\0';
             std::string msg(buffer);
-            std::cout << "[DEBUG] Raw packet from " << sender.ConvertToUint64() << ": " << msg << "\n";
-
             CSteamID myID = SteamUser()->GetSteamID();
             if (sender == myID && msg.find("CHAT:") != 0) { // Allow chat messages from self
                 std::cout << "[NETWORK] Ignoring unexpected self-message: " << msg << "\n";
@@ -64,7 +62,6 @@ void NetworkManager::ReceiveMessages() {
             }
             if (messageHandler) {
                 messageHandler(msg, sender);
-                std::cout << "[NETWORK] Processed message from " << sender.ConvertToUint64() << ": " << msg << "\n";
             }
         }
     }
@@ -249,5 +246,5 @@ void NetworkManager::OnP2PSessionConnectFail(P2PSessionConnectFail_t* pParam) {
 }
 
 void NetworkManager::ProcessNetworkMessages(const std::string& msg, CSteamID sender) {
-    std::cout << "[NETWORK] Received: " << msg << " from " << sender.ConvertToUint64() << std::endl;
+    //std::cout << "[NETWORK] Received: " << msg << " from " << sender.ConvertToUint64() << std::endl;
 }

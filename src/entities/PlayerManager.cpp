@@ -25,11 +25,9 @@ void PlayerManager::AddOrUpdatePlayer(const std::string& id, const RemotePlayer&
     }
     if (id == localPlayerID) {
         players[id].player.SetPosition(player.player.GetPosition());
-        std::cout << "[DEBUG] Updated local player position to (" 
-                  << player.player.GetPosition().x << ", " << player.player.GetPosition().y << ")\n";
     } else {
         players[id] = player;
-        std::cout << "[DEBUG] Added/Updated remote player ID: " << id << "\n";
+        
     }
 }
 void PlayerManager::RemovePlayer(const std::string& id) {
