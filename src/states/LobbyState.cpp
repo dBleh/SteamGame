@@ -61,18 +61,7 @@ LobbyState::LobbyState(Game* game)
         }
     });
 
-    // Host adds itself
-    if (myID == SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID())) {
-        std::string key = std::to_string(myID.ConvertToUint64());
-        RemotePlayer hostPlayer;
-        hostPlayer.player = localPlayer;
-        hostPlayer.nameText.setFont(game->GetFont());
-        hostPlayer.nameText.setString(SteamFriends()->GetPersonaName());
-        hostPlayer.nameText.setCharacterSize(16);
-        hostPlayer.nameText.setFillColor(sf::Color::Black);
-        remotePlayers[key] = hostPlayer;
-        BroadcastPlayersList();
-    }
+
 }
 
 void LobbyState::BroadcastPlayersList() {
