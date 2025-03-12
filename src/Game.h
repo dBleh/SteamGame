@@ -30,6 +30,7 @@ public:
     // Local Steam ID getter and setter.
     void SetLocalSteamID(const CSteamID& id) { localSteamID = id; }
     CSteamID GetLocalSteamID() const { return localSteamID; }
+    CSteamID GetLobbyID() const { return networkManager.GetCurrentLobbyID(); } // Update to use NetworkManager
 
     const sf::Font& GetFont() const { return font; }
 private:

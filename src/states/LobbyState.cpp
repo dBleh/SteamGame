@@ -48,7 +48,7 @@ LobbyState::LobbyState(Game* game)
                     std::cout << "[HOST] Player already exists: " << parsed.steamID << "\n";
                 }
             } else {
-                std::cout << "[LOBBY] Ignoring Connection message as not host\n";
+                std::cout << "[LOBBY] Not host, ignoring Connection message\n";
             }
         } else if (parsed.type == MessageType::Movement) {
             std::string key = parsed.steamID;
@@ -56,6 +56,8 @@ LobbyState::LobbyState(Game* game)
             if (it != remotePlayers.end()) {
                 it->second.player.SetPosition(parsed.position);
                 std::cout << "[LOBBY] Updated position for " << key << " to (" << parsed.position.x << ", " << parsed.position.y << ")\n";
+            } else {
+                std::cout << "[LOBBY] No remote player found for " << key << "\n";
             }
         } else if (parsed.type == MessageType::Chat) {
             chatMessages += parsed.chatMessage + "\n";
@@ -65,7 +67,6 @@ LobbyState::LobbyState(Game* game)
         }
     });
 
-    // Host adds itself
     CSteamID myID = SteamUser()->GetSteamID();
     if (myID == SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID())) {
         std::string key = std::to_string(myID.ConvertToUint64());
@@ -112,13 +113,12 @@ void LobbyState::Update(float dt) {
         }
     } else {
         localPlayer.Update(dt);
-        // Send local player's position to host if not the host
         CSteamID myID = SteamUser()->GetSteamID();
         CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
         if (myID != hostID) {
             static float sendTimer = 0.f;
             sendTimer += dt;
-            if (sendTimer >= 0.1f) { // Send every 100ms
+            if (sendTimer >= 0.1f) {
                 std::string msg = MessageHandler::FormatMovementMessage(
                     std::to_string(myID.ConvertToUint64()),
                     localPlayer.GetPosition()
@@ -127,10 +127,9 @@ void LobbyState::Update(float dt) {
                 sendTimer = 0.f;
             }
         } else {
-            // Host broadcasts periodically
             static float broadcastTimer = 0.f;
             broadcastTimer += dt;
-            if (broadcastTimer >= 0.5f) { // Broadcast every 500ms
+            if (broadcastTimer >= 0.5f) {
                 BroadcastPlayersList();
                 broadcastTimer = 0.f;
             }

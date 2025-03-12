@@ -34,7 +34,7 @@ public:
 
     // New method for chat messages
     void SendChatMessage(CSteamID target, const std::string& message);
-
+    CSteamID GetCurrentLobbyID() const { return m_currentLobbyID; } // Add getter
     // Getter for current lobby ID
     CSteamID GetCurrentLobbyID() const { return m_currentLobbyID; }
     void SendConnectionMessageOnJoin(CSteamID hostID); // New method for retry logic

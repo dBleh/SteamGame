@@ -101,26 +101,21 @@ void NetworkManager::SendConnectionMessageOnJoin(CSteamID hostID) {
 bool NetworkManager::BroadcastMessage(const std::string& msg) {
     bool success = true;
     CSteamID myID = SteamUser()->GetSteamID();
-    CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(m_currentLobbyID);
-
-    // If host, ensure all lobby members are in m_connectedClients
-    if (myID == hostID && m_currentLobbyID != k_steamIDNil) {
-        int numMembers = SteamMatchmaking()->GetNumLobbyMembers(m_currentLobbyID);
-        for (int i = 0; i < numMembers; ++i) {
-            CSteamID memberID = SteamMatchmaking()->GetLobbyMemberByIndex(m_currentLobbyID, i);
-            if (memberID != myID && m_connectedClients.find(memberID) == m_connectedClients.end()) {
-                m_connectedClients[memberID] = true;
-                std::cout << "[NETWORK] Added lobby member to connected clients: " << memberID.ConvertToUint64() << "\n";
-            }
-        }
+    if (m_currentLobbyID == k_steamIDNil) {
+        std::cout << "[NETWORK] No lobby to broadcast to\n";
+        return false;
     }
 
-    for (const auto& client : m_connectedClients) {
-        if (!SendMessage(client.first, msg)) {
-            std::cout << "[NETWORK] Failed to broadcast to " << client.first.ConvertToUint64() << ": " << msg << "\n";
-            success = false;
-        } else {
-            std::cout << "[NETWORK] Broadcasted to " << client.first.ConvertToUint64() << ": " << msg << "\n";
+    int numMembers = SteamMatchmaking()->GetNumLobbyMembers(m_currentLobbyID);
+    for (int i = 0; i < numMembers; ++i) {
+        CSteamID memberID = SteamMatchmaking()->GetLobbyMemberByIndex(m_currentLobbyID, i);
+        if (memberID != myID) { // Don’t send to self
+            if (SendMessage(memberID, msg)) {
+                std::cout << "[NETWORK] Broadcasted to " << memberID.ConvertToUint64() << ": " << msg << "\n";
+            } else {
+                std::cout << "[NETWORK] Failed to broadcast to " << memberID.ConvertToUint64() << ": " << msg << "\n";
+                success = false;
+            }
         }
     }
     return success;
