@@ -116,7 +116,7 @@ void LobbyState::ProcessEvent(const sf::Event& event) {
             SteamUser()->GetSteamID() == SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID())) {
             std::cout << "User wants to start game" << std::endl;
         }
-        else if (event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::R) {
+        else if (event.key.code == sf::Keyboard::R) {
             auto now = std::chrono::steady_clock::now();
             float elapsed = std::chrono::duration<float>(now - lastReadyToggle).count();
             if (elapsed >= READY_TOGGLE_COOLDOWN) {
