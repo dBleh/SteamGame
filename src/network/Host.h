@@ -7,12 +7,7 @@
 #include <unordered_map>
 #include "../utils/MessageHandler.h"
 #include "../entities/Player.h"
-
-// Structure representing a remote player.
-struct RemotePlayer {
-    Player player;
-    sf::Text nameText;
-};
+#include "../utils/SteamHelpers.h"
 
 class Game; // Forward declaration
 
@@ -34,7 +29,7 @@ public:
     void Update(float dt);
 
     // Getter for the remote players map.
-    const std::unordered_map<std::string, RemotePlayer>& GetRemotePlayers() const { return remotePlayers; }
+    std::unordered_map<std::string, RemotePlayer>& GetRemotePlayers() { return remotePlayers; }
 
 private:
     Game* game;

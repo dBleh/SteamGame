@@ -1,6 +1,8 @@
 #include "LobbyState.h"
 #include <iostream>
 #include <Steam/steam_api.h>
+#include "../network/Client.h"
+#include "../network/Host.h"
 
 LobbyState::LobbyState(Game* game)
     : State(game),
@@ -28,85 +30,57 @@ LobbyState::LobbyState(Game* game)
     localPlayerName.setCharacterSize(16);
     localPlayerName.setFillColor(sf::Color::Black);
 
-    game->GetNetworkManager().SetMessageHandler([this, game](const std::string& msg, CSteamID sender) {
-        ParsedMessage parsed = MessageHandler::ParseMessage(msg);
-        CSteamID myID = SteamUser()->GetSteamID();
-        CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
-        std::cout << "[LOBBY] Received message from " << sender.ConvertToUint64() << ": " << msg 
-                  << ", I am " << myID.ConvertToUint64() << ", host is " << hostID.ConvertToUint64() << "\n";
-
-        if (parsed.type == MessageType::Connection) {
-            if (myID == hostID) {
-                std::string key = parsed.steamID;
-                if (remotePlayers.find(key) == remotePlayers.end()) {
-                    RemotePlayer newPlayer;
-                    newPlayer.player.SetPosition(sf::Vector2f(200.f, 200.f));
-                    newPlayer.player.GetShape().setFillColor(parsed.color);
-                    newPlayer.nameText.setFont(game->GetFont());
-                    newPlayer.nameText.setString(parsed.steamName);
-                    newPlayer.nameText.setCharacterSize(16);
-                    newPlayer.nameText.setFillColor(sf::Color::Black);
-                    remotePlayers[key] = newPlayer;
-                    std::cout << "[HOST] New player added: " << parsed.steamID << " (" << parsed.steamName << ")\n";
-                    BroadcastPlayersList();
-                }
-            }
-        } else if (parsed.type == MessageType::Movement) {
-            std::string key = parsed.steamID;
-            auto it = remotePlayers.find(key);
-            if (it != remotePlayers.end()) {
-                it->second.player.SetPosition(parsed.position);
-                std::cout << "[LOBBY] Updated position for " << key << " to (" << parsed.position.x << ", " << parsed.position.y << ")\n";
-            } else if (myID != hostID) { // Client adds host or others on first movement message
-                RemotePlayer newPlayer;
-                newPlayer.player.SetPosition(parsed.position);
-                newPlayer.player.GetShape().setFillColor(sf::Color::Blue); // Default for host; adjust if needed
-                newPlayer.nameText.setFont(game->GetFont());
-                newPlayer.nameText.setString("Player_" + parsed.steamID); // Placeholder; host should send name
-                newPlayer.nameText.setCharacterSize(16);
-                newPlayer.nameText.setFillColor(sf::Color::Black);
-                remotePlayers[key] = newPlayer;
-                std::cout << "[CLIENT] Added remote player: " << parsed.steamID << " at (" << parsed.position.x << ", " << parsed.position.y << ")\n";
-            }
-        } else if (parsed.type == MessageType::Chat) {
-            chatMessages += parsed.chatMessage + "\n";
-            game->GetHUD().updateText("chat", "Chat:\n" + chatMessages);
-        }
-    });
-
+    // Determine role: host or client.
     CSteamID myID = SteamUser()->GetSteamID();
-    if (myID == SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID())) {
-        std::string key = std::to_string(myID.ConvertToUint64());
-        RemotePlayer hostPlayer;
-        hostPlayer.player = localPlayer;
-        hostPlayer.nameText = localPlayerName; // Use localPlayerName for host
-        remotePlayers[key] = hostPlayer;
-        BroadcastPlayersList();
-    }
-}
-
-void LobbyState::BroadcastPlayersList() {
-    if (SteamUser()->GetSteamID() != SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID()))
-        return;
-    
-    for (const auto& pair : remotePlayers) {
-        const RemotePlayer& rp = pair.second;
-        std::string msg = MessageHandler::FormatMovementMessage(
-            pair.first,
-            rp.player.GetPosition()
-        ); // Use Movement message to send position
-        game->GetNetworkManager().BroadcastMessage(msg);
-        std::cout << "[HOST] Broadcasted position for " << pair.first << ": " << msg << "\n";
+    CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+    if (myID == hostID) {
+        // Instantiate HostNetwork and delegate message handling.
+        hostNetwork = std::make_unique<HostNetwork>(game);
+        game->GetNetworkManager().SetMessageHandler(
+            [this](const std::string& msg, CSteamID sender) {
+                hostNetwork->ProcessMessage(msg, sender);
+            }
+        );
+        // Add the host (i.e. local player) to the host's remote players list.
+        hostNetwork->ProcessMessage(
+            MessageHandler::FormatConnectionMessage(
+                std::to_string(myID.ConvertToUint64()),
+                localPlayerName.getString().toAnsiString(),
+                sf::Color::Blue
+            ),
+            myID
+        );
+    } else {
+        // Instantiate ClientNetwork and delegate message handling.
+        clientNetwork = std::make_unique<ClientNetwork>(game);
+        game->GetNetworkManager().SetMessageHandler(
+            [this](const std::string& msg, CSteamID sender) {
+                clientNetwork->ProcessMessage(msg, sender);
+            }
+        );
+        // Client sends its connection message to the host.
+        clientNetwork->SendConnectionMessage();
     }
 }
 
 void LobbyState::UpdateRemotePlayers() {
-    for (auto& pair : remotePlayers) {
-        RemotePlayer& rp = pair.second;
-        sf::Vector2f pos = rp.player.GetPosition();
-        rp.nameText.setPosition(pos.x, pos.y - 20.f);
+    if (hostNetwork) {
+        std::unordered_map<std::string, RemotePlayer>& players = hostNetwork->GetRemotePlayers();
+        for (auto it = players.begin(); it != players.end(); ++it) {
+            RemotePlayer& rp = it->second;
+            sf::Vector2f pos = rp.player.GetPosition();
+            rp.nameText.setPosition(pos.x, pos.y - 20.f);
+        }
+    } else if (clientNetwork) {
+        std::unordered_map<std::string, RemotePlayer>& players = clientNetwork->GetRemotePlayers();
+        for (auto it = players.begin(); it != players.end(); ++it) {
+            RemotePlayer& rp = it->second;
+            sf::Vector2f pos = rp.player.GetPosition();
+            rp.nameText.setPosition(pos.x, pos.y - 20.f);
+        }
     }
 }
+
 
 void LobbyState::Update(float dt) {
     if (!playerLoaded) {
@@ -116,62 +90,79 @@ void LobbyState::Update(float dt) {
             game->GetHUD().updateText("playerLoading", "");
         }
     } else {
-        localPlayer.Update(dt); // Now includes movement
+        localPlayer.Update(dt);
         CSteamID myID = SteamUser()->GetSteamID();
         CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
         if (myID != hostID) {
+            // Client sends movement updates to the host.
             static float sendTimer = 0.f;
             sendTimer += dt;
-            if (sendTimer >= 0.1f) {
-                std::string msg = MessageHandler::FormatMovementMessage(
-                    std::to_string(myID.ConvertToUint64()),
-                    localPlayer.GetPosition()
-                );
-                game->GetNetworkManager().SendMessage(hostID, msg);
+            if (sendTimer >= 0.1f && clientNetwork) {
+                clientNetwork->SendMovementUpdate(localPlayer.GetPosition());
                 sendTimer = 0.f;
             }
         } else {
+            // Host updates its own position and broadcasts the updated players list.
             static float broadcastTimer = 0.f;
             broadcastTimer += dt;
-            if (broadcastTimer >= 0.5f) {
-                remotePlayers[std::to_string(myID.ConvertToUint64())].player = localPlayer; // Sync host’s position
-                BroadcastPlayersList();
+            if (broadcastTimer >= 0.5f && hostNetwork) {
+                // Update the host’s entry.
+                hostNetwork->ProcessMessage(
+                    MessageHandler::FormatMovementMessage(
+                        std::to_string(myID.ConvertToUint64()),
+                        localPlayer.GetPosition()
+                    ),
+                    myID
+                );
+                hostNetwork->BroadcastPlayersList();
                 broadcastTimer = 0.f;
             }
         }
     }
     UpdateRemotePlayers();
-    localPlayerName.setPosition(localPlayer.GetPosition().x, localPlayer.GetPosition().y - 20.f); // Sync name
+    localPlayerName.setPosition(localPlayer.GetPosition().x, localPlayer.GetPosition().y - 20.f);
     if (SteamUser()->GetSteamID() == SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID())) {
         game->GetHUD().updateText("startGame", "Press S to Start Game (Host Only)");
     } else {
         game->GetHUD().updateText("startGame", "");
     }
+    // Allow the network object to perform periodic tasks.
+    if (clientNetwork) clientNetwork->Update(dt);
+    if (hostNetwork) hostNetwork->Update(dt);
 }
 
 void LobbyState::Render() {
     game->GetWindow().clear(sf::Color::White);
     if (playerLoaded) {
         game->GetWindow().draw(localPlayer.GetShape());
-        game->GetWindow().draw(localPlayerName); // Draw host’s name
+        game->GetWindow().draw(localPlayerName);
     }
-    for (const auto& pair : remotePlayers) {
-        const RemotePlayer& rp = pair.second;
-        game->GetWindow().draw(rp.player.GetShape());
-        game->GetWindow().draw(rp.nameText);
+    if (hostNetwork) {
+        std::unordered_map<std::string, RemotePlayer>& players = hostNetwork->GetRemotePlayers();
+        for (auto it = players.begin(); it != players.end(); ++it) {
+            RemotePlayer& rp = it->second;
+            game->GetWindow().draw(rp.player.GetShape());
+            game->GetWindow().draw(rp.nameText);
+        }
+    } else if (clientNetwork) {
+        std::unordered_map<std::string, RemotePlayer>& players = clientNetwork->GetRemotePlayers();
+        for (auto it = players.begin(); it != players.end(); ++it) {
+            RemotePlayer& rp = it->second;
+            game->GetWindow().draw(rp.player.GetShape());
+            game->GetWindow().draw(rp.nameText);
+        }
     }
     game->GetHUD().render(game->GetWindow(), game->GetWindow().getDefaultView(), game->GetCurrentState());
     game->GetWindow().display();
 }
-void LobbyState::ProcessEvent(const sf::Event& event)
-{
+
+
+void LobbyState::ProcessEvent(const sf::Event& event) {
     ProcessEvents(event);
 }
 
-void LobbyState::ProcessEvents(const sf::Event& event)
-{
-    if (event.type == sf::Event::KeyPressed)
-    {
+void LobbyState::ProcessEvents(const sf::Event& event) {
+    if (event.type == sf::Event::KeyPressed) {
         if (event.key.code == sf::Keyboard::S &&
             SteamUser()->GetSteamID() == SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID()))
         {

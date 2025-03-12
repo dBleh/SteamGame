@@ -18,7 +18,7 @@ void ClientNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
     ParsedMessage parsed = MessageHandler::ParseMessage(msg);
     if (parsed.type == MessageType::Chat) {
         std::cout << "[CLIENT] Chat message received: " << parsed.chatMessage << std::endl;
-        // Update chat UI or other systems here.
+        // Here you can update chat UI (e.g., store the message for LobbyState to display)
     }
     else if (parsed.type == MessageType::Connection) {
         std::cout << "[CLIENT] Connection acknowledgment received." << std::endl;
@@ -60,7 +60,7 @@ void ClientNetwork::SendMovementUpdate(const sf::Vector2f& position) {
 
 void ClientNetwork::SendChatMessage(const std::string& message) {
     std::string msg = MessageHandler::FormatChatMessage(
-        std::to_string(SteamUser()->GetSteamID().ConvertToUint64()), 
+        std::to_string(SteamUser()->GetSteamID().ConvertToUint64()),
         message
     );
     if (!game->GetNetworkManager().SendMessage(hostID, msg)) {
