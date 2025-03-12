@@ -44,13 +44,17 @@ void LobbySearchState::SearchLobbies() {
     if (call == k_uAPICallInvalid) {
         std::cerr << "[ERROR] Failed to request lobby list!" << std::endl;
         game->GetHUD().updateText("searchStatus", "Failed to search lobbies");
+    } else {
+        std::cout << "[LOBBY] Lobby list request sent\n";
     }
 }
 
 void LobbySearchState::UpdateLobbyListDisplay() {
     std::string lobbyText = "Available Lobbies (Press 0-9 to join, ESC to cancel):\n";
+    std::cout << "[LOBBY] Updating lobby list display, size: " << lobbyList.size() << "\n";
     for (size_t i = 0; i < lobbyList.size() && i < 10; ++i) {
         lobbyText += std::to_string(i) + ": " + lobbyList[i].second + "\n";
+        std::cout << "[LOBBY] Adding lobby " << i << ": " << lobbyList[i].second << "\n";
     }
     if (lobbyList.empty()) {
         lobbyText += "No lobbies available.";

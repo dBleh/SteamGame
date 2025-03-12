@@ -50,10 +50,12 @@ void Game::Run() {
         if (steamInitialized) {
             SteamAPI_RunCallbacks();
         }
+
         networkManager->ReceiveMessages();
 
         // Calculate delta time
         float dt = clock.restart().asSeconds();
+
 
         // Handle events
         sf::Event event;

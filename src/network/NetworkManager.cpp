@@ -117,6 +117,9 @@ void NetworkManager::OnLobbyCreated(LobbyCreated_t* pParam) {
     SteamMatchmaking()->SetLobbyData(m_currentLobbyID, "host_steam_id", hostStr.c_str());
     m_connectedClients[myID] = true;
     std::cout << "[LOBBY] Created lobby " << m_currentLobbyID.ConvertToUint64() << std::endl;
+    std::cout << "[LOBBY] Metadata - Name: " << SteamMatchmaking()->GetLobbyData(m_currentLobbyID, "name")
+              << ", GameID: " << SteamMatchmaking()->GetLobbyData(m_currentLobbyID, "game_id")
+              << ", Host: " << SteamMatchmaking()->GetLobbyData(m_currentLobbyID, "host_steam_id") << "\n";
 }
 
 void NetworkManager::OnLobbyEnter(LobbyEnter_t* pParam) {
@@ -138,15 +141,20 @@ void NetworkManager::OnLobbyEnter(LobbyEnter_t* pParam) {
 
 void NetworkManager::OnLobbyMatchList(LobbyMatchList_t* pParam) {
     lobbyList.clear();
+    std::cout << "[LOBBY] Lobby list received, matching count: " << pParam->m_nLobbiesMatching << "\n";
     for (uint32 i = 0; i < pParam->m_nLobbiesMatching; ++i) {
         CSteamID lobbyID = SteamMatchmaking()->GetLobbyByIndex(i);
         const char* lobbyName = SteamMatchmaking()->GetLobbyData(lobbyID, "name");
+        const char* gameID = SteamMatchmaking()->GetLobbyData(lobbyID, "game_id");
+        std::cout << "[LOBBY] Lobby " << i << ": ID=" << lobbyID.ConvertToUint64() 
+                  << ", Name=" << (lobbyName ? lobbyName : "null") 
+                  << ", GameID=" << (gameID ? gameID : "null") << "\n";
         if (lobbyName && *lobbyName) {
             lobbyList.emplace_back(lobbyID, std::string(lobbyName));
         }
     }
     lobbyListUpdated = true;
-    std::cout << "[LOBBY] Found " << lobbyList.size() << " matching lobbies\n";
+    std::cout << "[LOBBY] Found " << lobbyList.size() << " lobbies with names\n";
 }
 
 void NetworkManager::OnGameLobbyJoinRequested(GameLobbyJoinRequested_t* pParam) {
