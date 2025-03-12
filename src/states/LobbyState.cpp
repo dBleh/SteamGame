@@ -113,10 +113,7 @@ void LobbyState::Render() {
 void LobbyState::ProcessEvent(const sf::Event& event) {
     static bool rKeyPressed = false; // Track key state
     if (event.type == sf::Event::KeyPressed) {
-       
         if (event.key.code == sf::Keyboard::R) {
-           
-          
                 std::string myID = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
                 bool currentReady = playerManager->GetLocalPlayer().isReady;
                 playerManager->SetReadyStatus(myID, !currentReady);
