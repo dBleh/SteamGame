@@ -48,6 +48,8 @@ private:
     CSteamID currentLobby{k_steamIDNil};
     std::string lobbyNameInput;
 
+    
+
     // --- New Steam Connection Variable ---
     CSteamID localSteamID{k_steamIDNil};
 };
