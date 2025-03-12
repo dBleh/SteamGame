@@ -40,14 +40,14 @@ void PlayerManager::AddOrUpdatePlayer(const std::string& id, const RemotePlayer&
         return;
     }
     auto now = std::chrono::steady_clock::now();
-    if (players.find(id) == players.end()) {
+    if (players.find(id) == players.end()) {// initialize a new player here
         players[id] = player;
         players[id].baseName = player.nameText.getString().toAnsiString(); // Set baseName once
         players[id].previousPosition = player.player.GetPosition();
         players[id].targetPosition = player.player.GetPosition();
         players[id].lastUpdateTime = now;
         players[id].interpDuration = 0.1f;
-    } else if (id != localPlayerID) {
+    } else if (id != localPlayerID) { // update the player if the already exist
         players[id].previousPosition = players[id].player.GetPosition();
         players[id].targetPosition = player.player.GetPosition();
         players[id].lastUpdateTime = now;

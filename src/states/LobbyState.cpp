@@ -113,22 +113,15 @@ void LobbyState::Render() {
 void LobbyState::ProcessEvent(const sf::Event& event) {
     static bool rKeyPressed = false; // Track key state
     if (event.type == sf::Event::KeyPressed) {
-        if (event.key.code == sf::Keyboard::S &&
-            SteamUser()->GetSteamID() == SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID())) {
-            std::cout << "User wants to start game" << std::endl;
-        }
-        else if (event.key.code == sf::Keyboard::R && !rKeyPressed) {
-            auto now = std::chrono::steady_clock::now();
-            float elapsed = std::chrono::duration<float>(now - lastReadyToggle).count();
-            if (elapsed >= READY_TOGGLE_COOLDOWN) {
+       
+        if (event.key.code == sf::Keyboard::R) {
+           
+          
                 std::string myID = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
                 bool currentReady = playerManager->GetLocalPlayer().isReady;
-                bool newReady = !currentReady;
-                std::cout << "[LOBBY] Toggling ready status for " << myID << " from " 
-                          << (currentReady ? "true" : "false") << " to " 
-                          << (newReady ? "true" : "false") << "\n";
-                playerManager->SetReadyStatus(myID, newReady);
-                std::string msg = MessageHandler::FormatReadyStatusMessage(myID, newReady);
+                playerManager->SetReadyStatus(myID, !currentReady);
+                std::cout << "hi" << "\n";
+                std::string msg = MessageHandler::FormatReadyStatusMessage(myID, !currentReady);
                 if (hostNetwork) {
                     if (game->GetNetworkManager().BroadcastMessage(msg)) {
                         std::cout << "[LOBBY] Host broadcasted ready status: " << msg << "\n";
@@ -136,14 +129,11 @@ void LobbyState::ProcessEvent(const sf::Event& event) {
                         std::cout << "[LOBBY] Host failed to broadcast ready status: " << msg << "\n";
                     }
                 } else if (clientNetwork) {
-                    clientNetwork->SendReadyStatus(newReady);
+                    clientNetwork->SendReadyStatus(!currentReady);
                     std::cout << "[LOBBY] Client sent ready status to host: " << msg << "\n";
                 }
-                lastReadyToggle = now;
                 rKeyPressed = true; // Mark as pressed
-            } else {
-                std::cout << "[LOBBY] Ready toggle on cooldown (elapsed: " << elapsed << "s)\n";
-            }
+            
         }
     } else if (event.type == sf::Event::KeyReleased && event.key.code == sf::Keyboard::R) {
         rKeyPressed = false; // Reset on release

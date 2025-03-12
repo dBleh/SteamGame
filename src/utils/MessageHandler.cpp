@@ -1,6 +1,7 @@
 #include "MessageHandler.h"
 #include <sstream>
 #include <vector>
+#include <iostream>
 #include <cstdlib>
 
 static std::vector<std::string> splitString(const std::string& s, char delimiter) {
@@ -71,6 +72,7 @@ ParsedMessage MessageHandler::ParseMessage(const std::string& msg) {
         }
     } else if (msgType == 'R') {
         parsed.type = MessageType::ReadyStatus;
+        std::cout << "User wants to start game" << std::endl;
         if (parts.size() >= 3) {
             parsed.steamID = parts[1];
             parsed.isReady = (parts[2] == "1");
