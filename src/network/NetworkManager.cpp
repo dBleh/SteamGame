@@ -60,7 +60,6 @@ void NetworkManager::ReceiveMessages() {
                     std::cerr << "[NETWORK] Failed to accept P2P session with " << sender.ConvertToUint64() << "\n";
                 }
             }
-            std::cout << "[NETWORK] Received message: " << msg << " from " << sender.ConvertToUint64() << "\n";
             if (messageHandler) {
                 messageHandler(msg, sender);
             }
@@ -118,7 +117,6 @@ bool NetworkManager::BroadcastMessage(const std::string& msg) {
         CSteamID memberID = SteamMatchmaking()->GetLobbyMemberByIndex(m_currentLobbyID, i);
         if (memberID != myID) { // Don’t send to self
             if (SendMessage(memberID, msg)) {
-                std::cout << "[NETWORK] Broadcasted to " << memberID.ConvertToUint64() << ": " << msg << "\n";
             } else {
                 std::cout << "[NETWORK] Failed to broadcast to " << memberID.ConvertToUint64() << ": " << msg << "\n";
                 success = false;
