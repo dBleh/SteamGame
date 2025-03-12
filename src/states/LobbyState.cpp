@@ -122,19 +122,25 @@ void LobbyState::ProcessEvent(const sf::Event& event) {
             if (elapsed >= READY_TOGGLE_COOLDOWN) {
                 std::string myID = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
                 bool currentReady = playerManager->GetLocalPlayer().isReady;
+                bool newReady = !currentReady;
                 std::cout << "[LOBBY] Toggling ready status for " << myID << " from " 
                           << (currentReady ? "true" : "false") << " to " 
-                          << (!currentReady ? "true" : "false") << "\n";
-                playerManager->SetReadyStatus(myID, !currentReady);
-                std::string msg = MessageHandler::FormatReadyStatusMessage(myID, !currentReady);
+                          << (newReady ? "true" : "false") << "\n";
+                playerManager->SetReadyStatus(myID, newReady);
+                std::string msg = MessageHandler::FormatReadyStatusMessage(myID, newReady);
                 if (hostNetwork) {
-                    game->GetNetworkManager().BroadcastMessage(msg);
-                    std::cout << "[LOBBY] Host broadcasted ready status\n";
+                    if (game->GetNetworkManager().BroadcastMessage(msg)) {
+                        std::cout << "[LOBBY] Host broadcasted ready status: " << msg << "\n";
+                    } else {
+                        std::cout << "[LOBBY] Host failed to broadcast ready status!\n";
+                    }
                 } else if (clientNetwork) {
-                    clientNetwork->SendReadyStatus(!currentReady);
-                    std::cout << "[LOBBY] Client sent ready status to host\n";
+                    clientNetwork->SendReadyStatus(newReady);
+                    std::cout << "[LOBBY] Client sent ready status to host: " << msg << "\n";
                 }
                 lastReadyToggle = now;
+            } else {
+                std::cout << "[LOBBY] Ready toggle on cooldown (elapsed: " << elapsed << "s)\n";
             }
         }
     }

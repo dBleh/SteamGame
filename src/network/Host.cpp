@@ -52,10 +52,14 @@ void HostNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
         ProcessChatMessage(parsed.chatMessage, sender);
     } else if (parsed.type == MessageType::ReadyStatus) {
         std::cout << "[HOST] Received ready status for " << parsed.steamID << ": " 
-                  << (parsed.isReady ? "true" : "false") << "\n";
+                  << (parsed.isReady ? "true" : "false") << " from " << sender.ConvertToUint64() << "\n";
         playerManager->SetReadyStatus(parsed.steamID, parsed.isReady);
         std::string broadcastMsg = MessageHandler::FormatReadyStatusMessage(parsed.steamID, parsed.isReady);
-        game->GetNetworkManager().BroadcastMessage(broadcastMsg);
+        if (game->GetNetworkManager().BroadcastMessage(broadcastMsg)) {
+            std::cout << "[HOST] Broadcasted ready status: " << broadcastMsg << "\n";
+        } else {
+            std::cout << "[HOST] Failed to broadcast ready status: " << broadcastMsg << "\n";
+        }
     }
 }
 
