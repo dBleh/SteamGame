@@ -1,1 +1,20 @@
-// Specific renderer for the Player entity, responsible for drawing the player on the screen and handling any unique player rendering behaviors. 
+#ifndef PLAYER_RENDERER_H
+#define PLAYER_RENDERER_H
+
+#include <SFML/Graphics.hpp>
+
+class PlayerManager; // Forward declaration
+
+class PlayerRenderer {
+public:
+    explicit PlayerRenderer(PlayerManager* manager);
+    ~PlayerRenderer();
+
+    // Draw all players onto the provided window.
+    void Render(sf::RenderWindow& window);
+
+private:
+    PlayerManager* playerManager;
+};
+
+#endif // PLAYER_RENDERER_H

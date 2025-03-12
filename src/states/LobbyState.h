@@ -7,6 +7,7 @@
 #include "../utils/MessageHandler.h"
 #include "../network/Host.h"
 #include "../network/Client.h"
+#include "../entities/PlayerManager.h"  // Use PlayerManager instead of a local map
 
 #include <steam/steam_api.h>
 #include <SFML/Graphics.hpp>
@@ -15,7 +16,7 @@
 #include <unordered_map>
 
 class Game;
-
+class PlayerRenderer;
 class LobbyState : public State {
 public:
     LobbyState(Game* game);
@@ -40,6 +41,9 @@ private:
     // Networking objects: only one is active based on role.
     std::unique_ptr<HostNetwork> hostNetwork;
     std::unique_ptr<ClientNetwork> clientNetwork;
+
+    std::unique_ptr<PlayerManager> playerManager;
+    std::unique_ptr<PlayerRenderer> playerRenderer;
 };
 
 #endif // LOBBYSTATE_H

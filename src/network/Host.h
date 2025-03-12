@@ -4,20 +4,21 @@
 #include <SFML/Graphics.hpp>
 #include <steam/steam_api.h>
 #include <string>
-#include <unordered_map>
 #include "../utils/MessageHandler.h"
 #include "../entities/Player.h"
 #include "../utils/SteamHelpers.h"
+#include "../entities/PlayerManager.h"  // Use PlayerManager
 
 class Game; // Forward declaration
 
 class HostNetwork {
 public:
-    explicit HostNetwork(Game* game);
+    explicit HostNetwork(Game* game, PlayerManager* manager);
     ~HostNetwork();
 
     // Process an incoming message from a client.
     void ProcessMessage(const std::string& msg, CSteamID sender);
+    std::unordered_map<std::string, RemotePlayer>& GetRemotePlayers() { return remotePlayers; }
 
     // Broadcast the current players' positions to all connected clients.
     void BroadcastPlayersList();
@@ -28,13 +29,11 @@ public:
     // Periodic update for host networking tasks.
     void Update(float dt);
 
-    // Getter for the remote players map.
-    std::unordered_map<std::string, RemotePlayer>& GetRemotePlayers() { return remotePlayers; }
-
 private:
     Game* game;
-    // Maintain remote players using their Steam ID (as string) as the key.
+    PlayerManager* playerManager;
     std::unordered_map<std::string, RemotePlayer> remotePlayers;
+
 };
 
 #endif // HOST_H

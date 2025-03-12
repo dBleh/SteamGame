@@ -49,7 +49,6 @@ git add <file>
 git commit -m "Resolved merge conflicts"
 
 
-
 add_executable(CubeShooter
     src/main.cpp
     src/Game.cpp                       # Assuming CubeGame.cpp is renamed to Game.cpp per your new structure
@@ -60,6 +59,8 @@ add_executable(CubeShooter
     src/Hud/Hud.cpp                    # Matches src/Hud/Hud.h
     #src/network/SteamManager.cpp       # Moved to src/network/ from src/Networking/
     src/network/NetworkManager.cpp     # Matches src/network/NetworkManager.h
+    src/network/Client.cpp
+    src/network/Host.cpp
     src/states/MainMenuState.cpp       # Matches src/states/MainMenuState.h
     src/states/LobbyState.cpp          # Not listed but assumed in src/states/
     #src/states/GameplayState.cpp       # Matches src/states/PlayingState.h (assuming renamed)
@@ -67,4 +68,6 @@ add_executable(CubeShooter
     src/states/LobbyCreationState.cpp  # Not listed but assumed in src/states/
     src/states/LobbySearchState.cpp    # Not listed but assumed in src/states/
     src/utils/MessageHandler.cpp
+    src/render/PlayerRenderer.cpp
+    src/entities/PlayerManager.cpp
 )

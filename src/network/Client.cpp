@@ -4,8 +4,8 @@
 #include "../utils/MessageHandler.h"
 #include <iostream>
 
-ClientNetwork::ClientNetwork(Game* game)
-    : game(game)
+ClientNetwork::ClientNetwork(Game* game, PlayerManager* manager)
+    : game(game), playerManager(manager)
 {
     // Determine the host from the lobby.
     hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
@@ -14,35 +14,25 @@ ClientNetwork::ClientNetwork(Game* game)
 ClientNetwork::~ClientNetwork() {}
 
 void ClientNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
-    // Parse the incoming message.
     ParsedMessage parsed = MessageHandler::ParseMessage(msg);
     if (parsed.type == MessageType::Chat) {
         std::cout << "[CLIENT] Chat message received: " << parsed.chatMessage << std::endl;
-        // Here you can update chat UI (e.g., store the message for LobbyState to display)
+        // Optionally update chat UI here.
     }
     else if (parsed.type == MessageType::Connection) {
         std::cout << "[CLIENT] Connection acknowledgment received." << std::endl;
-        // Handle connection-specific logic if needed.
     }
     else if (parsed.type == MessageType::Movement) {
-        std::string key = parsed.steamID;
-        auto it = remotePlayers.find(key);
-        if (it != remotePlayers.end()) {
-            it->second.player.SetPosition(parsed.position);
-            std::cout << "[CLIENT] Updated movement for " << key 
-                      << " to (" << parsed.position.x << ", " << parsed.position.y << ")\n";
-        } else {
-            // If no entry exists, create one.
-            RemotePlayer newPlayer;
-            newPlayer.player.SetPosition(parsed.position);
-            newPlayer.player.GetShape().setFillColor(sf::Color::Blue);
-            newPlayer.nameText.setFont(game->GetFont());
-            newPlayer.nameText.setString("Player_" + parsed.steamID);
-            newPlayer.nameText.setCharacterSize(16);
-            newPlayer.nameText.setFillColor(sf::Color::Black);
-            remotePlayers[key] = newPlayer;
-            std::cout << "[CLIENT] Added remote player: " << parsed.steamID << "\n";
-        }
+        // Update the player manager with new movement info.
+        RemotePlayer rp;
+        rp.player.SetPosition(parsed.position);
+        rp.player.GetShape().setFillColor(sf::Color::Blue);
+        rp.nameText.setFont(game->GetFont());
+        rp.nameText.setString("Player_" + parsed.steamID);
+        rp.nameText.setCharacterSize(16);
+        rp.nameText.setFillColor(sf::Color::Black);
+        playerManager->AddOrUpdatePlayer(parsed.steamID, rp);
+        std::cout << "[CLIENT] Processed movement for " << parsed.steamID << "\n";
     }
 }
 
@@ -74,7 +64,7 @@ void ClientNetwork::SendConnectionMessage() {
     CSteamID myID = SteamUser()->GetSteamID();
     std::string steamIDStr = std::to_string(myID.ConvertToUint64());
     std::string steamName = SteamFriends()->GetPersonaName();
-    sf::Color color = sf::Color::Blue; // Customize as needed.
+    sf::Color color = sf::Color::Blue;
     std::string connectMsg = MessageHandler::FormatConnectionMessage(steamIDStr, steamName, color);
     
     if (game->GetNetworkManager().SendMessage(hostID, connectMsg)) {
