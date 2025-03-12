@@ -38,6 +38,7 @@ private:
     float loadingTimer;  
     std::unordered_map<std::string, RemotePlayer> remotePlayers;
     std::string chatMessages; // Store chat history
+    sf::Text localPlayerName;
 };
 
 #endif // LOBBYSTATE_H
