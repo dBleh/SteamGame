@@ -21,20 +21,22 @@ void ClientNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
         if (parsed.steamID != std::to_string(SteamUser()->GetSteamID().ConvertToUint64())) {
             RemotePlayer rp;
             rp.player = Player(parsed.position, sf::Color::Blue);
-            rp.nameText.setFont(game->GetFont());
             auto& playersMap = playerManager->GetPlayers();
             if (playersMap.find(parsed.steamID) != playersMap.end()) {
                 rp.nameText.setString(playersMap[parsed.steamID].nameText.getString());
-                rp.baseName = playersMap[parsed.steamID].baseName; // Preserve baseName
+                rp.baseName = playersMap[parsed.steamID].baseName;
             } else {
                 rp.nameText.setString(parsed.steamName.empty() ? "Player_" + parsed.steamID : parsed.steamName);
                 rp.baseName = parsed.steamName.empty() ? "Player_" + parsed.steamID : parsed.steamName;
             }
+            rp.nameText.setFont(game->GetFont());
             rp.nameText.setCharacterSize(16);
             rp.nameText.setFillColor(sf::Color::Black);
             playerManager->AddOrUpdatePlayer(parsed.steamID, rp);
         }
     } else if (parsed.type == MessageType::ReadyStatus) {
+        std::cout << "[CLIENT] Received ready status for " << parsed.steamID << ": " 
+                  << (parsed.isReady ? "true" : "false") << "\n";
         playerManager->SetReadyStatus(parsed.steamID, parsed.isReady);
     }
 }
