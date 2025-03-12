@@ -3,7 +3,6 @@
 #include <vector>
 #include <cstdlib>
 
-// Helper function: Split a string by a given delimiter.
 static std::vector<std::string> splitString(const std::string& s, char delimiter) {
     std::vector<std::string> tokens;
     std::stringstream ss(s);
@@ -15,7 +14,6 @@ static std::vector<std::string> splitString(const std::string& s, char delimiter
 }
 
 std::string MessageHandler::FormatConnectionMessage(const std::string& steamID, const std::string& steamName, const sf::Color& color) {
-    // Create a connection message in the format: "C|steamID|steamName|r,g,b"
     std::stringstream ss;
     ss << "C|" << steamID << "|" << steamName << "|" 
        << static_cast<int>(color.r) << "," 
@@ -25,9 +23,14 @@ std::string MessageHandler::FormatConnectionMessage(const std::string& steamID, 
 }
 
 std::string MessageHandler::FormatMovementMessage(const std::string& steamID, const sf::Vector2f& position) {
-    // Create a movement message in the format: "P|steamID|x|y"
     std::stringstream ss;
     ss << "P|" << steamID << "|" << position.x << "|" << position.y;
+    return ss.str();
+}
+
+std::string MessageHandler::FormatChatMessage(const std::string& steamID, const std::string& message) {
+    std::stringstream ss;
+    ss << "T|" << steamID << "|" << message;
     return ss.str();
 }
 
@@ -39,14 +42,12 @@ ParsedMessage MessageHandler::ParseMessage(const std::string& msg) {
         return parsed;
     }
     
-    // Identify the message type based on the first character.
     char msgType = parts[0][0];
     if (msgType == 'C') {
         parsed.type = MessageType::Connection;
         if (parts.size() >= 4) {
             parsed.steamID = parts[1];
             parsed.steamName = parts[2];
-            // Parse the color from the format "r,g,b"
             auto colorParts = splitString(parts[3], ',');
             if (colorParts.size() >= 3) {
                 int r = std::stoi(colorParts[0]);
@@ -62,6 +63,12 @@ ParsedMessage MessageHandler::ParseMessage(const std::string& msg) {
             float x = std::stof(parts[2]);
             float y = std::stof(parts[3]);
             parsed.position = sf::Vector2f(x, y);
+        }
+    } else if (msgType == 'T') {
+        parsed.type = MessageType::Chat;
+        if (parts.size() >= 3) {
+            parsed.steamID = parts[1];
+            parsed.chatMessage = parts[2];
         }
     } else {
         parsed.type = MessageType::Unknown;

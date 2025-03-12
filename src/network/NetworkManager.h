@@ -6,8 +6,8 @@
 #include <string>
 #include <unordered_map>
 #include <functional>
-#include "../utils/SteamHelpers.h"  // Adjusted path
-#include "../Game.h"                // Include Game.h for Game class
+#include "../utils/SteamHelpers.h"
+#include "../Game.h"
 
 class Game;
 class NetworkManager {
@@ -30,6 +30,12 @@ public:
     const std::vector<std::pair<CSteamID, std::string>>& GetLobbyList() const { return lobbyList; }
     bool IsLobbyListUpdated() const { return lobbyListUpdated; }
 
+    // New method for chat messages
+    void SendChatMessage(CSteamID target, const std::string& message);
+
+    // Getter for current lobby ID
+    CSteamID GetCurrentLobbyID() const { return m_currentLobbyID; }
+
 private:
     // Callback handlers
     void ProcessNetworkMessages(const std::string& msg, CSteamID sender);
@@ -41,6 +47,7 @@ private:
     std::vector<std::pair<CSteamID, std::string>> lobbyList;
     bool lobbyListUpdated{false};
     std::function<void(const std::string&, CSteamID)> messageHandler;
+    CSteamID m_currentLobbyID; // Store the current lobby ID
 
     // STEAM_CALLBACK for synchronous events
     STEAM_CALLBACK(NetworkManager, OnLobbyCreated, LobbyCreated_t, m_cbLobbyCreated);

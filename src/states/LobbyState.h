@@ -37,6 +37,7 @@ private:
     bool playerLoaded;     // True when the local player has finished "loading".
     float loadingTimer;  
     std::unordered_map<std::string, RemotePlayer> remotePlayers;
+    std::string chatMessages; // Store chat history
 };
 
 #endif // LOBBYSTATE_H

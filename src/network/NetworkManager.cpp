@@ -6,7 +6,7 @@
 #include <vector>
 #include <chrono>
 
-#define GAME_ID "SteamGame_v1"  // Define GAME_ID here; alternatively, move to Config.h
+#define GAME_ID "SteamGame_v1"
 
 NetworkManager::NetworkManager(Game* gameInstance)
     : game(gameInstance),
@@ -15,7 +15,8 @@ NetworkManager::NetworkManager(Game* gameInstance)
       m_cbLobbyEnter(this, &NetworkManager::OnLobbyEnter),
       m_cbP2PSessionRequest(this, &NetworkManager::OnP2PSessionRequest),
       m_cbP2PSessionConnectFail(this, &NetworkManager::OnP2PSessionConnectFail),
-      m_cbLobbyMatchList(this, &NetworkManager::OnLobbyMatchList) {
+      m_cbLobbyMatchList(this, &NetworkManager::OnLobbyMatchList),
+      m_currentLobbyID(k_steamIDNil) {
     if (!SteamAPI_Init()) {
         std::cerr << "[ERROR] Steam API initialization failed!" << std::endl;
         return;
@@ -68,6 +69,11 @@ bool NetworkManager::BroadcastMessage(const std::string& msg) {
     return success;
 }
 
+void NetworkManager::SendChatMessage(CSteamID target, const std::string& message) {
+    std::string formattedMsg = "CHAT:" + message;
+    SendMessage(target, formattedMsg);
+}
+
 void NetworkManager::ProcessCallbacks() {
     SteamAPI_RunCallbacks();
 }
@@ -90,27 +96,27 @@ void NetworkManager::JoinLobbyFromNetwork(CSteamID lobby) {
     if (game->IsInLobby()) return;
     SteamAPICall_t call = SteamMatchmaking()->JoinLobby(lobby);
     if (call == k_uAPICallInvalid) {
-        std::cerr << "[LOBBY] JoinLobby call failed immediately for " 
+        std::cerr << "[LOBBY] JoinLobby call failed immediately for "
                   << lobby.ConvertToUint64() << "\n";
         game->SetCurrentState(GameState::MainMenu);
     }
 }
 
-// Callback Implementations
 void NetworkManager::OnLobbyCreated(LobbyCreated_t* pParam) {
     if (pParam->m_eResult != k_EResultOK) {
         std::cerr << "[LOBBY] Failed to create lobby. EResult=" << pParam->m_eResult << "\n";
         game->SetCurrentState(GameState::MainMenu);
         return;
     }
-    CSteamID lobbyID(pParam->m_ulSteamIDLobby);
+    m_currentLobbyID = CSteamID(pParam->m_ulSteamIDLobby);
     game->SetCurrentState(GameState::Lobby);
-    SteamMatchmaking()->SetLobbyData(lobbyID, "name", game->GetLobbyNameInput().c_str());
-    SteamMatchmaking()->SetLobbyData(lobbyID, "game_id", GAME_ID);
+    SteamMatchmaking()->SetLobbyData(m_currentLobbyID, "name", game->GetLobbyNameInput().c_str());
+    SteamMatchmaking()->SetLobbyData(m_currentLobbyID, "game_id", GAME_ID);
     CSteamID myID = SteamUser()->GetSteamID();
     std::string hostStr = std::to_string(myID.ConvertToUint64());
-    SteamMatchmaking()->SetLobbyData(lobbyID, "host_steam_id", hostStr.c_str());
+    SteamMatchmaking()->SetLobbyData(m_currentLobbyID, "host_steam_id", hostStr.c_str());
     m_connectedClients[myID] = true;
+    std::cout << "[LOBBY] Created lobby " << m_currentLobbyID.ConvertToUint64() << std::endl;
 }
 
 void NetworkManager::OnLobbyEnter(LobbyEnter_t* pParam) {
@@ -119,8 +125,15 @@ void NetworkManager::OnLobbyEnter(LobbyEnter_t* pParam) {
         game->SetCurrentState(GameState::MainMenu);
         return;
     }
-    std::cout << "Joined lobby" << std::endl;
+    m_currentLobbyID = CSteamID(pParam->m_ulSteamIDLobby);
+    std::cout << "Joined lobby " << m_currentLobbyID.ConvertToUint64() << std::endl;
     game->SetCurrentState(GameState::Lobby);
+
+    CSteamID myID = SteamUser()->GetSteamID();
+    CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(m_currentLobbyID);
+    if (myID == hostID) {
+        SendChatMessage(myID, "Welcome to " + std::string(SteamMatchmaking()->GetLobbyData(m_currentLobbyID, "name")));
+    }
 }
 
 void NetworkManager::OnLobbyMatchList(LobbyMatchList_t* pParam) {
@@ -132,8 +145,8 @@ void NetworkManager::OnLobbyMatchList(LobbyMatchList_t* pParam) {
             lobbyList.emplace_back(lobbyID, std::string(lobbyName));
         }
     }
-    this->lobbyListUpdated = true;
-    game->GetHUD().updateText("searchStatus", "Lobby Search Complete");
+    lobbyListUpdated = true;
+    std::cout << "[LOBBY] Found " << lobbyList.size() << " matching lobbies\n";
 }
 
 void NetworkManager::OnGameLobbyJoinRequested(GameLobbyJoinRequested_t* pParam) {
@@ -143,6 +156,10 @@ void NetworkManager::OnGameLobbyJoinRequested(GameLobbyJoinRequested_t* pParam) 
 void NetworkManager::OnP2PSessionRequest(P2PSessionRequest_t* pParam) {
     if (m_networking && m_networking->AcceptP2PSessionWithUser(pParam->m_steamIDRemote)) {
         m_connectedClients[pParam->m_steamIDRemote] = true;
+        if (SteamUser()->GetSteamID() == SteamMatchmaking()->GetLobbyOwner(m_currentLobbyID)) {
+            std::string lobbyName = SteamMatchmaking()->GetLobbyData(m_currentLobbyID, "name");
+            SendChatMessage(pParam->m_steamIDRemote, "Welcome to " + lobbyName);
+        }
     }
 }
 
@@ -157,4 +174,3 @@ void NetworkManager::OnP2PSessionConnectFail(P2PSessionConnectFail_t* pParam) {
 void NetworkManager::ProcessNetworkMessages(const std::string& msg, CSteamID sender) {
     std::cout << "[NETWORK] Received: " << msg << " from " << sender.ConvertToUint64() << std::endl;
 }
-
