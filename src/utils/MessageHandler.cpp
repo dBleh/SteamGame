@@ -14,11 +14,12 @@ static std::vector<std::string> splitString(const std::string& s, char delimiter
     return tokens;
 }
 
-std::string MessageHandler::FormatConnectionMessage(const std::string& steamID, const std::string& steamName, const sf::Color& color) {
-    std::stringstream ss;
-    ss << "C|" << steamID << "|" << steamName << "|" 
-       << static_cast<int>(color.r) << "," << static_cast<int>(color.g) << "," << static_cast<int>(color.b);
-    return ss.str();
+std::string MessageHandler::FormatConnectionMessage(const std::string& steamID, const std::string& steamName, const sf::Color& color, bool isReady = false, bool isHost = false) {
+    std::ostringstream oss;
+    oss << "C|" << steamID << "|" << steamName << "|" 
+        << static_cast<int>(color.r) << "," << static_cast<int>(color.g) << "," << static_cast<int>(color.b)
+        << "|" << (isReady ? "1" : "0") << "|" << (isHost ? "1" : "0");
+    return oss.str();
 }
 
 std::string MessageHandler::FormatMovementMessage(const std::string& steamID, const sf::Vector2f& position) {

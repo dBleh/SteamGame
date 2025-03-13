@@ -16,7 +16,20 @@ void ClientNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
     if (parsed.type == MessageType::Chat) {
         // Chat UI update if needed
     } else if (parsed.type == MessageType::Connection) {
-        std::cout << "[CLIENT] Connection acknowledgment received." << std::endl;
+        RemotePlayer rp;
+        rp.playerID = parsed.steamID;
+        rp.isHost = parsed.isHost;
+        rp.player = Player(parsed.position, parsed.color);
+        rp.cubeColor = parsed.color;
+        rp.nameText.setFont(game->GetFont());
+        rp.nameText.setString(parsed.steamName);
+        rp.baseName = parsed.steamName;
+        rp.nameText.setCharacterSize(16);
+        rp.nameText.setFillColor(sf::Color::Black);
+        rp.isReady = parsed.isReady;
+        playerManager->AddOrUpdatePlayer(parsed.steamID, rp);
+    } else if (parsed.type == MessageType::ReadyStatus) {
+        playerManager->SetReadyStatus(parsed.steamID, parsed.isReady);
     } else if (parsed.type == MessageType::Movement) {
         if (parsed.steamID != std::to_string(SteamUser()->GetSteamID().ConvertToUint64())) {
             RemotePlayer rp;
@@ -34,10 +47,7 @@ void ClientNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
             rp.nameText.setFillColor(sf::Color::Black);
             playerManager->AddOrUpdatePlayer(parsed.steamID, rp);
         }
-    } else if (parsed.type == MessageType::ReadyStatus) {
-        std::cout << "[CLIENT] Received ready status for " << parsed.steamID << ": " 
-                  << (parsed.isReady ? "true" : "false") << "\n";
-    }
+    } 
 }
 
 void ClientNetwork::SendMovementUpdate(const sf::Vector2f& position) {
@@ -61,15 +71,8 @@ void ClientNetwork::SendConnectionMessage() {
     std::string steamIDStr = std::to_string(myID.ConvertToUint64());
     std::string steamName = SteamFriends()->GetPersonaName();
     sf::Color color = sf::Color::Blue;
-    std::string connectMsg = MessageHandler::FormatConnectionMessage(steamIDStr, steamName, color);
-    if (game->GetNetworkManager().SendMessage(hostID, connectMsg)) {
-        std::cout << "[CLIENT] Connection message sent: " << connectMsg << "\n";
-        pendingConnectionMessage = false;
-    } else {
-        std::cout << "[CLIENT] Failed to send connection message, will retry.\n";
-        pendingConnectionMessage = true;
-        pendingMessage = connectMsg;
-    }
+    std::string connectMsg = MessageHandler::FormatConnectionMessage(steamIDStr, steamName, color, false, false);
+    game->GetNetworkManager().SendMessage(hostID, connectMsg);
 }
 
 void ClientNetwork::SendReadyStatus(bool isReady) {

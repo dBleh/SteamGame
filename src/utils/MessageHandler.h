@@ -20,11 +20,12 @@ struct ParsedMessage {
     sf::Vector2f position;
     std::string chatMessage;
     bool isReady; // New field for ReadyStatus
+    bool isHost = false;
 };
 
 class MessageHandler {
 public:
-    static std::string FormatConnectionMessage(const std::string& steamID, const std::string& steamName, const sf::Color& color);
+    static std::string FormatConnectionMessage(const std::string& steamID, const std::string& steamName, const sf::Color& color, bool isReady, bool isHost);
     static std::string FormatMovementMessage(const std::string& steamID, const sf::Vector2f& position);
     static std::string FormatChatMessage(const std::string& steamID, const std::string& message);
     static std::string FormatReadyStatusMessage(const std::string& steamID, bool isReady); // New method

@@ -26,18 +26,26 @@ LobbyState::LobbyState(Game* game)
     // PlayerManager setup
     CSteamID myID = SteamUser()->GetSteamID();
     std::string myIDStr = std::to_string(myID.ConvertToUint64());
-    std::cout << "[DEBUG] Local Steam ID: " << myIDStr << "\n";
     playerManager = std::make_unique<PlayerManager>(game, myIDStr);
     playerRenderer = std::make_unique<PlayerRenderer>(playerManager.get());
 
     std::string myName = SteamFriends()->GetPersonaName();
-    std::cout << "[DEBUG] Adding local player: " << myIDStr << " (" << myName << ")\n";
-    playerManager->AddLocalPlayer(myIDStr, myName, sf::Vector2f(400.f, 300.f), sf::Color::Blue);
+    CSteamID hostIDSteam = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+    
+    RemotePlayer localPlayer;
+    localPlayer.playerID = myIDStr;
+    localPlayer.isHost = (myID == hostIDSteam);
+    localPlayer.player = Player(sf::Vector2f(400.f, 300.f), sf::Color::Blue);
+    localPlayer.nameText.setFont(game->GetFont());
+    localPlayer.nameText.setString(myName);
+    localPlayer.baseName = myName;
+    localPlayer.cubeColor = sf::Color::Blue;
+    localPlayer.nameText.setCharacterSize(16);
+    localPlayer.nameText.setFillColor(sf::Color::Black);
+    playerManager->AddOrUpdatePlayer(myIDStr, localPlayer);
 
     // Network setup
-    CSteamID hostIDSteam = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
     if (myID == hostIDSteam) {
-        std::cout << "[DEBUG] Setting up as host\n";
         hostNetwork = std::make_unique<HostNetwork>(game, playerManager.get());
         game->GetNetworkManager().SetMessageHandler(
             [this](const std::string& msg, CSteamID sender) {
@@ -45,18 +53,15 @@ LobbyState::LobbyState(Game* game)
             }
         );
     } else {
-        std::cout << "[DEBUG] Setting up as client\n";
         clientNetwork = std::make_unique<ClientNetwork>(game, playerManager.get());
         game->GetNetworkManager().SetMessageHandler(
             [this](const std::string& msg, CSteamID sender) {
                 clientNetwork->ProcessMessage(msg, sender);
             }
         );
-        clientNetwork->SendConnectionMessage();
+        clientNetwork->SendConnectionMessage();  // Request initial player list
     }
-    std::cout << "[DEBUG] LobbyState constructor end\n";
 }
-
 void LobbyState::UpdateRemotePlayers() {
     if (hostNetwork) {
         std::unordered_map<std::string, RemotePlayer>& players = hostNetwork->GetRemotePlayers();
@@ -111,31 +116,21 @@ void LobbyState::Render() {
 
 
 void LobbyState::ProcessEvent(const sf::Event& event) {
-    static bool rKeyPressed = false; // Track key state
-    if (event.type == sf::Event::KeyPressed) {
-        if (event.key.code == sf::Keyboard::R) {
-                std::string myID = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
-                bool currentReady = playerManager->GetLocalPlayer().isReady;
-                playerManager->SetReadyStatus(myID, !currentReady);
-                std::cout << "hi" << "\n";
-                std::string msg = MessageHandler::FormatReadyStatusMessage(myID, !currentReady);
-                if (hostNetwork) {
-                    if (game->GetNetworkManager().BroadcastMessage(msg)) {
-                        std::cout << "[LOBBY] Host broadcasted ready status: " << msg << "\n";
-                    } else {
-                        std::cout << "[LOBBY] Host failed to broadcast ready status: " << msg << "\n";
-                    }
-                } else if (clientNetwork) {
-                    clientNetwork->SendReadyStatus(!currentReady);
-                    std::cout << "[LOBBY] Client sent ready status to host: " << msg << "\n";
-                }
-                rKeyPressed = true; // Mark as pressed
-            
+    if (event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::R) {
+        std::string myID = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
+        bool currentReady = playerManager->GetLocalPlayer().isReady;
+        bool newReady = !currentReady;
+        playerManager->SetReadyStatus(myID, newReady);
+        
+        std::string msg = MessageHandler::FormatReadyStatusMessage(myID, newReady);
+        if (hostNetwork) {
+            game->GetNetworkManager().BroadcastMessage(msg);
+        } else if (clientNetwork) {
+            clientNetwork->SendReadyStatus(newReady);
         }
-    } else if (event.type == sf::Event::KeyReleased && event.key.code == sf::Keyboard::R) {
-        rKeyPressed = false; // Reset on release
     }
 }
+
 
 
 void LobbyState::UpdateLobbyMembers() {

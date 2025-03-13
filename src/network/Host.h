@@ -17,6 +17,8 @@ public:
     ~HostNetwork();
     void ProcessMessage(const std::string& msg, CSteamID sender);
     std::unordered_map<std::string, RemotePlayer>& GetRemotePlayers() { return remotePlayers; }
+    void BroadcastFullPlayerList();
+    
     void BroadcastPlayersList();
     void ProcessChatMessage(const std::string& message, CSteamID sender);
     void Update(); // Time-based

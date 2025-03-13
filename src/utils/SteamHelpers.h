@@ -21,14 +21,17 @@ struct CSteamIDHash {
 };
 
 struct RemotePlayer {
-    Player player;
-    sf::Text nameText;
+    std::string playerID;         // Steam ID as string
+    bool isHost = false;          // Host status
+    Player player;               // Player entity with position and color
+    sf::Text nameText;           // Display name
     sf::Vector2f previousPosition;
     sf::Vector2f targetPosition;
-    std::chrono::steady_clock::time_point lastUpdateTime; // Timestamp of last update
-    float interpDuration; // Fixed duration between updates (e.g., 0.1s)
-    bool isReady = false; 
+    std::chrono::steady_clock::time_point lastUpdateTime;
+    float interpDuration = 0.1f;
+    bool isReady = false;
     std::string baseName;
+    sf::Color cubeColor;         // Store the player's cube color
 };
 
 #endif // STEAM_HELPERS_H

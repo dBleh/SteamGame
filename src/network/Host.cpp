@@ -13,20 +13,18 @@ HostNetwork::~HostNetwork() {}
 void HostNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
     ParsedMessage parsed = MessageHandler::ParseMessage(msg);
     if (parsed.type == MessageType::Connection) {
-        if (parsed.steamID.empty() || parsed.steamName.empty()) {
-            std::cout << "[HOST] Invalid connection message from " << sender.ConvertToUint64() 
-                      << ": steamID='" << parsed.steamID << "', steamName='" << parsed.steamName << "'\n";
-            return;
-        }
         RemotePlayer rp;
+        rp.playerID = parsed.steamID;
+        rp.isHost = false;
         rp.player = Player(sf::Vector2f(200.f, 200.f), parsed.color);
+        rp.cubeColor = parsed.color;
         rp.nameText.setFont(game->GetFont());
         rp.nameText.setString(parsed.steamName);
-        rp.baseName = parsed.steamName; // Set baseName
+        rp.baseName = parsed.steamName;
         rp.nameText.setCharacterSize(16);
         rp.nameText.setFillColor(sf::Color::Black);
         playerManager->AddOrUpdatePlayer(parsed.steamID, rp);
-        BroadcastPlayersList();
+        BroadcastFullPlayerList();
     } else if (parsed.type == MessageType::Movement) {
         if (parsed.steamID.empty()) {
             std::cout << "[HOST] Invalid movement message from " << sender.ConvertToUint64() << ": " << msg << "\n";
@@ -51,15 +49,26 @@ void HostNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
     } else if (parsed.type == MessageType::Chat) {
         ProcessChatMessage(parsed.chatMessage, sender);
     } else if (parsed.type == MessageType::ReadyStatus) {
+        playerManager->SetReadyStatus(parsed.steamID, parsed.isReady);
         std::string broadcastMsg = MessageHandler::FormatReadyStatusMessage(parsed.steamID, parsed.isReady);
-        if (game->GetNetworkManager().BroadcastMessage(broadcastMsg)) {
-            std::cout << "[HOST] Broadcasted ready status: " << broadcastMsg << "\n";
-        } else {
-            std::cout << "[HOST] Failed to broadcast ready status: " << broadcastMsg << "\n";
-        }
+        game->GetNetworkManager().BroadcastMessage(broadcastMsg);
+    
     }
 }
-
+void HostNetwork::BroadcastFullPlayerList() {
+    auto& players = playerManager->GetPlayers();
+    for (const auto& pair : players) {
+        const RemotePlayer& rp = pair.second;
+        std::string msg = MessageHandler::FormatConnectionMessage(
+            rp.playerID,
+            rp.baseName,
+            rp.cubeColor,
+            rp.isReady,
+            rp.isHost
+        );
+        game->GetNetworkManager().BroadcastMessage(msg);
+    }
+}
 void HostNetwork::BroadcastPlayersList() {
     auto& players = playerManager->GetPlayers();
     for (auto& pair : players) {

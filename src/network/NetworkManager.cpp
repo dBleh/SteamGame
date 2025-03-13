@@ -92,7 +92,7 @@ void NetworkManager::SendConnectionMessageOnJoin(CSteamID hostID) {
     std::string steamIDStr = std::to_string(myID.ConvertToUint64());
     std::string steamName = SteamFriends()->GetPersonaName();
     sf::Color playerColor = sf::Color::Blue; // Customize as needed
-    std::string connectMsg = MessageHandler::FormatConnectionMessage(steamIDStr, steamName, playerColor);
+    std::string connectMsg = MessageHandler::FormatConnectionMessage(steamIDStr, steamName, playerColor, false, false);
     
     if (SendMessage(hostID, connectMsg)) {
         std::cout << "[NETWORK] Sent connection message to host: " << connectMsg << "\n";
