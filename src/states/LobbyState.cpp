@@ -115,18 +115,23 @@ void LobbyState::Render() {
 }
 
 
-void  LobbyState::ProcessEvents(const sf::Event& event){
+void LobbyState::ProcessEvents(const sf::Event& event) {
     if (event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::R) {
-        std::string myID = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
-        bool currentReady = playerManager->GetLocalPlayer().isReady;
-        bool newReady = !currentReady;
-        playerManager->SetReadyStatus(myID, newReady);
-        std::cout << "ready status set to ", newReady , "\n";
-        std::string msg = MessageHandler::FormatReadyStatusMessage(myID, newReady);
-        if (hostNetwork) {
-            game->GetNetworkManager().BroadcastMessage(msg);
-        } else if (clientNetwork) {
-            clientNetwork->SendReadyStatus(newReady);
+        auto now = std::chrono::steady_clock::now();
+        float elapsed = std::chrono::duration<float>(now - lastReadyToggle).count();
+        if (elapsed >= READY_TOGGLE_COOLDOWN) {
+            std::string myID = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
+            bool currentReady = playerManager->GetLocalPlayer().isReady;
+            bool newReady = !currentReady;
+            playerManager->SetReadyStatus(myID, newReady);
+            std::cout << "ready status set to " << newReady << "\n";
+            std::string msg = MessageHandler::FormatReadyStatusMessage(myID, newReady);
+            if (hostNetwork) {
+                game->GetNetworkManager().BroadcastMessage(msg);
+            } else if (clientNetwork) {
+                clientNetwork->SendReadyStatus(newReady);
+            }
+            lastReadyToggle = now;
         }
     }
 }
