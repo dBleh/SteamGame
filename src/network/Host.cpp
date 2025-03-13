@@ -51,6 +51,12 @@ void HostNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
         case MessageType::Bullet:
             ProcessBulletMessage(parsed);
             break;
+        case MessageType::PlayerDeath:
+            ProcessPlayerDeathMessage(parsed);
+            break;
+        case MessageType::PlayerRespawn:
+            ProcessPlayerRespawnMessage(parsed);
+            break;
         default:
             std::cout << "[HOST] Unknown message type received: " << msg << "\n";
             break;
@@ -159,4 +165,42 @@ void HostNetwork::Update() {
         lastBroadcastTime = now;
     }
     // Removed "R" key logic, handled in LobbyState
+}
+
+void HostNetwork::ProcessPlayerDeathMessage(const ParsedMessage& parsed) {
+    std::string playerID = parsed.steamID;
+    std::string killerID = parsed.killerID;
+    
+    // Update the player's state in the PlayerManager
+    auto& players = playerManager->GetPlayers();
+    if (players.find(playerID) != players.end()) {
+        RemotePlayer& player = players[playerID];
+        player.player.TakeDamage(100); // Kill the player
+        player.respawnTimer = 3.0f;    // Set respawn timer
+    }
+    
+    // Broadcast the death message to all clients
+    std::string deathMsg = MessageHandler::FormatPlayerDeathMessage(playerID, killerID);
+    game->GetNetworkManager().BroadcastMessage(deathMsg);
+    
+    std::cout << "[HOST] Broadcasting player death: " << playerID << " killed by " << killerID << "\n";
+}
+
+void HostNetwork::ProcessPlayerRespawnMessage(const ParsedMessage& parsed) {
+    std::string playerID = parsed.steamID;
+    sf::Vector2f respawnPos = parsed.position;
+    
+    // Update the player's state in the PlayerManager
+    auto& players = playerManager->GetPlayers();
+    if (players.find(playerID) != players.end()) {
+        RemotePlayer& player = players[playerID];
+        player.player.SetRespawnPosition(respawnPos);
+        player.player.Respawn();
+    }
+    
+    // Broadcast the respawn message to all clients
+    std::string respawnMsg = MessageHandler::FormatPlayerRespawnMessage(playerID, respawnPos);
+    game->GetNetworkManager().BroadcastMessage(respawnMsg);
+    
+    std::cout << "[HOST] Broadcasting player respawn: " << playerID << " at position " << respawnPos.x << "," << respawnPos.y << "\n";
 }

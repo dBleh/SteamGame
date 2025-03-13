@@ -24,6 +24,8 @@ public:
     void Update();
     void ProcessBulletMessage(const ParsedMessage& parsed);  // Add to private section
     CSteamID GetHostID() const { return hostID; }
+    void ProcessPlayerDeathMessage(const ParsedMessage& parsed);
+void ProcessPlayerRespawnMessage(const ParsedMessage& parsed);
 private:
     void ProcessChatMessage(const ParsedMessage& parsed);
     void ProcessConnectionMessage(const ParsedMessage& parsed);

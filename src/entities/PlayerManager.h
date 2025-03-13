@@ -24,7 +24,9 @@ public:
     void SetReadyStatus(const std::string& id, bool ready);
     void AddBullet(const std::string& shooterID, const sf::Vector2f& position, const sf::Vector2f& direction, float velocity);
     std::vector<Bullet>& GetBullets() { return bullets; }
-
+    void CheckBulletCollisions();
+    void RespawnPlayer(const std::string& playerID);
+    void PlayerDied(const std::string& playerID, const std::string& killerID);
 private:
     Game* game;
     std::unordered_map<std::string, RemotePlayer> players;

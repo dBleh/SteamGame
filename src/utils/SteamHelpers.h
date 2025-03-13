@@ -32,6 +32,7 @@ struct RemotePlayer {
     bool isReady = false;
     std::string baseName;
     sf::Color cubeColor;         // Store the player's cube color
+    float respawnTimer = 0.0f;
 };
 
 #endif // STEAM_HELPERS_H

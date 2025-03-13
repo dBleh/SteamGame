@@ -12,8 +12,8 @@ public:
     const sf::RectangleShape& GetShape() const;
     sf::Vector2f GetPosition() const { return shape.getPosition(); }
     bool IsExpired() const { return lifetime <= 0.f; }
-    std::string GetShooterID() const { return shooterID; }
-
+    std::string GetShooterID() const { return shooterID; }bool CheckCollision(const sf::RectangleShape& playerShape, const std::string& playerID) const;
+    bool BelongsToPlayer(const std::string& playerID) const;
 private:
     sf::RectangleShape shape;  // Visual representation (small rectangle)
     sf::Vector2f velocity;     // Direction * speed

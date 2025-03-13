@@ -16,6 +16,17 @@ void PlayerManager::Update() {
 
     for (auto& pair : players) {
         RemotePlayer& rp = pair.second;
+
+        if (rp.player.IsDead() && rp.respawnTimer > 0.0f) {
+            rp.respawnTimer -= dt;
+            if (rp.respawnTimer <= 0.0f) {
+                // Set respawn position to 0,0
+                rp.player.SetRespawnPosition(sf::Vector2f(0.f, 0.f));
+                RespawnPlayer(pair.first);
+            }
+        }
+
+        
         sf::Vector2f pos;
         if (pair.first == localPlayerID) {
             rp.player.Update(dt);  // Local player updates with input
@@ -41,6 +52,7 @@ void PlayerManager::Update() {
             ++it;
         }
     }
+    CheckBulletCollisions();
 }
 
 void PlayerManager::AddOrUpdatePlayer(const std::string& id, const RemotePlayer& player) {
@@ -110,4 +122,90 @@ void PlayerManager::RemovePlayer(const std::string& id) {
 
 std::unordered_map<std::string, RemotePlayer>& PlayerManager::GetPlayers() {
     return players;
+}
+
+void PlayerManager::CheckBulletCollisions() {
+    for (auto bulletIt = bullets.begin(); bulletIt != bullets.end();) {
+        bool bulletHit = false;
+        
+        for (auto& playerPair : players) {
+            std::string playerID = playerPair.first;
+            RemotePlayer& remotePlayer = playerPair.second;
+            
+            // Skip dead players
+            if (remotePlayer.player.IsDead()) continue;
+            
+            // Check if bullet belongs to this player (can't shoot yourself)
+            if (bulletIt->BelongsToPlayer(playerID)) {
+                ++bulletIt;
+                continue;
+            }
+            
+            if (bulletIt->CheckCollision(remotePlayer.player.GetShape(), playerID)) {
+                remotePlayer.player.TakeDamage(25); // 4 hits to kill
+                
+                if (remotePlayer.player.IsDead()) {
+                    PlayerDied(playerID, bulletIt->GetShooterID());
+                }
+                
+                bulletHit = true;
+                break;
+            }
+        }
+        
+        if (bulletHit) {
+            bulletIt = bullets.erase(bulletIt);
+        } else {
+            ++bulletIt;
+        }
+    }
+}
+
+void PlayerManager::PlayerDied(const std::string& playerID, const std::string& killerID) {
+    std::cout << "[PM] Player " << playerID << " was killed by " << killerID << "\n";
+    
+    // Schedule respawn after 3 seconds
+    players[playerID].respawnTimer = 3.0f;
+    
+    // If this is the local player, notify the network
+    if (playerID == localPlayerID) {
+        // Check if we're the host by comparing with the lobby owner
+        CSteamID localSteamID = SteamUser()->GetSteamID();
+        CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+        
+        if (localSteamID == hostID) {
+            // We are the host, broadcast to all clients
+            std::string deathMsg = MessageHandler::FormatPlayerDeathMessage(playerID, killerID);
+            game->GetNetworkManager().BroadcastMessage(deathMsg);
+        } else {
+            // We are a client, send to host
+            std::string deathMsg = MessageHandler::FormatPlayerDeathMessage(playerID, killerID);
+            game->GetNetworkManager().SendMessage(hostID, deathMsg);
+        }
+    }
+}
+
+void PlayerManager::RespawnPlayer(const std::string& playerID) {
+    if (players.find(playerID) != players.end()) {
+        players[playerID].player.Respawn();
+        
+        // If this is the local player, notify the network of respawn
+        if (playerID == localPlayerID) {
+            sf::Vector2f respawnPos = players[playerID].player.GetPosition();
+            
+            // Check if we're the host by comparing with the lobby owner
+            CSteamID localSteamID = SteamUser()->GetSteamID();
+            CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+            
+            if (localSteamID == hostID) {
+                // We are the host, broadcast to all clients
+                std::string respawnMsg = MessageHandler::FormatPlayerRespawnMessage(playerID, respawnPos);
+                game->GetNetworkManager().BroadcastMessage(respawnMsg);
+            } else {
+                // We are a client, send to host
+                std::string respawnMsg = MessageHandler::FormatPlayerRespawnMessage(playerID, respawnPos);
+                game->GetNetworkManager().SendMessage(hostID, respawnMsg);
+            }
+        }
+    }
 }

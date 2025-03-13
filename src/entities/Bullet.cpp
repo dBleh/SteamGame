@@ -20,3 +20,14 @@ sf::RectangleShape& Bullet::GetShape() {
 const sf::RectangleShape& Bullet::GetShape() const {
     return shape;
 }
+
+bool Bullet::CheckCollision(const sf::RectangleShape& playerShape, const std::string& playerID) const {
+    // Don't collide with the shooter
+    if (shooterID == playerID) return false;
+    
+    return shape.getGlobalBounds().intersects(playerShape.getGlobalBounds());
+}
+
+bool Bullet::BelongsToPlayer(const std::string& playerID) const {
+    return shooterID == playerID;
+}

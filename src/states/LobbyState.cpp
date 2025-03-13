@@ -45,6 +45,7 @@ LobbyState::LobbyState(Game* game)
     localPlayer.cubeColor = sf::Color::Blue;
     localPlayer.nameText.setCharacterSize(16);
     localPlayer.nameText.setFillColor(sf::Color::Black);
+    localPlayer.player.SetRespawnPosition(sf::Vector2f(0.f, 0.f));
     playerManager->AddOrUpdatePlayer(myIDStr, localPlayer);
 
     // Network setup

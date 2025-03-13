@@ -36,9 +36,17 @@ public:
     float shootCooldown;    // Time remaining until next shot allowed
     static constexpr float SHOOT_COOLDOWN_DURATION = 0.5f;
 
+    void TakeDamage(int amount);
+    bool IsDead() const;
+    void Respawn();
+    void SetRespawnPosition(const sf::Vector2f& position);
+
 private:
     sf::RectangleShape shape;  // Represents the player as a cube.
     float movementSpeed;       // Movement speed in pixels per second.
+    int health;
+    bool isDead;
+    sf::Vector2f respawnPosition;
     
 };
 
