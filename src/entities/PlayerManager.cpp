@@ -55,7 +55,7 @@ void PlayerManager::AddOrUpdatePlayer(const std::string& id, const RemotePlayer&
         players[id].previousPosition = player.player.GetPosition();
         players[id].targetPosition = player.player.GetPosition();
         players[id].lastUpdateTime = now;
-        players[id].baseName = player.baseName.empty() ? player.nameText.getString().toAnsiString() : player.baseName;
+        players[id].baseName = player.nameText.getString().toAnsiString();
     } else if (id != localPlayerID) {
         players[id].previousPosition = players[id].player.GetPosition();
         players[id].targetPosition = player.player.GetPosition();

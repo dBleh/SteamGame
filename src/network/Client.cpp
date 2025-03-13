@@ -64,7 +64,12 @@ void ClientNetwork::ProcessMovementMessage(const ParsedMessage& parsed) {
     if (parsed.steamID != localSteamIDStr) {
         RemotePlayer rp;
         rp.player = Player(parsed.position, sf::Color::Blue);
-        playerManager->AddOrUpdatePlayer(parsed.steamID, rp);
+        auto& playersMap = playerManager->GetPlayers();
+        rp.nameText.setFont(game->GetFont());
+        rp.nameText.setCharacterSize(16);
+        rp.nameText.setFillColor(sf::Color::Black);
+        rp.nameText.setString(parsed.steamName);
+        playerManager->AddOrUpdatePlayer(parsed.steamID.ConvertToUint64(), rp);
     }
 }
 
