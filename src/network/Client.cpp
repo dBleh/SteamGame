@@ -49,6 +49,7 @@ void ClientNetwork::ProcessConnectionMessage(const ParsedMessage& parsed) {
     rp.nameText.setFont(game->GetFont());
     rp.nameText.setString(parsed.steamName);
     rp.baseName = parsed.steamName;
+    std::cout << "Name recieved " << parsed.steamName << "\n";
     rp.nameText.setCharacterSize(16);
     rp.nameText.setFillColor(sf::Color::Black);
     playerManager->AddOrUpdatePlayer(parsed.steamID, rp);
@@ -64,11 +65,6 @@ void ClientNetwork::ProcessMovementMessage(const ParsedMessage& parsed) {
     if (parsed.steamID != localSteamIDStr) {
         RemotePlayer rp;
         rp.player = Player(parsed.position, sf::Color::Blue);
-        auto& playersMap = playerManager->GetPlayers();
-        rp.nameText.setFont(game->GetFont());
-        rp.nameText.setCharacterSize(16);
-        rp.nameText.setFillColor(sf::Color::Black);
-        rp.nameText.setString(parsed.steamName);
         playerManager->AddOrUpdatePlayer(parsed.steamID, rp);
     }
 }
