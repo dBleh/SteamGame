@@ -131,17 +131,28 @@ void LobbyState::ProcessEvents(const sf::Event& event) {
             } else if (clientNetwork) {
                 clientNetwork->SendReadyStatus(newReady);
             }
-        } else if (event.key.code == sf::Keyboard::Space) {
-            std::string myID = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
-            sf::Vector2f position = playerManager->GetLocalPlayer().player.GetPosition();
-            sf::Vector2f direction(1.f, 0.f);  // Default right
+        }
+    } else if (event.type == sf::Event::MouseButtonPressed && event.mouseButton.button == sf::Mouse::Left) {
+        std::string myID = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
+        
+        // Get mouse position in screen coordinates and convert to world coordinates
+        sf::Vector2i mouseScreenPos(event.mouseButton.x, event.mouseButton.y);
+        sf::Vector2f mouseWorldPos = game->GetWindow().mapPixelToCoords(mouseScreenPos, game->GetCamera());
+
+        // Trigger shooting and get bullet parameters
+        Player::BulletParams params = playerManager->GetLocalPlayer().player.Shoot(mouseWorldPos);
+        
+        // Only create and send bullet if shooting was successful (not on cooldown)
+        if (params.direction != sf::Vector2f(0.f, 0.f)) {  // Check if direction is valid
             float bulletSpeed = 400.f;
-            playerManager->AddBullet(myID, position + sf::Vector2f(50.f, 0.f), direction, bulletSpeed);
-            std::string msg = MessageHandler::FormatBulletMessage(myID, position + sf::Vector2f(50.f, 0.f), direction, bulletSpeed);
+            playerManager->AddBullet(myID, params.position, params.direction, bulletSpeed);
+            
+            // Send bullet message
+            std::string msg = MessageHandler::FormatBulletMessage(myID, params.position, params.direction, bulletSpeed);
             if (hostNetwork) {
                 game->GetNetworkManager().BroadcastMessage(msg);
             } else if (clientNetwork) {
-                game->GetNetworkManager().SendMessage(SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID()), msg);  // Use hostID from ClientNetwork
+                game->GetNetworkManager().SendMessage(clientNetwork->GetHostID(), msg);
             }
         }
     }

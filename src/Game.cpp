@@ -7,11 +7,9 @@
 #include <iostream>
 
 Game::Game() : hud(font) {
-    // Initialize window
     window.create(sf::VideoMode(1280, 720), "SteamGame");
     window.setFramerateLimit(60);
 
-    // Load font
     if (!font.loadFromFile("Roboto-Regular.ttf")) {
         if (!font.loadFromFile("../../Roboto-Regular.ttf")) {
             std::cerr << "[ERROR] Failed to load font!" << std::endl;
@@ -19,7 +17,6 @@ Game::Game() : hud(font) {
         }
     }
 
-    // Initialize Steam
     if (SteamAPI_Init()) {
         steamInitialized = true;
         localSteamID = SteamUser()->GetSteamID();
@@ -27,16 +24,12 @@ Game::Game() : hud(font) {
         std::cerr << "[ERROR] Steam API initialization failed!" << std::endl;
     }
 
-    // Initialize NetworkManager
     networkManager = std::make_unique<NetworkManager>(this);
-
-    // Set initial state
     state = std::make_unique<MainMenuState>(this);
 
-    // Initialize camera
-    camera.setSize(1280.f, 720.f);  // Match window size
-    camera.setCenter(640.f, 360.f);  // Center of 1280x720
-    window.setView(camera);
+    // Initialize camera for game world
+    camera.setSize(1280.f, 720.f);
+    camera.setCenter(640.f, 360.f);  // Initial center
 }
 
 Game::~Game() {
@@ -81,14 +74,22 @@ void Game::Run() {
                 break;
             case GameState::Lobby:
                 if (!dynamic_cast<LobbyState*>(state.get()))
-                    state = std::make_unique<LobbyState>(this);  // Assume client for simplicity; adjust as needed
+                    state = std::make_unique<LobbyState>(this);  // Assume client; adjust as needed
                 break;
             default:
                 break;
         }
 
-        // Rendering
+        
+
+        // Render game world with camera
+        window.setView(camera);
         if (state) state->Render();
+
+        // Render HUD with appropriate view handling
+        hud.render(window, camera, currentState);
+
+        
     }
 }
 
@@ -111,5 +112,5 @@ void Game::ProcessEvents(sf::Event& event) {
 void Game::AdjustViewToWindow() {
     sf::Vector2u winSize = window.getSize();
     camera.setSize(static_cast<float>(winSize.x), static_cast<float>(winSize.y));
-    window.setView(camera);
+    // Note: Center is updated in LobbyState, so no need to reset it here
 }

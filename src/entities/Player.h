@@ -13,7 +13,11 @@ public:
     
     // Update the player's state (handle movement).
     void Update(float dt);
-    
+    struct BulletParams {
+        sf::Vector2f position;
+        sf::Vector2f direction;
+    };
+    BulletParams Shoot(const sf::Vector2f& mouseWorldPos);
     // Get the player's current position.
     sf::Vector2f GetPosition() const;
     

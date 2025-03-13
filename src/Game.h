@@ -29,8 +29,8 @@ public:
     void SetLocalSteamID(const CSteamID& id) { localSteamID = id; }
     CSteamID GetLocalSteamID() const { return localSteamID; }
     CSteamID GetLobbyID() const { return networkManager->GetCurrentLobbyID(); }
-    sf::Font& GetFont() { return font; }  // Changed to mutable reference
-    sf::View& GetCamera() { return camera; }  // New: Access to camera
+    sf::Font& GetFont() { return font; }
+    sf::View& GetCamera() { return camera; }  // Access to game world camera
 
 private:
     void ProcessEvents(sf::Event& event);
@@ -38,7 +38,7 @@ private:
 
     sf::RenderWindow window;
     sf::Font font;
-    sf::View camera;  // New: Camera view
+    sf::View camera;  // Camera for game world
     HUD hud;
     std::unique_ptr<State> state;
     std::unique_ptr<NetworkManager> networkManager;
