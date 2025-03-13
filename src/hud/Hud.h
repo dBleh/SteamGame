@@ -100,7 +100,7 @@ public:
      * @param pos New position.
      */
     void updateElementPosition(const std::string& id, const sf::Vector2f& pos);
-
+    sf::Vector2f getElementPosition(const std::string& id) const;
     /**
      * @brief Renders HUD elements on the window.
      * @param window Render window.

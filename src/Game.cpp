@@ -2,6 +2,7 @@
 #include "states/MainMenuState.h"
 #include "states/LobbyCreationState.h"
 #include "states/LobbySearchState.h"
+#include "states/PlayingState.h"
 #include "states/LobbyState.h"
 #include <steam/steam_api.h>
 #include <iostream>
@@ -74,7 +75,10 @@ void Game::Run() {
                 break;
             case GameState::Lobby:
                 if (!dynamic_cast<LobbyState*>(state.get()))
-                    state = std::make_unique<LobbyState>(this);  // Assume client; adjust as needed
+                    state = std::make_unique<LobbyState>(this);
+            case GameState::Playing:
+                if (!dynamic_cast<PlayingState*>(state.get()))
+                    state = std::make_unique<PlayingState>(this);
                 break;
             default:
                 break;

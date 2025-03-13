@@ -34,6 +34,7 @@ std::string MessageHandler::FormatBulletMessage(const std::string& shooterID, co
         << direction.x << "," << direction.y << "|" << velocity;
     return oss.str();
 }
+
 std::string MessageHandler::FormatPlayerDeathMessage(const std::string& playerID, const std::string& killerID) {
     std::ostringstream oss;
     oss << "D|" << playerID << "|" << killerID;
@@ -45,6 +46,13 @@ std::string MessageHandler::FormatPlayerRespawnMessage(const std::string& player
     oss << "RS|" << playerID << "|" << position.x << "," << position.y;
     return oss.str();
 }
+
+std::string MessageHandler::FormatStartGameMessage(const std::string& hostID) {
+    std::ostringstream oss;
+    oss << "SG|" << hostID;
+    return oss.str();
+}
+
 ParsedMessage MessageHandler::ParseMessage(const std::string& msg) {
     ParsedMessage parsed{};
     std::vector<std::string> parts;
@@ -96,7 +104,7 @@ ParsedMessage MessageHandler::ParseMessage(const std::string& msg) {
         dirStream >> dx >> comma >> dy;
         parsed.direction = sf::Vector2f(dx, dy);
         parsed.velocity = std::stof(parts[4]);
-    }  else if (parts[0] == "D" && parts.size() >= 3) {
+    } else if (parts[0] == "D" && parts.size() >= 3) {
         parsed.type = MessageType::PlayerDeath;
         parsed.steamID = parts[1];    // Player who died
         parsed.killerID = parts[2];   // Player who caused the death
@@ -109,6 +117,9 @@ ParsedMessage MessageHandler::ParseMessage(const std::string& msg) {
         char comma;
         posStream >> x >> comma >> y;
         parsed.position = sf::Vector2f(x, y);
+    } else if (parts[0] == "SG" && parts.size() >= 2) {
+        parsed.type = MessageType::StartGame;
+        parsed.steamID = parts[1];    // Host ID who started the game
     }
 
     return parsed;

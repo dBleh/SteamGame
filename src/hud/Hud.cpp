@@ -167,6 +167,15 @@ void HUD::configureStoreHUD(const sf::Vector2u& winSize) {
     updateBaseColor("speedBoostButton", sf::Color::White);
 }
 
+sf::Vector2f HUD::getElementPosition(const std::string& id) const
+{
+    auto it = m_elements.find(id);
+    if (it != m_elements.end()) {
+        return it->second.pos;
+    }
+    return sf::Vector2f(0.f, 0.f); // Return default position if element not found
+}
+
 //-------------------------------------------------------------------------
 // HUD Refresh Methods
 //-------------------------------------------------------------------------

@@ -57,6 +57,9 @@ void HostNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
         case MessageType::PlayerRespawn:
             ProcessPlayerRespawnMessage(parsed);
             break;
+        case MessageType::StartGame:
+            game->SetCurrentState(GameState::Playing);
+            break;
         default:
             std::cout << "[HOST] Unknown message type received: " << msg << "\n";
             break;
@@ -188,7 +191,7 @@ void HostNetwork::ProcessPlayerDeathMessage(const ParsedMessage& parsed) {
     if (players.find(playerID) != players.end()) {
         RemotePlayer& player = players[playerID];
         player.player.TakeDamage(100); // Kill the player
-        player.respawnTimer = 3.0f;    // Set respawn timer
+        player.respawnTimer = 1.0f;    // Set respawn timer
     }
     
     // Broadcast the death message to all clients

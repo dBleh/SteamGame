@@ -35,6 +35,9 @@ void ClientNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
         case MessageType::PlayerRespawn:
             ProcessPlayerRespawnMessage(parsed);
             break;
+        case MessageType::StartGame:
+            game->SetCurrentState(GameState::Playing);
+            break;
         default:
             std::cout << "[CLIENT] Unknown message type received: " << msg << "\n";
             break;
@@ -173,7 +176,7 @@ void ClientNetwork::ProcessPlayerDeathMessage(const ParsedMessage& parsed) {
     if (players.find(parsed.steamID) != players.end()) {
         RemotePlayer& player = players[parsed.steamID];
         player.player.TakeDamage(100); // Kill the player
-        player.respawnTimer = 3.0f;    // Set respawn timer
+        player.respawnTimer = 1.0f;    // Set respawn timer
     }
 }
 

@@ -123,9 +123,18 @@ void LobbyState::Update(float dt) {
         }
     }
     if (SteamUser()->GetSteamID() == SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID())) {
-        game->GetHUD().updateText("startGame", "Press S to Start Game (Host Only)");
+        // Check if all players are ready
+        bool allReady = AllPlayersReady();
+        if (allReady) {
+            game->GetHUD().updateText("startGame", "Click to Start Game (Host Only)");
+            game->GetHUD().updateBaseColor("startGame", sf::Color::Green);
+        } else {
+            game->GetHUD().updateText("startGame", "Waiting for all players to be ready...");
+            game->GetHUD().updateBaseColor("startGame", sf::Color::Red);
+        }
     } else {
-        game->GetHUD().updateText("startGame", "");
+        game->GetHUD().updateText("startGame", "Waiting for host to start game...");
+        game->GetHUD().updateBaseColor("startGame", sf::Color::Black);
     }
     sf::Vector2f localPlayerPos = playerManager->GetLocalPlayer().player.GetPosition();
     game->GetCamera().setCenter(localPlayerPos);
@@ -167,9 +176,53 @@ void LobbyState::ProcessEvents(const sf::Event& event) {
         }
         
     } else if (event.type == sf::Event::MouseButtonPressed && event.mouseButton.button == sf::Mouse::Left) {
-        mouseHeld = true;
-        AttemptShoot(event.mouseButton.x, event.mouseButton.y);
-    } 
+        // Get mouse position
+        sf::Vector2i mousePos(event.mouseButton.x, event.mouseButton.y);
+        
+        // Check if we're the host
+        CSteamID myID = SteamUser()->GetSteamID();
+        CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+        if (myID == hostID) {
+            // Check if mouse is over the "Start Game" button
+            sf::Vector2f startGamePos = game->GetHUD().getElementPosition("startGame");
+            sf::FloatRect startGameBounds(
+                startGamePos.x - 150, startGamePos.y - 20,
+                300, 40
+            );
+            
+            if (startGameBounds.contains(static_cast<float>(mousePos.x), static_cast<float>(mousePos.y))) {
+                // Check if all players are ready
+                if (AllPlayersReady()) {
+                    // Broadcast "start game" message
+                    std::string startMsg = "START_GAME";
+                    game->GetNetworkManager().BroadcastMessage(startMsg);
+                    
+                    // Switch to playing state
+                    game->SetCurrentState(GameState::Playing);
+                }
+            }
+        }
+        
+        // Handle shooting (existing code)
+        std::string myIDStr = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
+        
+        // Skip shooting if clicked on UI
+        sf::Vector2f startGamePos = game->GetHUD().getElementPosition("startGame");
+        sf::FloatRect startGameBounds(
+            startGamePos.x - 150, startGamePos.y - 20,
+            300, 40
+        );
+        
+        if (!startGameBounds.contains(static_cast<float>(mousePos.x), static_cast<float>(mousePos.y))) {
+            // Don't shoot if player is dead
+            if (playerManager->GetLocalPlayer().player.IsDead()) {
+                return;
+            }
+            
+            mouseHeld = true;
+            AttemptShoot(mousePos.x, mousePos.y);
+        }
+    }
     else if (event.type == sf::Event::MouseButtonReleased && event.mouseButton.button == sf::Mouse::Left) {
         mouseHeld = false;
     }
@@ -185,6 +238,19 @@ void LobbyState::UpdateLobbyMembers() {
 }
 
 bool LobbyState::AllPlayersReady() {
+    auto& players = playerManager->GetPlayers();
+    
+    // If no players, return false
+    if (players.empty()) {
+        return false;
+    }
+    
+    // Check if all players are ready
+    for (const auto& pair : players) {
+        if (!pair.second.isReady) {
+            return false;
+        }
+    }
     return true;
 }
 
