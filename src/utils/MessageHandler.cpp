@@ -14,7 +14,8 @@ static std::vector<std::string> splitString(const std::string& s, char delimiter
     return tokens;
 }
 
-std::string MessageHandler::FormatConnectionMessage(const std::string& steamID, const std::string& steamName, const sf::Color& color, bool isReady = false, bool isHost = false) {
+std::string MessageHandler::FormatConnectionMessage(const std::string& steamID, const std::string& steamName, 
+    const sf::Color& color, bool isReady, bool isHost) {
     std::ostringstream oss;
     oss << "C|" << steamID << "|" << steamName << "|" 
         << static_cast<int>(color.r) << "," << static_cast<int>(color.g) << "," << static_cast<int>(color.b)
@@ -51,16 +52,20 @@ ParsedMessage MessageHandler::ParseMessage(const std::string& msg) {
     char msgType = parts[0][0];
     if (msgType == 'C') {
         parsed.type = MessageType::Connection;
-        if (parts.size() >= 4) {
+        if (parts.size() >= 6) {  // Need 6 parts: C|steamID|steamName|color|isReady|isHost
             parsed.steamID = parts[1];
             parsed.steamName = parts[2];
             
             auto colorParts = splitString(parts[3], ',');
             if (colorParts.size() >= 3) {
-                parsed.color = sf::Color(std::stoi(colorParts[0]), std::stoi(colorParts[1]), std::stoi(colorParts[2]));
+                parsed.color = sf::Color(
+                    std::stoi(colorParts[0]), 
+                    std::stoi(colorParts[1]), 
+                    std::stoi(colorParts[2])
+                );
             }
-            parsed.isReady = parts[4];
-            parsed.isHost = parts[5];
+            parsed.isReady = (parts[4] == "1");  // Convert string "1" or "0" to bool
+            parsed.isHost = (parts[5] == "1");   // Convert string "1" or "0" to bool
         }
     } else if (msgType == 'P') {
         parsed.type = MessageType::Movement;
@@ -79,7 +84,7 @@ ParsedMessage MessageHandler::ParseMessage(const std::string& msg) {
         std::cout << "User wants to start game" << std::endl;
         if (parts.size() >= 3) {
             parsed.steamID = parts[1];
-            parsed.isReady = (parts[2] == "1");
+            parsed.isReady = (parts[2] == "1");  // Convert string "1" or "0" to bool
         }
     } else {
         parsed.type = MessageType::Unknown;
