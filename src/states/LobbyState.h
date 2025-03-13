@@ -7,7 +7,7 @@
 #include "../utils/MessageHandler.h"
 #include "../network/Host.h"
 #include "../network/Client.h"
-
+#include "../entities/Grid.h"
 #include <steam/steam_api.h>
 #include <SFML/Graphics.hpp>
 #include <array>
@@ -46,6 +46,10 @@ private:
     std::chrono::steady_clock::time_point lastReadyToggle; // For debounce
     static constexpr float READY_TOGGLE_COOLDOWN = 0.2f;
     bool connectionSent = false;
+
+    //For the grid
+    Grid grid;
+    bool showGrid;
 };
 
 #endif // LOBBYSTATE_H

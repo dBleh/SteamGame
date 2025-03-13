@@ -6,7 +6,7 @@
 #include "../render/PlayerRenderer.h"
 #include "../entities/PlayerManager.h"
 LobbyState::LobbyState(Game* game)
-    : State(game), playerLoaded(false), loadingTimer(0.f), chatMessages("") {
+    : State(game), playerLoaded(false), loadingTimer(0.f), chatMessages(""),grid(50.f, sf::Color(220, 220, 220)), showGrid(true) {
     std::cout << "[DEBUG] LobbyState constructor start\n";
     
     // HUD initialization
@@ -22,7 +22,10 @@ LobbyState::LobbyState(Game* game)
     game->GetHUD().addElement("returnMain", "Press M to Return to Main Menu", 24, sf::Vector2f(SCREEN_WIDTH * 0.5f, SCREEN_HEIGHT - 60.f), GameState::Lobby, HUD::RenderMode::ScreenSpace, true);
     game->GetHUD().updateBaseColor("returnMain", sf::Color::Black);
     game->GetHUD().addElement("chat", "Chat:\n", 20, sf::Vector2f(50.f, SCREEN_HEIGHT - 200.f), GameState::Lobby, HUD::RenderMode::ScreenSpace, false);
-
+    game->GetHUD().addElement("gridToggle", "Press G to toggle grid", 20, 
+        sf::Vector2f(SCREEN_WIDTH - 150.f, SCREEN_HEIGHT - 30.f), 
+        GameState::Lobby, HUD::RenderMode::ScreenSpace, true);
+    game->GetHUD().updateBaseColor("gridToggle", sf::Color::Black);
     // PlayerManager setup
     CSteamID myID = SteamUser()->GetSteamID();
     std::string myIDStr = std::to_string(myID.ConvertToUint64());
@@ -120,13 +123,18 @@ void LobbyState::Update(float dt) {
 
 void LobbyState::Render() {
     game->GetWindow().clear(sf::Color::White);
+    
+    if (showGrid) {
+        grid.render(game->GetWindow(), game->GetCamera());
+    }
+    
     if (playerLoaded) {
         playerRenderer->Render(game->GetWindow()); // Renders all players
     }
+    
     game->GetHUD().render(game->GetWindow(), game->GetWindow().getDefaultView(), game->GetCurrentState());
     game->GetWindow().display();
 }
-
 
 void LobbyState::ProcessEvents(const sf::Event& event) {
     if (event.type == sf::Event::KeyPressed) {
@@ -143,6 +151,11 @@ void LobbyState::ProcessEvents(const sf::Event& event) {
                 clientNetwork->SendReadyStatus(newReady);
             }
         }
+        else if (event.key.code == sf::Keyboard::G) {
+            // Toggle grid visibility
+            showGrid = !showGrid;
+        }
+        
     } else if (event.type == sf::Event::MouseButtonPressed && event.mouseButton.button == sf::Mouse::Left) {
         std::string myID = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
         
