@@ -68,7 +68,7 @@ void ClientNetwork::ProcessMovementMessage(const ParsedMessage& parsed) {
         rp.nameText.setFont(game->GetFont());
         rp.nameText.setCharacterSize(16);
         rp.nameText.setFillColor(sf::Color::Black);
-        rp.nameText.setString(localSteamIDStr);
+        rp.nameText.setString(parsed.steamName);
         playerManager->AddOrUpdatePlayer(parsed.steamID, rp);
     }
 }
