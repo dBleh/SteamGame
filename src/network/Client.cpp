@@ -13,7 +13,6 @@ ClientNetwork::~ClientNetwork() {}
 
 void ClientNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
     ParsedMessage parsed = MessageHandler::ParseMessage(msg);
-    std::cout << "[CLIENT] Received: " << msg << " from " << sender.ConvertToUint64() << "\n";
     switch (parsed.type) {
         case MessageType::Chat:
             ProcessChatMessage(parsed);
@@ -69,7 +68,8 @@ void ClientNetwork::ProcessMovementMessage(const ParsedMessage& parsed) {
         rp.nameText.setCharacterSize(16);
         rp.nameText.setFillColor(sf::Color::Black);
         rp.nameText.setString(parsed.steamName);
-        playerManager->AddOrUpdatePlayer(parsed.steamID.ConvertToUint64(), rp);
+     
+        playerManager->AddOrUpdatePlayer(parsed.steamID, rp);
     }
 }
 
