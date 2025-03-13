@@ -54,10 +54,13 @@ ParsedMessage MessageHandler::ParseMessage(const std::string& msg) {
         if (parts.size() >= 4) {
             parsed.steamID = parts[1];
             parsed.steamName = parts[2];
+            
             auto colorParts = splitString(parts[3], ',');
             if (colorParts.size() >= 3) {
                 parsed.color = sf::Color(std::stoi(colorParts[0]), std::stoi(colorParts[1]), std::stoi(colorParts[2]));
             }
+            parsed.isReady = parts[4];
+            parsed.isHost = parts[5];
         }
     } else if (msgType == 'P') {
         parsed.type = MessageType::Movement;
