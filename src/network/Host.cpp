@@ -6,6 +6,29 @@
 
 HostNetwork::HostNetwork(Game* game, PlayerManager* manager)
     : game(game), playerManager(manager), lastBroadcastTime(std::chrono::steady_clock::now()) {
+    // Add host to the player list
+    CSteamID hostID = game->GetLocalSteamID();  // Host’s SteamID
+    std::string hostIDStr = std::to_string(hostID.ConvertToUint64());
+    std::string hostName = SteamFriends()->GetPersonaName();  // Host’s Steam name
+
+    RemotePlayer hostPlayer;
+    hostPlayer.playerID = hostIDStr;
+    hostPlayer.isHost = true;
+    hostPlayer.player = Player(sf::Vector2f(200.f, 200.f), sf::Color::Blue);  // Initial position and color
+    hostPlayer.cubeColor = sf::Color::Blue;
+    hostPlayer.nameText.setFont(game->GetFont());
+    hostPlayer.nameText.setString(hostName);
+    hostPlayer.baseName = hostName;
+    hostPlayer.nameText.setCharacterSize(16);
+    hostPlayer.nameText.setFillColor(sf::Color::Black);
+    hostPlayer.isReady = false;  // Initial ready status
+
+    // Add or update the host in PlayerManager
+    playerManager->AddOrUpdatePlayer(hostIDStr, hostPlayer);
+    std::cout << "[HOST] Added host to player list: " << hostName << " (" << hostIDStr << ")\n";
+
+    // Immediately broadcast the full player list to ensure clients get the host’s data
+    BroadcastFullPlayerList();
 }
 
 HostNetwork::~HostNetwork() {}
