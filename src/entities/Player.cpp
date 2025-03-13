@@ -6,7 +6,7 @@ Player::Player()
     : movementSpeed(200.f), shootCooldown(0.f) {
     shape.setSize(sf::Vector2f(50.f, 50.f));
     shape.setFillColor(sf::Color::Blue);
-    shape.setPosition(100.f, 100.f);
+    shape.setPosition(50.f, 50.f);
 }
 
 Player::Player(const sf::Vector2f& startPosition, const sf::Color& color)
