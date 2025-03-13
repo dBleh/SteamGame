@@ -6,10 +6,11 @@
 #include "../network/NetworkManager.h"
 #include "GameState.h"
 #include <memory>
-#include <steam/steam_api.h>  // Include Steam API header
+#include <steam/steam_api.h>
 
 class State;
 class NetworkManager;
+
 class Game {
 public:
     Game();
@@ -25,21 +26,21 @@ public:
     bool IsSteamInitialized() const { return steamInitialized; }
     bool IsInLobby() const { return inLobby; }
     
-    // --- Steam Connection Variables ---
-    // Local Steam ID getter and setter.
     void SetLocalSteamID(const CSteamID& id) { localSteamID = id; }
     CSteamID GetLocalSteamID() const { return localSteamID; }
-    CSteamID GetLobbyID() const { return networkManager->GetCurrentLobbyID(); } // Use -> for unique_ptr
-        const sf::Font& GetFont() const { return font; }
+    CSteamID GetLobbyID() const { return networkManager->GetCurrentLobbyID(); }
+    sf::Font& GetFont() { return font; }  // Changed to mutable reference
+    sf::View& GetCamera() { return camera; }  // New: Access to camera
+
 private:
     void ProcessEvents(sf::Event& event);
     void AdjustViewToWindow();
 
     sf::RenderWindow window;
     sf::Font font;
+    sf::View camera;  // New: Camera view
     HUD hud;
     std::unique_ptr<State> state;
-    
     std::unique_ptr<NetworkManager> networkManager;
 
     GameState currentState{GameState::MainMenu};
@@ -47,10 +48,6 @@ private:
     bool inLobby{false};
     CSteamID currentLobby{k_steamIDNil};
     std::string lobbyNameInput;
-
-    
-
-    // --- New Steam Connection Variable ---
     CSteamID localSteamID{k_steamIDNil};
 };
 

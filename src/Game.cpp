@@ -13,7 +13,7 @@ Game::Game() : hud(font) {
 
     // Load font
     if (!font.loadFromFile("Roboto-Regular.ttf")) {
-        if(!font.loadFromFile("../../Roboto-Regular.ttf")){
+        if (!font.loadFromFile("../../Roboto-Regular.ttf")) {
             std::cerr << "[ERROR] Failed to load font!" << std::endl;
             std::exit(1);
         }
@@ -22,9 +22,7 @@ Game::Game() : hud(font) {
     // Initialize Steam
     if (SteamAPI_Init()) {
         steamInitialized = true;
-        // Store the local player's Steam ID
         localSteamID = SteamUser()->GetSteamID();
-        // Alternatively, you can use: SetLocalSteamID(SteamUser()->GetSteamID());
     } else {
         std::cerr << "[ERROR] Steam API initialization failed!" << std::endl;
     }
@@ -34,6 +32,11 @@ Game::Game() : hud(font) {
 
     // Set initial state
     state = std::make_unique<MainMenuState>(this);
+
+    // Initialize camera
+    camera.setSize(1280.f, 720.f);  // Match window size
+    camera.setCenter(640.f, 360.f);  // Center of 1280x720
+    window.setView(camera);
 }
 
 Game::~Game() {
@@ -45,7 +48,7 @@ Game::~Game() {
 
 void Game::Run() {
     sf::Clock clock;
-    window.setKeyRepeatEnabled(false); // Disable key repeat
+    window.setKeyRepeatEnabled(false);
     while (window.isOpen()) {
         if (steamInitialized) {
             SteamAPI_RunCallbacks();
@@ -59,10 +62,10 @@ void Game::Run() {
         while (window.pollEvent(event)) {
             ProcessEvents(event);
             if (state) state->ProcessEvent(event);
-            
-                       
         }
+
         if (state) state->Update(dt);
+
         switch (currentState) {
             case GameState::MainMenu:
                 if (!dynamic_cast<MainMenuState*>(state.get()))
@@ -78,13 +81,17 @@ void Game::Run() {
                 break;
             case GameState::Lobby:
                 if (!dynamic_cast<LobbyState*>(state.get()))
-                    state = std::make_unique<LobbyState>(this);
+                    state = std::make_unique<LobbyState>(this, false);  // Assume client for simplicity; adjust as needed
                 break;
             default:
                 break;
         }
 
+        // Rendering
+        window.clear(sf::Color::White);
         if (state) state->Render();
+        hud.Render(window);  // Render HUD after state (on top)
+        window.display();
     }
 }
 
@@ -100,12 +107,12 @@ void Game::ProcessEvents(sf::Event& event) {
         AdjustViewToWindow();
     }
     if (event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::R) {
-        std::cout <<"Triggering ready state" << std::endl;
+        std::cout << "Triggering ready state" << std::endl;
     }
 }
 
 void Game::AdjustViewToWindow() {
     sf::Vector2u winSize = window.getSize();
-    sf::View view(sf::FloatRect(0.f, 0.f, static_cast<float>(winSize.x), static_cast<float>(winSize.y)));
-    window.setView(view);
+    camera.setSize(static_cast<float>(winSize.x), static_cast<float>(winSize.y));
+    window.setView(camera);
 }
