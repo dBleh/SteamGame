@@ -36,34 +36,65 @@ void HostNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
 }
 
 void HostNetwork::ProcessConnectionMessage(const ParsedMessage& parsed) {
-    RemotePlayer rp;
-    rp.playerID = parsed.steamID;
-    rp.isHost = false;
-    rp.player = Player(sf::Vector2f(200.f, 200.f), parsed.color);
-    rp.cubeColor = parsed.color;
-    rp.nameText.setFont(game->GetFont());
-    rp.nameText.setString(parsed.steamName);
-    rp.baseName = parsed.steamName;
-    rp.nameText.setCharacterSize(16);
-    rp.nameText.setFillColor(sf::Color::Black);
-    playerManager->AddOrUpdatePlayer(parsed.steamID, rp);
-    playerManager->SetReadyStatus(parsed.steamID, parsed.isReady);  // Explicitly set initial ready status
+    auto& players = playerManager->GetPlayers();
+    auto it = players.find(parsed.steamID);
+
+    if (it == players.end()) {
+        // New player: create and add
+        RemotePlayer rp;
+        rp.playerID = parsed.steamID;
+        rp.isHost = false;
+        rp.player = Player(sf::Vector2f(200.f, 200.f), parsed.color);
+        rp.cubeColor = parsed.color;
+        rp.nameText.setFont(game->GetFont());
+        rp.nameText.setString(parsed.steamName);
+        rp.baseName = parsed.steamName;
+        rp.nameText.setCharacterSize(16);
+        rp.nameText.setFillColor(sf::Color::Black);
+        playerManager->AddOrUpdatePlayer(parsed.steamID, rp);
+        std::cout << "[HOST] New player connected: " << parsed.steamName << " (" << parsed.steamID << ")\n";
+    } else {
+        // Existing player: update fields without overwriting name
+        RemotePlayer& rp = it->second;
+        rp.isHost = false;  // Always false for remote players on host
+        rp.player.SetPosition(sf::Vector2f(200.f, 200.f));  // Initial position (could use parsed.position if sent)
+        rp.cubeColor = parsed.color;
+        if (rp.baseName != parsed.steamName) {
+            rp.baseName = parsed.steamName;
+            rp.nameText.setString(parsed.steamName);
+            std::cout << "[HOST] Updated name for " << parsed.steamID << " to " << parsed.steamName << "\n";
+        }
+    }
+    playerManager->SetReadyStatus(parsed.steamID, parsed.isReady);
     BroadcastFullPlayerList();
 }
-
 void HostNetwork::ProcessMovementMessage(const ParsedMessage& parsed, CSteamID sender) {
     if (parsed.steamID.empty()) {
         std::cout << "[HOST] Invalid movement message from " << sender.ConvertToUint64() << "\n";
         return;
     }
-    RemotePlayer rp;
-    rp.player = Player(parsed.position, sf::Color::Blue);
-    rp.nameText.setFont(game->GetFont());
-    auto& playersMap = playerManager->GetPlayers();
-   
-    rp.nameText.setCharacterSize(16);
-    rp.nameText.setFillColor(sf::Color::Black);
-    playerManager->AddOrUpdatePlayer(parsed.steamID, rp);
+
+    auto& players = playerManager->GetPlayers();
+    auto it = players.find(parsed.steamID);
+    if (it != players.end()) {
+        // Existing player: update position only
+        it->second.player.SetPosition(parsed.position);
+    } else {
+        // New player (unlikely via movement, but handle it)
+        RemotePlayer rp;
+        rp.playerID = parsed.steamID;
+        rp.player = Player(parsed.position, sf::Color::Blue);
+        rp.cubeColor = sf::Color::Blue;
+        rp.nameText.setFont(game->GetFont());
+        rp.nameText.setString("Player_" + parsed.steamID);  // Default name
+        rp.baseName = "Player_" + parsed.steamID;
+        rp.nameText.setCharacterSize(16);
+        rp.nameText.setFillColor(sf::Color::Black);
+        playerManager->AddOrUpdatePlayer(parsed.steamID, rp);
+        std::cout << "[HOST] Added new player from movement message: " << parsed.steamID << "\n";
+    }
+
+    // Broadcast the movement to all clients
     std::string broadcastMsg = MessageHandler::FormatMovementMessage(parsed.steamID, parsed.position);
     game->GetNetworkManager().BroadcastMessage(broadcastMsg);
 }
