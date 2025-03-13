@@ -12,54 +12,77 @@ HostNetwork::~HostNetwork() {}
 
 void HostNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
     ParsedMessage parsed = MessageHandler::ParseMessage(msg);
-    if (parsed.type == MessageType::Connection) {
-        RemotePlayer rp;
-        rp.playerID = parsed.steamID;
-        rp.isHost = false;
-        rp.player = Player(sf::Vector2f(200.f, 200.f), parsed.color);
-        rp.cubeColor = parsed.color;
-        rp.nameText.setFont(game->GetFont());
-        rp.nameText.setString(parsed.steamName);
-        rp.baseName = parsed.steamName;
-        rp.nameText.setCharacterSize(16);
-        rp.nameText.setFillColor(sf::Color::Black);
-        playerManager->AddOrUpdatePlayer(parsed.steamID, rp);
-        playerManager->SetReadyStatus(parsed.steamID, parsed.isReady);  // Explicitly set initial ready status
-        BroadcastFullPlayerList();
-    } else if (parsed.type == MessageType::Movement) {
-        if (parsed.steamID.empty()) {
-            std::cout << "[HOST] Invalid movement message from " << sender.ConvertToUint64() << ": " << msg << "\n";
-            return;
-        }
-        RemotePlayer rp;
-        rp.player = Player(parsed.position, sf::Color::Blue);
-        rp.nameText.setFont(game->GetFont());
-        auto& playersMap = playerManager->GetPlayers();
-        if (playersMap.find(parsed.steamID) != playersMap.end()) {
-            rp.nameText.setString(playersMap[parsed.steamID].nameText.getString());
-            rp.baseName = playersMap[parsed.steamID].baseName; // Preserve baseName
-        } else {
-            rp.nameText.setString("Player_" + parsed.steamID);
-            rp.baseName = "Player_" + parsed.steamID; // Fallback
-        }
-        rp.nameText.setCharacterSize(16);
-        rp.nameText.setFillColor(sf::Color::Black);
-        playerManager->AddOrUpdatePlayer(parsed.steamID, rp);
-        std::string broadcastMsg = MessageHandler::FormatMovementMessage(parsed.steamID, parsed.position);
-        game->GetNetworkManager().BroadcastMessage(broadcastMsg);
-    } else if (parsed.type == MessageType::Chat) {
-        ProcessChatMessage(parsed.chatMessage, sender);
-    } else if (parsed.type == MessageType::ReadyStatus) {
-        std::string localSteamIDStr = std::to_string(game->GetLocalSteamID().ConvertToUint64());
-        if (localSteamIDStr != parsed.steamID) {
-            auto& players = playerManager->GetPlayers();
-            if (players.find(parsed.steamID) != players.end() && players[parsed.steamID].isReady != parsed.isReady) {
-                playerManager->SetReadyStatus(parsed.steamID, parsed.isReady);
-            }
-        }
-        std::string broadcastMsg = MessageHandler::FormatReadyStatusMessage(parsed.steamID, parsed.isReady);
-        game->GetNetworkManager().BroadcastMessage(broadcastMsg);
+    std::cout << "[HOST] Received: " << msg << " from " << sender.ConvertToUint64() << "\n";  // Debug log
+    switch (parsed.type) {
+        case MessageType::Connection:
+            ProcessConnectionMessage(parsed);
+            break;
+        case MessageType::Movement:
+            ProcessMovementMessage(parsed, sender);
+            break;
+        case MessageType::Chat:
+            ProcessChatMessage(parsed.chatMessage, sender);
+            break;
+        case MessageType::ReadyStatus:
+            ProcessReadyStatusMessage(parsed);
+            break;
+        default:
+            std::cout << "[HOST] Unknown message type received: " << msg << "\n";
+            break;
     }
+}
+
+void HostNetwork::ProcessConnectionMessage(const ParsedMessage& parsed) {
+    RemotePlayer rp;
+    rp.playerID = parsed.steamID;
+    rp.isHost = false;
+    rp.player = Player(sf::Vector2f(200.f, 200.f), parsed.color);
+    rp.cubeColor = parsed.color;
+    rp.nameText.setFont(game->GetFont());
+    rp.nameText.setString(parsed.steamName);
+    rp.baseName = parsed.steamName;
+    rp.nameText.setCharacterSize(16);
+    rp.nameText.setFillColor(sf::Color::Black);
+    playerManager->AddOrUpdatePlayer(parsed.steamID, rp);
+    playerManager->SetReadyStatus(parsed.steamID, parsed.isReady);  // Explicitly set initial ready status
+    BroadcastFullPlayerList();
+}
+
+void HostNetwork::ProcessMovementMessage(const ParsedMessage& parsed, CSteamID sender) {
+    if (parsed.steamID.empty()) {
+        std::cout << "[HOST] Invalid movement message from " << sender.ConvertToUint64() << "\n";
+        return;
+    }
+    RemotePlayer rp;
+    rp.player = Player(parsed.position, sf::Color::Blue);
+    rp.nameText.setFont(game->GetFont());
+    auto& playersMap = playerManager->GetPlayers();
+    if ( !rp.nameText) {
+        rp.nameText.setString("Player_" + parsed.steamID);
+        rp.baseName = "Player_" + parsed.steamID; // Fallback
+    }
+    rp.nameText.setCharacterSize(16);
+    rp.nameText.setFillColor(sf::Color::Black);
+    playerManager->AddOrUpdatePlayer(parsed.steamID, rp);
+    std::string broadcastMsg = MessageHandler::FormatMovementMessage(parsed.steamID, parsed.position);
+    game->GetNetworkManager().BroadcastMessage(broadcastMsg);
+}
+
+void HostNetwork::ProcessChatMessage(const std::string& message, CSteamID sender) {
+    std::string msg = MessageHandler::FormatChatMessage(std::to_string(sender.ConvertToUint64()), message);
+    game->GetNetworkManager().BroadcastMessage(msg);
+}
+
+void HostNetwork::ProcessReadyStatusMessage(const ParsedMessage& parsed) {
+    std::string localSteamIDStr = std::to_string(game->GetLocalSteamID().ConvertToUint64());
+    if (localSteamIDStr != parsed.steamID) {
+        auto& players = playerManager->GetPlayers();
+        if (players.find(parsed.steamID) != players.end() && players[parsed.steamID].isReady != parsed.isReady) {
+            playerManager->SetReadyStatus(parsed.steamID, parsed.isReady);
+        }
+    }
+    std::string broadcastMsg = MessageHandler::FormatReadyStatusMessage(parsed.steamID, parsed.isReady);
+    game->GetNetworkManager().BroadcastMessage(broadcastMsg);
 }
 void HostNetwork::BroadcastFullPlayerList() {
     auto& players = playerManager->GetPlayers();

@@ -24,6 +24,9 @@ public:
     void Update(); // Time-based
 
 private:
+    void ProcessConnectionMessage(const ParsedMessage& parsed);
+    void ProcessMovementMessage(const ParsedMessage& parsed, CSteamID sender);
+    void ProcessReadyStatusMessage(const ParsedMessage& parsed);
     Game* game;
     PlayerManager* playerManager;
     std::unordered_map<std::string, RemotePlayer> remotePlayers;

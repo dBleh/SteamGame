@@ -20,10 +20,15 @@ public:
     void SendMovementUpdate(const sf::Vector2f& position);
     void SendChatMessage(const std::string& message);
     void SendConnectionMessage();
-    void SendReadyStatus(bool isReady); // New method
+    void SendReadyStatus(bool isReady);
     void Update();
 
 private:
+    void ProcessChatMessage(const ParsedMessage& parsed);
+    void ProcessConnectionMessage(const ParsedMessage& parsed);
+    void ProcessReadyStatusMessage(const ParsedMessage& parsed);
+    void ProcessMovementMessage(const ParsedMessage& parsed);
+
     Game* game;
     std::chrono::steady_clock::time_point lastSendTime;
     PlayerManager* playerManager;

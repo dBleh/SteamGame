@@ -13,41 +13,68 @@ ClientNetwork::~ClientNetwork() {}
 
 void ClientNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
     ParsedMessage parsed = MessageHandler::ParseMessage(msg);
-    if (parsed.type == MessageType::Chat) {
-        // Chat UI update if needed
-    } else if (parsed.type == MessageType::Connection) {
+    std::cout << "[CLIENT] Received: " << msg << " from " << sender.ConvertToUint64() << "\n";  // Debug log
+    switch (parsed.type) {
+        case MessageType::Chat:
+            ProcessChatMessage(parsed);
+            break;
+        case MessageType::Connection:
+            ProcessConnectionMessage(parsed);
+            break;
+        case MessageType::ReadyStatus:
+            ProcessReadyStatusMessage(parsed);
+            break;
+        case MessageType::Movement:
+            ProcessMovementMessage(parsed);
+            break;
+        default:
+            std::cout << "[CLIENT] Unknown message type received: " << msg << "\n";
+            break;
+    }
+}
+
+void ClientNetwork::ProcessChatMessage(const ParsedMessage& parsed) {
+    // Chat UI update if needed (currently a no-op)
+    // Placeholder for future chat functionality
+}
+
+void ClientNetwork::ProcessConnectionMessage(const ParsedMessage& parsed) {
+    RemotePlayer rp;
+    rp.playerID = parsed.steamID;
+    rp.isHost = parsed.isHost;
+    rp.player = Player(parsed.position, parsed.color);
+    rp.cubeColor = parsed.color;
+    rp.nameText.setFont(game->GetFont());
+    rp.nameText.setString(parsed.steamName);
+    rp.baseName = parsed.steamName;
+    rp.nameText.setCharacterSize(16);
+    rp.nameText.setFillColor(sf::Color::Black);
+    playerManager->AddOrUpdatePlayer(parsed.steamID, rp);
+    playerManager->SetReadyStatus(parsed.steamID, parsed.isReady);  // Explicitly set initial ready status
+}
+
+void ClientNetwork::ProcessReadyStatusMessage(const ParsedMessage& parsed) {
+    playerManager->SetReadyStatus(parsed.steamID, parsed.isReady);
+}
+
+void ClientNetwork::ProcessMovementMessage(const ParsedMessage& parsed) {
+    std::string localSteamIDStr = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
+    if (parsed.steamID != localSteamIDStr) {
         RemotePlayer rp;
-        rp.playerID = parsed.steamID;
-        rp.isHost = parsed.isHost;
-        rp.player = Player(parsed.position, parsed.color);
-        rp.cubeColor = parsed.color;
+        rp.player = Player(parsed.position, sf::Color::Blue);
+        auto& playersMap = playerManager->GetPlayers();
+        if (playersMap.find(parsed.steamID) != playersMap.end()) {
+            rp.nameText.setString(playersMap[parsed.steamID].nameText.getString());
+            rp.baseName = playersMap[parsed.steamID].baseName;
+        } else {
+            rp.nameText.setString(parsed.steamName.empty() ? "Player_" + parsed.steamID : parsed.steamName);
+            rp.baseName = parsed.steamName.empty() ? "Player_" + parsed.steamID : parsed.steamName;
+        }
         rp.nameText.setFont(game->GetFont());
-        rp.nameText.setString(parsed.steamName);
-        rp.baseName = parsed.steamName;
         rp.nameText.setCharacterSize(16);
         rp.nameText.setFillColor(sf::Color::Black);
         playerManager->AddOrUpdatePlayer(parsed.steamID, rp);
-        playerManager->SetReadyStatus(parsed.steamID, parsed.isReady);  // Explicitly set initial ready status
-    } else if (parsed.type == MessageType::ReadyStatus) {
-        playerManager->SetReadyStatus(parsed.steamID, parsed.isReady);
-    } else if (parsed.type == MessageType::Movement) {
-        if (parsed.steamID != std::to_string(SteamUser()->GetSteamID().ConvertToUint64())) {
-            RemotePlayer rp;
-            rp.player = Player(parsed.position, sf::Color::Blue);
-            auto& playersMap = playerManager->GetPlayers();
-            if (playersMap.find(parsed.steamID) != playersMap.end()) {
-                rp.nameText.setString(playersMap[parsed.steamID].nameText.getString());
-                rp.baseName = playersMap[parsed.steamID].baseName;
-            } else {
-                rp.nameText.setString(parsed.steamName.empty() ? "Player_" + parsed.steamID : parsed.steamName);
-                rp.baseName = parsed.steamName.empty() ? "Player_" + parsed.steamID : parsed.steamName;
-            }
-            rp.nameText.setFont(game->GetFont());
-            rp.nameText.setCharacterSize(16);
-            rp.nameText.setFillColor(sf::Color::Black);
-            playerManager->AddOrUpdatePlayer(parsed.steamID, rp);
-        }
-    } 
+    }
 }
 
 void ClientNetwork::SendMovementUpdate(const sf::Vector2f& position) {
