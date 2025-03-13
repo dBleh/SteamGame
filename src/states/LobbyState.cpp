@@ -103,6 +103,8 @@ void LobbyState::Update(float dt) {
     } else {
         game->GetHUD().updateText("startGame", "");
     }
+    sf::Vector2f localPlayerPos = playerManager->GetLocalPlayer().player.GetPosition();
+    game->GetCamera().setCenter(localPlayerPos);
 }
 
 void LobbyState::Render() {
