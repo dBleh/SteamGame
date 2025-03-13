@@ -49,7 +49,11 @@ void HostNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
     } else if (parsed.type == MessageType::Chat) {
         ProcessChatMessage(parsed.chatMessage, sender);
     } else if (parsed.type == MessageType::ReadyStatus) {
-        playerManager->SetReadyStatus(parsed.steamID, parsed.isReady);
+       // Host.cpp, line 52
+       std::string localSteamIDStr = std::to_string(game->GetLocalSteamID().ConvertToUint64());
+       if (localSteamIDStr != parsed.steamID) {
+           playerManager->SetReadyStatus(parsed.steamID, parsed.isReady);
+       }
         std::string broadcastMsg = MessageHandler::FormatReadyStatusMessage(parsed.steamID, parsed.isReady);
         game->GetNetworkManager().BroadcastMessage(broadcastMsg);
     
