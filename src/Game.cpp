@@ -89,7 +89,6 @@ void Game::Run() {
 
         // Rendering
         if (state) state->Render();
-        window.display();
     }
 }
 
