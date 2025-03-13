@@ -94,16 +94,19 @@ ParsedMessage MessageHandler::ParseMessage(const std::string& msg) {
         dirStream >> dx >> comma >> dy;
         parsed.direction = sf::Vector2f(dx, dy);
         parsed.velocity = std::stof(parts[4]);
-    } else if (parts[0] == "DEATH") {
+    }  else if (parts[0] == "D" && parts.size() >= 3) {
         parsed.type = MessageType::PlayerDeath;
-        parsed.steamID = parts[1];
-        parsed.killerID = parts[2];
-    } 
-    else if (parts[0] == "RESPAWN") {
+        parsed.steamID = parts[1];    // Player who died
+        parsed.killerID = parts[2];   // Player who caused the death
+    } else if (parts[0] == "RS" && parts.size() >= 3) {
         parsed.type = MessageType::PlayerRespawn;
         parsed.steamID = parts[1];
-        parsed.position.x = std::stof(parts[2]);
-        parsed.position.y = std::stof(parts[3]);
+        
+        std::istringstream posStream(parts[2]);
+        float x, y;
+        char comma;
+        posStream >> x >> comma >> y;
+        parsed.position = sf::Vector2f(x, y);
     }
 
     return parsed;
