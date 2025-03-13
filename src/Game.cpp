@@ -81,16 +81,14 @@ void Game::Run() {
                 break;
             case GameState::Lobby:
                 if (!dynamic_cast<LobbyState*>(state.get()))
-                    state = std::make_unique<LobbyState>(this, false);  // Assume client for simplicity; adjust as needed
+                    state = std::make_unique<LobbyState>(this);  // Assume client for simplicity; adjust as needed
                 break;
             default:
                 break;
         }
 
         // Rendering
-        window.clear(sf::Color::White);
         if (state) state->Render();
-        hud.Render(window);  // Render HUD after state (on top)
         window.display();
     }
 }
