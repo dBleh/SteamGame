@@ -64,9 +64,10 @@ void PlayerManager::AddOrUpdatePlayer(const std::string& id, const RemotePlayer&
         players[id].cubeColor = player.cubeColor;
         players[id].isHost = player.isHost;
         players[id].nameText = player.nameText;
+        // Add this line to ensure baseName is updated when nameText changes
+        players[id].baseName = player.nameText.getString().toAnsiString();
     }
 }
-
 void PlayerManager::AddLocalPlayer(const std::string& id, const std::string& name, const sf::Vector2f& position, const sf::Color& color) {
     RemotePlayer rp;
     rp.player = Player(position, color);

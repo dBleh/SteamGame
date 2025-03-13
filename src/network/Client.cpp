@@ -65,21 +65,28 @@ void ClientNetwork::ProcessMovementMessage(const ParsedMessage& parsed) {
         auto existingPlayer = playersMap.find(parsed.steamID);
         
         if (existingPlayer != playersMap.end()) {
-            // Update existing player's position only
+            // Keep existing player but update position
             RemotePlayer rp = existingPlayer->second;
             rp.player.SetPosition(parsed.position);
             playerManager->AddOrUpdatePlayer(parsed.steamID, rp);
         } else {
-            // If player not found, create minimal placeholder
-            // This should be rare as connection message should arrive first
+            // If we don't know this player yet, create a new entry
+            // This normally shouldn't happen as connection messages should come first
             RemotePlayer rp;
             rp.playerID = parsed.steamID;
             rp.player = Player(parsed.position, sf::Color::Blue);
             rp.nameText.setFont(game->GetFont());
             rp.nameText.setCharacterSize(16);
             rp.nameText.setFillColor(sf::Color::Black);
-            rp.nameText.setString("Unknown Player");
-            rp.baseName = "Unknown Player";
+            
+            // Try to get name from Steam
+            CSteamID id = CSteamID(std::stoull(parsed.steamID));
+            const char* name = SteamFriends()->GetFriendPersonaName(id);
+            std::string steamName = name ? name : "Unknown Player";
+            
+            rp.nameText.setString(steamName);
+            rp.baseName = steamName;  // Make sure to set baseName!
+            
             playerManager->AddOrUpdatePlayer(parsed.steamID, rp);
         }
     }
