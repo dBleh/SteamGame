@@ -52,6 +52,17 @@ LobbyState::LobbyState(Game* game)
                 hostNetwork->ProcessMessage(msg, sender);
             }
         );
+        // Explicitly broadcast host's own Connection message
+        std::string hostConnectMsg = MessageHandler::FormatConnectionMessage(
+            myIDStr,
+            myName,
+            sf::Color::Blue,
+            false,  // Initial ready status
+            true    // isHost
+        );
+        game->GetNetworkManager().BroadcastMessage(hostConnectMsg);
+        std::cout << "[HOST] Sent host connection message: " << hostConnectMsg << "\n";
+        hostNetwork->BroadcastFullPlayerList();  // Ensure all players, including host, are synced
     } else {
         clientNetwork = std::make_unique<ClientNetwork>(game, playerManager.get());
         game->GetNetworkManager().SetMessageHandler(
