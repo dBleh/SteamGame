@@ -60,40 +60,51 @@ void Game::Run() {
 
         if (state) state->Update(dt);
 
+        // Only create a new state if we don't have that state already
+        bool stateChanged = false;
         switch (currentState) {
             case GameState::MainMenu:
-                if (!dynamic_cast<MainMenuState*>(state.get()))
+                if (!dynamic_cast<MainMenuState*>(state.get())) {
                     state = std::make_unique<MainMenuState>(this);
+                    stateChanged = true;
+                }
                 break;
             case GameState::LobbyCreation:
-                if (!dynamic_cast<LobbyCreationState*>(state.get()))
+                if (!dynamic_cast<LobbyCreationState*>(state.get())) {
                     state = std::make_unique<LobbyCreationState>(this);
+                    stateChanged = true;
+                }
                 break;
             case GameState::LobbySearch:
-                if (!dynamic_cast<LobbySearchState*>(state.get()))
+                if (!dynamic_cast<LobbySearchState*>(state.get())) {
                     state = std::make_unique<LobbySearchState>(this);
+                    stateChanged = true;
+                }
                 break;
             case GameState::Lobby:
-                if (!dynamic_cast<LobbyState*>(state.get()))
+                if (!dynamic_cast<LobbyState*>(state.get())) {
                     state = std::make_unique<LobbyState>(this);
+                    stateChanged = true;
+                }
+                break;
             case GameState::Playing:
-                if (!dynamic_cast<PlayingState*>(state.get()))
+                if (!dynamic_cast<PlayingState*>(state.get())) {
                     state = std::make_unique<PlayingState>(this);
+                    stateChanged = true;
+                }
                 break;
             default:
                 break;
         }
 
-        
+        // Print debug info if state changed
+        if (stateChanged) {
+            std::cout << "[INFO] Switched to state: " << static_cast<int>(currentState) << std::endl;
+        }
 
         // Render game world with camera
         window.setView(camera);
         if (state) state->Render();
-
-        // Render HUD with appropriate view handling
-        hud.render(window, camera, currentState);
-
-        
     }
 }
 
