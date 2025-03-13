@@ -52,7 +52,7 @@ Player::BulletParams Player::Shoot(const sf::Vector2f& mouseWorldPos) {
         }
 
         // Set bullet start position (offset from player)
-        params.position = playerPos + direction * 50.f;  // 50 units offset
+        params.position = playerPos + sf::Vector2f(25.f, 25.f);  // 50 units offset
         params.direction = direction;
 
         std::cout << "[PLAYER] Bullet fired toward (" << direction.x << ", " << direction.y << ")\n";
