@@ -73,31 +73,17 @@ void HostNetwork::ProcessMovementMessage(const ParsedMessage& parsed, CSteamID s
         std::cout << "[HOST] Invalid movement message from " << sender.ConvertToUint64() << "\n";
         return;
     }
-
-    auto& players = playerManager->GetPlayers();
-    auto it = players.find(parsed.steamID);
-    if (it != players.end()) {
-        // Existing player: update position only
-        it->second.player.SetPosition(parsed.position);
-    } else {
-        // New player (unlikely via movement, but handle it)
-        RemotePlayer rp;
-        rp.playerID = parsed.steamID;
-        rp.player = Player(parsed.position, sf::Color::Blue);
-        rp.cubeColor = sf::Color::Blue;
-        rp.nameText.setFont(game->GetFont());
-        rp.nameText.setString("Player_" + parsed.steamID);  // Default name
-        rp.baseName = "Player_" + parsed.steamID;
-        rp.nameText.setCharacterSize(16);
-        rp.nameText.setFillColor(sf::Color::Black);
-        playerManager->AddOrUpdatePlayer(parsed.steamID, rp);
-        std::cout << "[HOST] Added new player from movement message: " << parsed.steamID << "\n";
-    }
-
-    // Broadcast the movement to all clients
+    RemotePlayer rp;
+    rp.player = Player(parsed.position, sf::Color::Blue);
+    rp.nameText.setFont(game->GetFont());
+    auto& playersMap = playerManager->GetPlayers();
+    rp.nameText.setCharacterSize(16);
+    rp.nameText.setFillColor(sf::Color::Black);
+    playerManager->AddOrUpdatePlayer(parsed.steamID, rp);
     std::string broadcastMsg = MessageHandler::FormatMovementMessage(parsed.steamID, parsed.position);
     game->GetNetworkManager().BroadcastMessage(broadcastMsg);
 }
+
 void HostNetwork::ProcessBulletMessage(const ParsedMessage& parsed) {
     playerManager->AddBullet(parsed.steamID, parsed.position, parsed.direction, parsed.velocity);
     std::string broadcastMsg = MessageHandler::FormatBulletMessage(parsed.steamID, parsed.position, parsed.direction, parsed.velocity);

@@ -13,7 +13,6 @@ ClientNetwork::~ClientNetwork() {}
 
 void ClientNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
     ParsedMessage parsed = MessageHandler::ParseMessage(msg);
-    std::cout << "[CLIENT] Received: " << msg << " from " << sender.ConvertToUint64() << "\n";
     switch (parsed.type) {
         case MessageType::Chat:
             ProcessChatMessage(parsed);
