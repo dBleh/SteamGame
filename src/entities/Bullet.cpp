@@ -2,7 +2,7 @@
 
 Bullet::Bullet(const sf::Vector2f& position, const sf::Vector2f& direction, float speed, const std::string& shooterID)
     : lifetime(5.f), shooterID(shooterID) {
-    shape.setSize(sf::Vector2f(10.f, 4.f));  // Small rectangle for bullet
+    shape.setSize(sf::Vector2f(10.f, 10.f));  // Small rectangle for bullet
     shape.setFillColor(sf::Color::Black);   // Distinct color
     shape.setPosition(position);
     velocity = direction * speed;            // Normalized direction * speed
