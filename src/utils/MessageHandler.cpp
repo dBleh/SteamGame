@@ -53,6 +53,42 @@ std::string MessageHandler::FormatStartGameMessage(const std::string& hostID) {
     return oss.str();
 }
 
+std::string MessageHandler::FormatEnemySpawnMessage(int enemyId, const sf::Vector2f& position) {
+    std::ostringstream oss;
+    oss << "ES|" << enemyId << "|" << position.x << "," << position.y;
+    return oss.str();
+}
+
+std::string MessageHandler::FormatEnemyHitMessage(int enemyId, int damage, bool killed, const std::string& shooterID) {
+    std::ostringstream oss;
+    oss << "EH|" << enemyId << "|" << damage << "|" << (killed ? "1" : "0") << "|" << shooterID;
+    return oss.str();
+}
+
+std::string MessageHandler::FormatEnemyDeathMessage(int enemyId, const std::string& killerID, bool rewardKill) {
+    std::ostringstream oss;
+    oss << "ED|" << enemyId << "|" << killerID << "|" << (rewardKill ? "1" : "0");
+    return oss.str();
+}
+
+std::string MessageHandler::FormatPlayerDamageMessage(const std::string& playerID, int damage, int enemyId) {
+    std::ostringstream oss;
+    oss << "PD|" << playerID << "|" << damage << "|" << enemyId;
+    return oss.str();
+}
+
+std::string MessageHandler::FormatWaveStartMessage(int waveNumber) {
+    std::ostringstream oss;
+    oss << "WS|" << waveNumber;
+    return oss.str();
+}
+
+std::string MessageHandler::FormatWaveCompleteMessage(int waveNumber) {
+    std::ostringstream oss;
+    oss << "WC|" << waveNumber;
+    return oss.str();
+}
+
 ParsedMessage MessageHandler::ParseMessage(const std::string& msg) {
     ParsedMessage parsed{};
     std::vector<std::string> parts;
@@ -120,6 +156,39 @@ ParsedMessage MessageHandler::ParseMessage(const std::string& msg) {
     } else if (parts[0] == "SG" && parts.size() >= 2) {
         parsed.type = MessageType::StartGame;
         parsed.steamID = parts[1];    // Host ID who started the game
+    } 
+    // Enemy-related message parsing
+    else if (parts[0] == "ES" && parts.size() >= 3) {
+        parsed.type = MessageType::EnemySpawn;
+        parsed.enemyId = std::stoi(parts[1]);
+        
+        std::istringstream posStream(parts[2]);
+        float x, y;
+        char comma;
+        posStream >> x >> comma >> y;
+        parsed.position = sf::Vector2f(x, y);
+    } else if (parts[0] == "EH" && parts.size() >= 5) {
+        parsed.type = MessageType::EnemyHit;
+        parsed.enemyId = std::stoi(parts[1]);
+        parsed.damage = std::stoi(parts[2]);
+        parsed.killed = (parts[3] == "1");
+        parsed.steamID = parts[4];  // Shooter ID
+    } else if (parts[0] == "ED" && parts.size() >= 4) {
+        parsed.type = MessageType::EnemyDeath;
+        parsed.enemyId = std::stoi(parts[1]);
+        parsed.killerID = parts[2];
+        parsed.rewardKill = (parts[3] == "1");
+    } else if (parts[0] == "PD" && parts.size() >= 4) {
+        parsed.type = MessageType::PlayerDamage;
+        parsed.steamID = parts[1];   // Player who was damaged
+        parsed.damage = std::stoi(parts[2]);
+        parsed.enemyId = std::stoi(parts[3]);
+    } else if (parts[0] == "WS" && parts.size() >= 2) {
+        parsed.type = MessageType::WaveStart;
+        parsed.waveNumber = std::stoi(parts[1]);
+    } else if (parts[0] == "WC" && parts.size() >= 2) {
+        parsed.type = MessageType::WaveComplete;
+        parsed.waveNumber = std::stoi(parts[1]);
     }
 
     return parsed;

@@ -3,8 +3,6 @@
 
 #include "State.h"
 #include "../entities/Grid.h"
-#include "../network/Host.h"
-#include "../network/Client.h"
 #include <memory>
 #include <algorithm>  // For std::sort
 #include <SFML/Graphics.hpp>
@@ -12,6 +10,9 @@
 class Game;
 class PlayerManager;
 class PlayerRenderer;
+class EnemyManager;
+class HostNetwork;
+class ClientNetwork;
 
 class PlayingState : public State {
 public:
@@ -22,15 +23,21 @@ public:
     void Render() override;
     void ProcessEvent(const sf::Event& event) override;
     bool IsFullyLoaded();
+    
+    // Getter for EnemyManager
+    EnemyManager* GetEnemyManager() { return enemyManager.get(); }
 
 private:
     void AttemptShoot(int mouseX, int mouseY);
     void ProcessEvents(const sf::Event& event);
     void UpdatePlayerStats();
     void UpdateLeaderboard();
-
+    void UpdateWaveInfo();
+    void StartFirstWave();
+    
     std::unique_ptr<PlayerManager> playerManager;
     std::unique_ptr<PlayerRenderer> playerRenderer;
+    std::unique_ptr<EnemyManager> enemyManager;
     std::unique_ptr<HostNetwork> hostNetwork;
     std::unique_ptr<ClientNetwork> clientNetwork;
     

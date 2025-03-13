@@ -8,8 +8,10 @@
 #include "../entities/Player.h"
 #include "../utils/SteamHelpers.h"
 #include "../entities/PlayerManager.h"
-
+#include "../entities/EnemyManager.h"
 class Game;
+class EnemyManager;
+class PlayingState;
 
 class HostNetwork {
 public:
@@ -18,17 +20,25 @@ public:
     void ProcessMessage(const std::string& msg, CSteamID sender);
     std::unordered_map<std::string, RemotePlayer>& GetRemotePlayers() { return remotePlayers; }
     void BroadcastFullPlayerList();
-    
     void BroadcastPlayersList();
     void ProcessChatMessage(const std::string& message, CSteamID sender);
     void Update(); // Time-based
     void ProcessBulletMessage(const ParsedMessage& parsed);
-    void ProcessPlayerDeathMessage(const ParsedMessage& parsed);
-void ProcessPlayerRespawnMessage(const ParsedMessage& parsed);
+    
 private:
+    // Message handlers
     void ProcessConnectionMessage(const ParsedMessage& parsed);
     void ProcessMovementMessage(const ParsedMessage& parsed, CSteamID sender);
     void ProcessReadyStatusMessage(const ParsedMessage& parsed);
+    void ProcessPlayerDeathMessage(const ParsedMessage& parsed);
+    void ProcessPlayerRespawnMessage(const ParsedMessage& parsed);
+    
+    // Enemy-related message handlers
+    void ProcessEnemyHitMessage(const ParsedMessage& parsed);
+    void ProcessEnemyDeathMessage(const ParsedMessage& parsed);
+    void ProcessWaveStartMessage(const ParsedMessage& parsed);
+    void ProcessWaveCompleteMessage(const ParsedMessage& parsed);
+
     Game* game;
     PlayerManager* playerManager;
     std::unordered_map<std::string, RemotePlayer> remotePlayers;

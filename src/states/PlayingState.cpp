@@ -1,6 +1,9 @@
 #include "PlayingState.h"
 #include "../Game.h"
 #include "../entities/PlayerManager.h"
+#include "../network/Host.h"
+#include "../network/Client.h"
+#include "../entities/EnemyManager.h"
 #include "../render/PlayerRenderer.h"
 #include <Steam/steam_api.h>
 #include <iostream>

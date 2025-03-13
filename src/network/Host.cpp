@@ -2,6 +2,7 @@
 #include "../Game.h"
 #include "../network/NetworkManager.h"
 #include "../utils/MessageHandler.h"
+#include "../states/PlayingState.h"
 #include <iostream>
 
 HostNetwork::HostNetwork(Game* game, PlayerManager* manager)
@@ -62,6 +63,19 @@ void HostNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
             if (game->GetCurrentState() != GameState::Playing) {
                 game->SetCurrentState(GameState::Playing);
             }
+            break;
+        // Enemy-related messages
+        case MessageType::EnemyHit:
+            ProcessEnemyHitMessage(parsed);
+            break;
+        case MessageType::EnemyDeath:
+            ProcessEnemyDeathMessage(parsed);
+            break;
+        case MessageType::WaveStart:
+            ProcessWaveStartMessage(parsed);
+            break;
+        case MessageType::WaveComplete:
+            ProcessWaveCompleteMessage(parsed);
             break;
         default:
             std::cout << "[HOST] Unknown message type received: " << msg << "\n";
@@ -228,3 +242,97 @@ void HostNetwork::ProcessPlayerRespawnMessage(const ParsedMessage& parsed) {
     std::cout << "[HOST] Broadcasting player respawn: " << playerID << " at position " << respawnPos.x << "," << respawnPos.y << "\n";
 }
 
+
+void HostNetwork::ProcessEnemyHitMessage(const ParsedMessage& parsed) {
+    // Access the PlayingState's EnemyManager
+    PlayingState* playingState = GetPlayingState(game);
+    if (playingState) {
+        EnemyManager* enemyManager = playingState->GetEnemyManager();
+        if (enemyManager) {
+            // Process the enemy hit
+            enemyManager->HandleEnemyHit(parsed.enemyId, parsed.damage, parsed.killed);
+            
+            // Broadcast the hit to all clients
+            std::string hitMsg = MessageHandler::FormatEnemyHitMessage(
+                parsed.enemyId, parsed.damage, parsed.killed, parsed.steamID);
+            game->GetNetworkManager().BroadcastMessage(hitMsg);
+            
+            // If enemy was killed, handle rewards
+            if (parsed.killed) {
+                // Find the player that shot the enemy
+                auto& players = playerManager->GetPlayers();
+                auto it = players.find(parsed.steamID);
+                if (it != players.end()) {
+                    // Award kill and money
+                    playerManager->IncrementPlayerKills(parsed.steamID);
+                    it->second.money += 10; // Award money for kill
+                    
+                    // Broadcast enemy death message
+                    std::string deathMsg = MessageHandler::FormatEnemyDeathMessage(
+                        parsed.enemyId, parsed.steamID, true);
+                    game->GetNetworkManager().BroadcastMessage(deathMsg);
+                }
+            }
+        }
+    }
+}
+
+void HostNetwork::ProcessEnemyDeathMessage(const ParsedMessage& parsed) {
+    // Get the PlayingState and its EnemyManager
+    if (game->GetCurrentState() == GameState::Playing) {
+        PlayingState* playingState = dynamic_cast<PlayingState*>(game->GetState());
+        if (playingState) {
+            EnemyManager* enemyManager = playingState->GetEnemyManager();
+            if (enemyManager) {
+                // Handle enemy death
+                enemyManager->RemoveEnemy(parsed.enemyId);
+                
+                // If this was a rewarded kill, increment player stats
+                if (parsed.rewardKill && !parsed.killerID.empty()) {
+                    auto& players = playerManager->GetPlayers();
+                    auto it = players.find(parsed.killerID);
+                    if (it != players.end()) {
+                        playerManager->IncrementPlayerKills(parsed.killerID);
+                        it->second.money += 10; // Award money for kill
+                    }
+                }
+                
+                // Broadcast to ensure all clients know
+                std::string deathMsg = MessageHandler::FormatEnemyDeathMessage(
+                    parsed.enemyId, parsed.killerID, parsed.rewardKill);
+                game->GetNetworkManager().BroadcastMessage(deathMsg);
+            }
+        }
+    }
+}
+
+void HostNetwork::ProcessWaveStartMessage(const ParsedMessage& parsed) {
+    // Get the PlayingState and its EnemyManager
+    if (game->GetCurrentState() == GameState::Playing) {
+        PlayingState* playingState = dynamic_cast<PlayingState*>(game->GetState());
+        if (playingState) {
+            EnemyManager* enemyManager = playingState->GetEnemyManager();
+            if (enemyManager) {
+                // Start the wave if we're the host
+                if (SteamUser()->GetSteamID() == SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID())) {
+                    enemyManager->StartNextWave();
+                    
+                    // Broadcast wave start to ensure all clients know
+                    std::string waveMsg = MessageHandler::FormatWaveStartMessage(
+                        enemyManager->GetCurrentWave());
+                    game->GetNetworkManager().BroadcastMessage(waveMsg);
+                }
+            }
+        }
+    }
+}
+
+void HostNetwork::ProcessWaveCompleteMessage(const ParsedMessage& parsed) {
+    // Wave complete messages are primarily for clients
+    // But we'll process it anyway for consistency
+    std::cout << "[HOST] Wave " << parsed.waveNumber << " complete\n";
+    
+    // Broadcast to ensure all clients know
+    std::string waveMsg = MessageHandler::FormatWaveCompleteMessage(parsed.waveNumber);
+    game->GetNetworkManager().BroadcastMessage(waveMsg);
+}

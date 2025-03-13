@@ -31,7 +31,7 @@ public:
     CSteamID GetLobbyID() const { return networkManager->GetCurrentLobbyID(); }
     sf::Font& GetFont() { return font; }
     sf::View& GetCamera() { return camera; }  // Access to game world camera
-
+    State* GetState() { return state.get(); }
 private:
     void ProcessEvents(sf::Event& event);
     void AdjustViewToWindow();

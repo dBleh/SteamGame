@@ -9,6 +9,13 @@
 #include <unordered_map>
 #include <string>
 #include <chrono>
+
+// Forward declarations
+class Game;
+class PlayingState;
+class EnemyManager;
+class HostNetwork;
+class ClientNetwork;
 /**
  * @brief Hash functor for CSteamID.
  *
@@ -19,6 +26,7 @@ struct CSteamIDHash {
         return std::hash<uint64_t>{}(id.ConvertToUint64());
     }
 };
+
 struct RemotePlayer {
     std::string playerID;
     Player player;
@@ -41,5 +49,9 @@ struct RemotePlayer {
     int kills = 0;
     int money = 0;
 };
+
+// This is declared in the header but defined in a separate cpp file
+// to prevent multiple definition errors
+PlayingState* GetPlayingState(Game* game);
 
 #endif // STEAM_HELPERS_H

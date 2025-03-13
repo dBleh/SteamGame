@@ -12,7 +12,13 @@ enum class MessageType {
     Bullet,
     PlayerDeath,
     PlayerRespawn,
-    StartGame
+    StartGame,
+    EnemySpawn,
+    EnemyHit,
+    EnemyDeath,
+    PlayerDamage,
+    WaveStart,
+    WaveComplete
 };
 
 struct ParsedMessage {
@@ -27,6 +33,13 @@ struct ParsedMessage {
     bool isHost;
     sf::Vector2f direction;  // For Bullet
     float velocity;          // For Bullet
+    
+    // Enemy-related fields
+    int enemyId;             // ID of the enemy
+    int damage;              // Damage amount
+    bool killed;             // Was enemy killed
+    int waveNumber;          // Wave number
+    bool rewardKill;         // Should killer be rewarded
 };
 
 class MessageHandler {
@@ -39,6 +52,15 @@ public:
     static std::string FormatPlayerDeathMessage(const std::string& playerID, const std::string& killerID);
     static std::string FormatPlayerRespawnMessage(const std::string& playerID, const sf::Vector2f& position);
     static std::string FormatStartGameMessage(const std::string& hostID);
+    
+    // Enemy-related messages
+    static std::string FormatEnemySpawnMessage(int enemyId, const sf::Vector2f& position);
+    static std::string FormatEnemyHitMessage(int enemyId, int damage, bool killed, const std::string& shooterID);
+    static std::string FormatEnemyDeathMessage(int enemyId, const std::string& killerID, bool rewardKill);
+    static std::string FormatPlayerDamageMessage(const std::string& playerID, int damage, int enemyId);
+    static std::string FormatWaveStartMessage(int waveNumber);
+    static std::string FormatWaveCompleteMessage(int waveNumber);
+    
     static ParsedMessage ParseMessage(const std::string& msg);
 };
 

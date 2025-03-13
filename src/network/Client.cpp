@@ -2,6 +2,7 @@
 #include "../Game.h"
 #include "../network/NetworkManager.h"
 #include "../utils/MessageHandler.h"
+#include "../states/PlayingState.h"
 #include <iostream>
 
 ClientNetwork::ClientNetwork(Game* game, PlayerManager* manager)
@@ -40,6 +41,37 @@ void ClientNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
             if (game->GetCurrentState() != GameState::Playing) {
                 game->SetCurrentState(GameState::Playing);
             }
+            break;
+        // Enemy-related messages
+        case MessageType::EnemySpawn:
+            ProcessEnemySpawnMessage(parsed);
+            break;
+        case MessageType::EnemyHit:
+            ProcessEnemyHitMessage(parsed);
+            break;
+        case MessageType::EnemyDeath:
+            ProcessEnemyDeathMessage(parsed);
+            break;
+        case MessageType::PlayerDamage:
+            // Handle player taking damage from enemy
+            {
+                std::string localSteamIDStr = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
+                if (parsed.steamID == localSteamIDStr) {
+                    // This damage is for the local player
+                    auto& players = playerManager->GetPlayers();
+                    auto it = players.find(localSteamIDStr);
+                    if (it != players.end()) {
+                        it->second.player.TakeDamage(parsed.damage);
+                        std::cout << "[CLIENT] Local player took " << parsed.damage << " damage from enemy " << parsed.enemyId << "\n";
+                    }
+                }
+            }
+            break;
+        case MessageType::WaveStart:
+            ProcessWaveStartMessage(parsed);
+            break;
+        case MessageType::WaveComplete:
+            ProcessWaveCompleteMessage(parsed);
             break;
         default:
             std::cout << "[CLIENT] Unknown message type received: " << msg << "\n";
@@ -197,3 +229,82 @@ void ClientNetwork::ProcessPlayerRespawnMessage(const ParsedMessage& parsed) {
     }
 }
 
+void ClientNetwork::ProcessEnemySpawnMessage(const ParsedMessage& parsed) {
+    // Access the PlayingState's EnemyManager through the Game
+    PlayingState* playingState = GetPlayingState(game);
+    if (playingState) {
+        EnemyManager* enemyManager = playingState->GetEnemyManager();
+        if (enemyManager) {
+            // Spawn the enemy
+            enemyManager->AddEnemy(parsed.enemyId, parsed.position);
+            std::cout << "[CLIENT] Spawned enemy " << parsed.enemyId << " at position (" 
+                      << parsed.position.x << ", " << parsed.position.y << ")\n";
+        }
+    }
+}
+
+void ClientNetwork::ProcessEnemyHitMessage(const ParsedMessage& parsed) {
+    // Access the PlayingState's EnemyManager
+    PlayingState* playingState = GetPlayingState(game);
+    if (playingState) {
+        EnemyManager* enemyManager = playingState->GetEnemyManager();
+        if (enemyManager) {
+            // Process the enemy hit
+            enemyManager->HandleEnemyHit(parsed.enemyId, parsed.damage, parsed.killed);
+            std::cout << "[CLIENT] Enemy " << parsed.enemyId << " took " << parsed.damage 
+                      << " damage from " << parsed.steamID << (parsed.killed ? " and was killed" : "") << "\n";
+        }
+    }
+}
+
+void ClientNetwork::ProcessEnemyDeathMessage(const ParsedMessage& parsed) {
+    // Get the PlayingState and its EnemyManager
+    if (game->GetCurrentState() == GameState::Playing) {
+        PlayingState* playingState = dynamic_cast<PlayingState*>(game->GetState());
+        if (playingState) {
+            EnemyManager* enemyManager = playingState->GetEnemyManager();
+            if (enemyManager) {
+                // Handle enemy death
+                enemyManager->RemoveEnemy(parsed.enemyId);
+                
+                // If this was a rewarded kill for the local player, update UI
+                std::string localSteamIDStr = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
+                if (parsed.rewardKill && parsed.killerID == localSteamIDStr) {
+                    std::cout << "[CLIENT] Local player killed enemy " << parsed.enemyId << "\n";
+                    // UI updates will happen through PlayerManager
+                }
+            }
+        }
+    }
+}
+
+void ClientNetwork::ProcessWaveStartMessage(const ParsedMessage& parsed) {
+    // Get the PlayingState and its EnemyManager
+    if (game->GetCurrentState() == GameState::Playing) {
+        PlayingState* playingState = dynamic_cast<PlayingState*>(game->GetState());
+        if (playingState) {
+            EnemyManager* enemyManager = playingState->GetEnemyManager();
+            if (enemyManager) {
+                // As a client, we don't spawn enemies, but we update our wave number
+                if (parsed.waveNumber > enemyManager->GetCurrentWave()) {
+                    std::cout << "[CLIENT] Starting wave " << parsed.waveNumber << "\n";
+                    // The enemies will be spawned via EnemySpawn messages from the host
+                }
+            }
+        }
+    }
+}
+
+void ClientNetwork::ProcessWaveCompleteMessage(const ParsedMessage& parsed) {
+    // Get the PlayingState and its EnemyManager
+    if (game->GetCurrentState() == GameState::Playing) {
+        PlayingState* playingState = dynamic_cast<PlayingState*>(game->GetState());
+        if (playingState) {
+            EnemyManager* enemyManager = playingState->GetEnemyManager();
+            if (enemyManager) {
+                std::cout << "[CLIENT] Wave " << parsed.waveNumber << " complete\n";
+                // Client-side wave completion logic (if any)
+            }
+        }
+    }
+}
