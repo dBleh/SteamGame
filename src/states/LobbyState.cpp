@@ -193,12 +193,16 @@ void LobbyState::ProcessEvents(const sf::Event& event) {
             if (startGameBounds.contains(static_cast<float>(mousePos.x), static_cast<float>(mousePos.y))) {
                 // Check if all players are ready
                 if (AllPlayersReady()) {
-                    // Broadcast "start game" message
-                    std::string startMsg = "START_GAME";
-                    game->GetNetworkManager().BroadcastMessage(startMsg);
-                    
-                    // Switch to playing state
-                    game->SetCurrentState(GameState::Playing);
+                    // Only proceed if we're not already transitioning
+                    if (game->GetCurrentState() == GameState::Lobby) {
+                        std::cout << "[LOBBY] Host clicked start game, sending message and transitioning" << std::endl;
+                        // Broadcast "start game" message
+                        std::string startMsg = MessageHandler::FormatStartGameMessage(std::to_string(myID.ConvertToUint64()));
+                        game->GetNetworkManager().BroadcastMessage(startMsg);
+                        
+                        // Switch to playing state
+                        game->SetCurrentState(GameState::Playing);
+                    }
                 }
             }
         }

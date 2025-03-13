@@ -36,7 +36,10 @@ void ClientNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
             ProcessPlayerRespawnMessage(parsed);
             break;
         case MessageType::StartGame:
-            game->SetCurrentState(GameState::Playing);
+            std::cout << "[CLIENT] Received start game message, changing to Playing state" << std::endl;
+            if (game->GetCurrentState() != GameState::Playing) {
+                game->SetCurrentState(GameState::Playing);
+            }
             break;
         default:
             std::cout << "[CLIENT] Unknown message type received: " << msg << "\n";
