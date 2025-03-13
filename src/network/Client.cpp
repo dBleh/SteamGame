@@ -61,18 +61,29 @@ void ClientNetwork::ProcessReadyStatusMessage(const ParsedMessage& parsed) {
 void ClientNetwork::ProcessMovementMessage(const ParsedMessage& parsed) {
     std::string localSteamIDStr = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
     if (parsed.steamID != localSteamIDStr) {
-        RemotePlayer rp;
-        rp.player = Player(parsed.position, sf::Color::Blue);
         auto& playersMap = playerManager->GetPlayers();
-        rp.nameText.setFont(game->GetFont());
-        rp.nameText.setCharacterSize(16);
-        rp.nameText.setFillColor(sf::Color::Black);
-        rp.nameText.setString(parsed.steamName);
-     
-        playerManager->AddOrUpdatePlayer(parsed.steamID, rp);
+        auto existingPlayer = playersMap.find(parsed.steamID);
+        
+        if (existingPlayer != playersMap.end()) {
+            // Update existing player's position only
+            RemotePlayer rp = existingPlayer->second;
+            rp.player.SetPosition(parsed.position);
+            playerManager->AddOrUpdatePlayer(parsed.steamID, rp);
+        } else {
+            // If player not found, create minimal placeholder
+            // This should be rare as connection message should arrive first
+            RemotePlayer rp;
+            rp.playerID = parsed.steamID;
+            rp.player = Player(parsed.position, sf::Color::Blue);
+            rp.nameText.setFont(game->GetFont());
+            rp.nameText.setCharacterSize(16);
+            rp.nameText.setFillColor(sf::Color::Black);
+            rp.nameText.setString("Unknown Player");
+            rp.baseName = "Unknown Player";
+            playerManager->AddOrUpdatePlayer(parsed.steamID, rp);
+        }
     }
 }
-
 void ClientNetwork::ProcessBulletMessage(const ParsedMessage& parsed) {
     playerManager->AddBullet(parsed.steamID, parsed.position, parsed.direction, parsed.velocity);
 }
