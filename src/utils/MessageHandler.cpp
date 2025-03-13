@@ -35,13 +35,15 @@ std::string MessageHandler::FormatBulletMessage(const std::string& shooterID, co
     return oss.str();
 }
 std::string MessageHandler::FormatPlayerDeathMessage(const std::string& playerID, const std::string& killerID) {
-    return "DEATH:" + playerID + ":" + killerID;
+    std::ostringstream oss;
+    oss << "D|" << playerID << "|" << killerID;
+    return oss.str();
 }
 
 std::string MessageHandler::FormatPlayerRespawnMessage(const std::string& playerID, const sf::Vector2f& position) {
-    return "RESPAWN:" + playerID + ":" + 
-           std::to_string(position.x) + ":" + 
-           std::to_string(position.y);
+    std::ostringstream oss;
+    oss << "RS|" << playerID << "|" << position.x << "," << position.y;
+    return oss.str();
 }
 ParsedMessage MessageHandler::ParseMessage(const std::string& msg) {
     ParsedMessage parsed{};
