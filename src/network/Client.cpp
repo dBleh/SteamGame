@@ -68,8 +68,8 @@ void ClientNetwork::ProcessMovementMessage(const ParsedMessage& parsed) {
         rp.nameText.setFont(game->GetFont());
         rp.nameText.setCharacterSize(16);
         rp.nameText.setFillColor(sf::Color::Black);
-        rp.nameText.setString(parsed.steamName);
-        std::cout << "Client cannot process name",parsed.steamName, "\n";
+        rp.nameText.setString(parsed.steamID);
+        std::cout << "Client cannot process name",parsed.steamID, "\n";
         playerManager->AddOrUpdatePlayer(parsed.steamID, rp);
     }
 }
