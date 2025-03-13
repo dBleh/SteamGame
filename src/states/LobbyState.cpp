@@ -113,6 +113,15 @@ void LobbyState::Update(float dt) {
         if (clientNetwork) clientNetwork->Update();
         if (hostNetwork) hostNetwork->Update();
     }
+    if (mouseHeld) {
+        shootTimer -= dt;
+        if (shootTimer <= 0.f) {
+            // Get current mouse position
+            sf::Vector2i mousePos = sf::Mouse::getPosition(game->GetWindow());
+            AttemptShoot(mousePos.x, mousePos.y);
+            shootTimer = 0.1f; // Shoot every 0.1 seconds when holding down
+        }
+    }
     if (SteamUser()->GetSteamID() == SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID())) {
         game->GetHUD().updateText("startGame", "Press S to Start Game (Host Only)");
     } else {
@@ -158,28 +167,11 @@ void LobbyState::ProcessEvents(const sf::Event& event) {
         }
         
     } else if (event.type == sf::Event::MouseButtonPressed && event.mouseButton.button == sf::Mouse::Left) {
-        std::string myID = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
-        
-        // Get mouse position in screen coordinates and convert to world coordinates
-        sf::Vector2i mouseScreenPos(event.mouseButton.x, event.mouseButton.y);
-        sf::Vector2f mouseWorldPos = game->GetWindow().mapPixelToCoords(mouseScreenPos, game->GetCamera());
-
-        // Trigger shooting and get bullet parameters
-        Player::BulletParams params = playerManager->GetLocalPlayer().player.Shoot(mouseWorldPos);
-        
-        // Only create and send bullet if shooting was successful (not on cooldown)
-        if (params.direction != sf::Vector2f(0.f, 0.f)) {  // Check if direction is valid
-            float bulletSpeed = 400.f;
-            playerManager->AddBullet(myID, params.position, params.direction, bulletSpeed);
-            
-            // Send bullet message
-            std::string msg = MessageHandler::FormatBulletMessage(myID, params.position, params.direction, bulletSpeed);
-            if (hostNetwork) {
-                game->GetNetworkManager().BroadcastMessage(msg);
-            } else if (clientNetwork) {
-                game->GetNetworkManager().SendMessage(clientNetwork->GetHostID(), msg);
-            }
-        }
+        mouseHeld = true;
+        AttemptShoot(event.mouseButton.x, event.mouseButton.y);
+    } 
+    else if (event.type == sf::Event::MouseButtonReleased && event.mouseButton.button == sf::Mouse::Left) {
+        mouseHeld = false;
     }
 }
 void LobbyState::ProcessEvent(const sf::Event& event) {
@@ -202,4 +194,37 @@ bool LobbyState::IsFullyLoaded() {
         game->GetWindow().isOpen() &&
         playerLoaded
     );
+}
+
+void LobbyState::AttemptShoot(int mouseX, int mouseY) {
+    std::string myID = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
+    
+    // Don't shoot if player is dead
+    if (playerManager->GetLocalPlayer().player.IsDead()) {
+        return;
+    }
+    
+    // Get mouse position in screen coordinates and convert to world coordinates
+    sf::Vector2i mouseScreenPos(mouseX, mouseY);
+    sf::Vector2f mouseWorldPos = game->GetWindow().mapPixelToCoords(mouseScreenPos, game->GetCamera());
+    
+    // Trigger shooting and get bullet parameters
+    Player::BulletParams params = playerManager->GetLocalPlayer().player.Shoot(mouseWorldPos);
+    
+    // Only create and send bullet if shooting was successful (not on cooldown)
+    if (params.direction != sf::Vector2f(0.f, 0.f)) {  // Check if direction is valid
+        float bulletSpeed = 400.f;
+        
+        // As the local player, we always add our own bullets locally
+        playerManager->AddBullet(myID, params.position, params.direction, bulletSpeed);
+        
+        // Send bullet message to others
+        std::string msg = MessageHandler::FormatBulletMessage(myID, params.position, params.direction, bulletSpeed);
+        
+        if (hostNetwork) {
+            game->GetNetworkManager().BroadcastMessage(msg);
+        } else if (clientNetwork) {
+            game->GetNetworkManager().SendMessage(clientNetwork->GetHostID(), msg);
+        }
+    }
 }

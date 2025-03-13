@@ -113,9 +113,21 @@ void HostNetwork::ProcessMovementMessage(const ParsedMessage& parsed, CSteamID s
 }
 
 void HostNetwork::ProcessBulletMessage(const ParsedMessage& parsed) {
-    playerManager->AddBullet(parsed.steamID, parsed.position, parsed.direction, parsed.velocity);
-    std::string broadcastMsg = MessageHandler::FormatBulletMessage(parsed.steamID, parsed.position, parsed.direction, parsed.velocity);
+    // Get local player ID
+    std::string localSteamIDStr = std::to_string(game->GetLocalSteamID().ConvertToUint64());
+    
+    // If we're the host, we need to broadcast this bullet to all other clients
+    std::string broadcastMsg = MessageHandler::FormatBulletMessage(
+        parsed.steamID, parsed.position, parsed.direction, parsed.velocity);
     game->GetNetworkManager().BroadcastMessage(broadcastMsg);
+    
+    // Skip adding bullets that were fired by the local player
+    // (we already added them when we shot)
+    if (parsed.steamID == localSteamIDStr) {
+        return;
+    }
+    
+    playerManager->AddBullet(parsed.steamID, parsed.position, parsed.direction, parsed.velocity);
 }
 
 void HostNetwork::ProcessChatMessage(const std::string& message, CSteamID sender) {

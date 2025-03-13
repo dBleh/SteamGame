@@ -25,6 +25,9 @@ public:
     void ProcessEvent(const sf::Event& event) override;
     
 private:
+    bool mouseHeld = false;
+    float shootTimer = 0.f;
+    void AttemptShoot(int mouseX, int mouseY);
     void UpdateRemotePlayers();
     void BroadcastPlayersList();
     void ProcessEvents(const sf::Event& event);

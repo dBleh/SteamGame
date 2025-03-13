@@ -98,9 +98,12 @@ void ClientNetwork::ProcessMovementMessage(const ParsedMessage& parsed) {
     }
 }
 void ClientNetwork::ProcessBulletMessage(const ParsedMessage& parsed) {
-    if (parsed.position.x == 0 && parsed.position.y == 0 && 
-        parsed.direction.x == 0 && parsed.direction.y == 0) {
-        std::cout << "[CLIENT] Received invalid bullet data" << std::endl;
+    // Get local player ID
+    std::string localSteamIDStr = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
+    
+    // Skip adding bullets that were fired by the local player
+    // (we already added them when we shot)
+    if (parsed.steamID == localSteamIDStr) {
         return;
     }
     
