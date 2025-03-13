@@ -54,15 +54,15 @@ void Game::Run() {
         networkManager->ReceiveMessages();
 
         float dt = clock.restart().asSeconds();
-
+       
         sf::Event event;
         while (window.pollEvent(event)) {
             ProcessEvents(event);
             if (state) state->ProcessEvent(event);
+            
+                       
         }
-
         if (state) state->Update(dt);
-
         switch (currentState) {
             case GameState::MainMenu:
                 if (!dynamic_cast<MainMenuState*>(state.get()))
@@ -98,6 +98,9 @@ void Game::ProcessEvents(sf::Event& event) {
     }
     if (event.type == sf::Event::Resized) {
         AdjustViewToWindow();
+    }
+    if (event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::R) {
+        std::cout <<"Triggering ready state" << std::endl;
     }
 }
 

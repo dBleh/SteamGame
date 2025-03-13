@@ -115,13 +115,13 @@ void LobbyState::Render() {
 }
 
 
-void LobbyState::ProcessEvent(const sf::Event& event) {
+void  LobbyState::ProcessEvents(const sf::Event& event){
     if (event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::R) {
         std::string myID = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
         bool currentReady = playerManager->GetLocalPlayer().isReady;
         bool newReady = !currentReady;
         playerManager->SetReadyStatus(myID, newReady);
-        
+        std::cout << "ready status set to ", newReady , "\n";
         std::string msg = MessageHandler::FormatReadyStatusMessage(myID, newReady);
         if (hostNetwork) {
             game->GetNetworkManager().BroadcastMessage(msg);
@@ -129,6 +129,9 @@ void LobbyState::ProcessEvent(const sf::Event& event) {
             clientNetwork->SendReadyStatus(newReady);
         }
     }
+}
+void LobbyState::ProcessEvent(const sf::Event& event) {
+    ProcessEvents(event);
 }
 
 

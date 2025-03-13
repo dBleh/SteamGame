@@ -19,7 +19,7 @@ struct ParsedMessage {
     sf::Color color;
     sf::Vector2f position;
     std::string chatMessage;
-    bool isReady; // New field for ReadyStatus
+    bool isReady;
     bool isHost = false;
 };
 
