@@ -78,7 +78,7 @@ void PlayerManager::AddLocalPlayer(const std::string& id, const std::string& nam
 }
 
 void PlayerManager::SetReadyStatus(const std::string& id, bool ready) {
-    std:cout << "ready status set " << std::endl;
+    std::cout << "ready status set " << std::endl;
     if (players.find(id) != players.end()) {
         players[id].isReady = ready;
         std::cout << "[PM] Set ready status for " << id << " to " << (ready ? "true" : "false") << "\n";
