@@ -26,8 +26,8 @@ void ClientNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
         rp.baseName = parsed.steamName;
         rp.nameText.setCharacterSize(16);
         rp.nameText.setFillColor(sf::Color::Black);
-        rp.isReady = parsed.isReady;
         playerManager->AddOrUpdatePlayer(parsed.steamID, rp);
+        playerManager->SetReadyStatus(parsed.steamID, parsed.isReady);  // Explicitly set initial ready status
     } else if (parsed.type == MessageType::ReadyStatus) {
         playerManager->SetReadyStatus(parsed.steamID, parsed.isReady);
     } else if (parsed.type == MessageType::Movement) {

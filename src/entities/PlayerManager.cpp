@@ -35,31 +35,31 @@ void PlayerManager::Update() {
 }
 
 void PlayerManager::AddOrUpdatePlayer(const std::string& id, const RemotePlayer& player) {
-        if (id.empty()) {
-            std::cout << "[ERROR] Attempted to add player with empty ID!\n";
-            return;
-        }
-        auto now = std::chrono::steady_clock::now();
-        if (players.find(id) == players.end()) {
-            // New player
-            players[id] = player;
-            players[id].playerID = id;
-            players[id].previousPosition = player.player.GetPosition();
-            players[id].targetPosition = player.player.GetPosition();
-            players[id].lastUpdateTime = now;
-            players[id].baseName = player.baseName.empty() ? player.nameText.getString().toAnsiString() : player.baseName;
-        } else if (id != localPlayerID) {
-            // Update existing player
-            players[id].previousPosition = players[id].player.GetPosition();
-            players[id].targetPosition = player.player.GetPosition();
-            players[id].lastUpdateTime = now;
-            players[id].player = player.player;
-            players[id].cubeColor = player.cubeColor;
-            players[id].isReady = player.isReady;
-            players[id].isHost = player.isHost;
-            players[id].nameText = player.nameText;
-        }
+    if (id.empty()) {
+        std::cout << "[ERROR] Attempted to add player with empty ID!\n";
+        return;
     }
+    auto now = std::chrono::steady_clock::now();
+    if (players.find(id) == players.end()) {
+        // New player
+        players[id] = player;
+        players[id].playerID = id;
+        players[id].previousPosition = player.player.GetPosition();
+        players[id].targetPosition = player.player.GetPosition();
+        players[id].lastUpdateTime = now;
+        players[id].baseName = player.baseName.empty() ? player.nameText.getString().toAnsiString() : player.baseName;
+    } else if (id != localPlayerID) {
+        // Update existing player, but preserve isReady unless explicitly changed
+        players[id].previousPosition = players[id].player.GetPosition();
+        players[id].targetPosition = player.player.GetPosition();
+        players[id].lastUpdateTime = now;
+        players[id].player = player.player;
+        players[id].cubeColor = player.cubeColor;
+        players[id].isHost = player.isHost;
+        players[id].nameText = player.nameText;
+        // Only update isReady if it’s a new player or explicitly intended (e.g., via SetReadyStatus)
+    }
+}
 
 void PlayerManager::AddLocalPlayer(const std::string& id, const std::string& name, const sf::Vector2f& position, const sf::Color& color) {
     RemotePlayer rp;

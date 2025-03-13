@@ -24,6 +24,7 @@ void HostNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
         rp.nameText.setCharacterSize(16);
         rp.nameText.setFillColor(sf::Color::Black);
         playerManager->AddOrUpdatePlayer(parsed.steamID, rp);
+        playerManager->SetReadyStatus(parsed.steamID, parsed.isReady);  // Explicitly set initial ready status
         BroadcastFullPlayerList();
     } else if (parsed.type == MessageType::Movement) {
         if (parsed.steamID.empty()) {
