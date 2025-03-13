@@ -49,7 +49,6 @@ void ClientNetwork::ProcessConnectionMessage(const ParsedMessage& parsed) {
     rp.nameText.setFont(game->GetFont());
     rp.nameText.setString(parsed.steamName);
     rp.baseName = parsed.steamName;
-    std::cout << "Name recieved " << parsed.steamName << "\n";
     rp.nameText.setCharacterSize(16);
     rp.nameText.setFillColor(sf::Color::Black);
     playerManager->AddOrUpdatePlayer(parsed.steamID, rp);
@@ -63,9 +62,25 @@ void ClientNetwork::ProcessReadyStatusMessage(const ParsedMessage& parsed) {
 void ClientNetwork::ProcessMovementMessage(const ParsedMessage& parsed) {
     std::string localSteamIDStr = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
     if (parsed.steamID != localSteamIDStr) {
-        RemotePlayer rp;
-        rp.player = Player(parsed.position, sf::Color::Blue);
-        playerManager->AddOrUpdatePlayer(parsed.steamID, rp);
+        auto& players = playerManager->GetPlayers();
+        auto it = players.find(parsed.steamID);
+        if (it != players.end()) {
+            // Existing player: update position only
+            it->second.player.SetPosition(parsed.position);
+        } else {
+            // New player (unlikely via movement message, but handle it)
+            RemotePlayer rp;
+            rp.playerID = parsed.steamID;
+            rp.player = Player(parsed.position, sf::Color::Blue);
+            rp.cubeColor = sf::Color::Blue;
+            rp.nameText.setFont(game->GetFont());
+            rp.nameText.setString("Player_" + parsed.steamID);  // Default name if no connection message yet
+            rp.baseName = "Player_" + parsed.steamID;
+            rp.nameText.setCharacterSize(16);
+            rp.nameText.setFillColor(sf::Color::Black);
+            playerManager->AddOrUpdatePlayer(parsed.steamID, rp);
+            std::cout << "[CLIENT] Added new player from movement message: " << parsed.steamID << "\n";
+        }
     }
 }
 
