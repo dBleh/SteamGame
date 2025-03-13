@@ -16,7 +16,7 @@ class PlayerRenderer;
 class PlayingState : public State {
 public:
     PlayingState(Game* game);
-    ~PlayingState() = default;
+    ~PlayingState();  // Added destructor for cleanup
 
     void Update(float dt) override;
     void Render() override;
@@ -47,6 +47,10 @@ private:
     sf::CircleShape cursorCenterDot;
     sf::RectangleShape cursorHorizontalLine;
     sf::RectangleShape cursorVerticalLine;
+    
+    // Cursor locking
+    bool cursorLocked;
+    sf::Vector2i windowCenter;
     
     // Leaderboard
     bool showLeaderboard;

@@ -2,12 +2,19 @@
 
 Bullet::Bullet(const sf::Vector2f& position, const sf::Vector2f& direction, float speed, const std::string& shooterID)
     : lifetime(5.f), shooterID(shooterID) {
-    shape.setSize(sf::Vector2f(10.f, 10.f));  // Small rectangle for bullet
-    shape.setFillColor(sf::Color::Black);   // Distinct color
+    // Create smaller bullet for better precision
+    shape.setSize(sf::Vector2f(8.f, 8.f));  
+    shape.setFillColor(sf::Color::Black);
+    
+    // Center the bullet shape (important for accurate collision)
+    shape.setOrigin(4.f, 4.f);
+    
+    // Set the bullet position 
     shape.setPosition(position);
-    velocity = direction * speed;            // Normalized direction * speed
+    
+    // Set the bullet velocity
+    velocity = direction * speed;
 }
-
 void Bullet::Update(float dt) {
     shape.move(velocity * dt);
     lifetime -= dt;

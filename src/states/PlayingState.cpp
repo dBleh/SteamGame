@@ -14,7 +14,8 @@ PlayingState::PlayingState(Game* game)
       showGrid(true),
       mouseHeld(false),
       shootTimer(0.f),
-      showLeaderboard(false) {
+      showLeaderboard(false),
+      cursorLocked(true) {
     
     std::cout << "[DEBUG] PlayingState constructor start\n";
     
@@ -31,42 +32,52 @@ PlayingState::PlayingState(Game* game)
     game->GetHUD().addElement("playerStats", "HP: 100 | Kills: 0 | Money: 0", 18, 
         sf::Vector2f(10.f, 10.f), 
         GameState::Playing, HUD::RenderMode::ScreenSpace, false);
-    game->GetHUD().updateBaseColor("playerStats", sf::Color::White);
+    game->GetHUD().updateBaseColor("playerStats", sf::Color::Black);
     
     // Leaderboard initialization (initially hidden)
-    game->GetHUD().addElement("leaderboard", "Leaderboard", 24, 
+    game->GetHUD().addElement("leaderboard", "", 24, 
         sf::Vector2f(SCREEN_WIDTH * 0.5f, SCREEN_HEIGHT * 0.3f), 
         GameState::Playing, HUD::RenderMode::ScreenSpace, false);
-    game->GetHUD().updateBaseColor("leaderboard", sf::Color::White);
+    game->GetHUD().updateBaseColor("leaderboard", sf::Color::Black);
     
     // Custom cursor setup
     // Create crosshair shapes
-    float cursorSize = 16.f;
+    float cursorSize = 8.f;  // Reduced size
     
     // Outer circle
     cursorOuterCircle.setRadius(cursorSize);
     cursorOuterCircle.setFillColor(sf::Color::Transparent);
     cursorOuterCircle.setOutlineColor(sf::Color::Black);
-    cursorOuterCircle.setOutlineThickness(2.f);
+    cursorOuterCircle.setOutlineThickness(1.5f);
     cursorOuterCircle.setOrigin(cursorSize, cursorSize);
     
     // Center dot
-    cursorCenterDot.setRadius(2.f);
+    cursorCenterDot.setRadius(1.5f);
     cursorCenterDot.setFillColor(sf::Color::Black);
-    cursorCenterDot.setOrigin(2.f, 2.f);
+    cursorCenterDot.setOrigin(1.5f, 1.5f);
     
     // Horizontal line
-    cursorHorizontalLine.setSize(sf::Vector2f(cursorSize, 2.f));
+    cursorHorizontalLine.setSize(sf::Vector2f(cursorSize*2, 1.5f));
     cursorHorizontalLine.setFillColor(sf::Color::Black);
-    cursorHorizontalLine.setOrigin(cursorSize/2.f, 1.f);
+    cursorHorizontalLine.setOrigin(cursorSize, 0.75f);
     
     // Vertical line
-    cursorVerticalLine.setSize(sf::Vector2f(2.f, cursorSize));
+    cursorVerticalLine.setSize(sf::Vector2f(1.5f, cursorSize*2));
     cursorVerticalLine.setFillColor(sf::Color::Black);
-    cursorVerticalLine.setOrigin(1.f, cursorSize/2.f);
+    cursorVerticalLine.setOrigin(0.75f, cursorSize);
     
-    // Hide system cursor
+    // Hide system cursor and lock it to window
     game->GetWindow().setMouseCursorVisible(false);
+    game->GetWindow().setMouseCursorGrabbed(true);
+    
+    // Calculate window center
+    windowCenter = sf::Vector2i(
+        static_cast<int>(game->GetWindow().getSize().x / 2),
+        static_cast<int>(game->GetWindow().getSize().y / 2)
+    );
+    
+    // Center the mouse at start
+    sf::Mouse::setPosition(windowCenter, game->GetWindow());
 
     // PlayerManager setup - Similar to LobbyState
     CSteamID myID = SteamUser()->GetSteamID();
@@ -120,6 +131,18 @@ PlayingState::PlayingState(Game* game)
         );
         clientNetwork->SendConnectionMessage();
     }
+    
+    // Add a cursor lock toggle hint
+    game->GetHUD().addElement("cursorLockHint", "Press L to toggle cursor lock", 20, 
+        sf::Vector2f(SCREEN_WIDTH - 150.f, SCREEN_HEIGHT - 60.f), 
+        GameState::Playing, HUD::RenderMode::ScreenSpace, true);
+    game->GetHUD().updateBaseColor("cursorLockHint", sf::Color::Black);
+}
+
+PlayingState::~PlayingState() {
+    // Make sure to release the cursor when leaving this state
+    game->GetWindow().setMouseCursorGrabbed(false);
+    game->GetWindow().setMouseCursorVisible(true);
 }
 
 void PlayingState::Update(float dt) {
@@ -143,7 +166,7 @@ void PlayingState::Update(float dt) {
         if (mouseHeld) {
             shootTimer -= dt;
             if (shootTimer <= 0.f) {
-                // Get current mouse position
+                // Get current mouse position in window coordinates
                 sf::Vector2i mousePos = sf::Mouse::getPosition(game->GetWindow());
                 AttemptShoot(mousePos.x, mousePos.y);
                 shootTimer = 0.1f; // Shoot every 0.1 seconds when holding down
@@ -158,21 +181,60 @@ void PlayingState::Update(float dt) {
             UpdateLeaderboard();
         }
         
-        // Update cursor position
+        // Get mouse position in window coordinates
         sf::Vector2i mousePos = sf::Mouse::getPosition(game->GetWindow());
-        sf::Vector2f cursorPos = static_cast<sf::Vector2f>(mousePos);
-        cursorOuterCircle.setPosition(cursorPos);
-        cursorCenterDot.setPosition(cursorPos);
-        cursorHorizontalLine.setPosition(cursorPos);
-        cursorVerticalLine.setPosition(cursorPos);
+        
+        // If cursor is locked, keep it within window bounds
+        if (cursorLocked) {
+            sf::Vector2u windowSize = game->GetWindow().getSize();
+            bool needsRepositioning = false;
+            
+            if (mousePos.x < 0) {
+                mousePos.x = 0;
+                needsRepositioning = true;
+            }
+            else if (mousePos.x >= static_cast<int>(windowSize.x)) {
+                mousePos.x = static_cast<int>(windowSize.x) - 1;
+                needsRepositioning = true;
+            }
+            
+            if (mousePos.y < 0) {
+                mousePos.y = 0;
+                needsRepositioning = true;
+            }
+            else if (mousePos.y >= static_cast<int>(windowSize.y)) {
+                mousePos.y = static_cast<int>(windowSize.y) - 1;
+                needsRepositioning = true;
+            }
+            
+            if (needsRepositioning) {
+                sf::Mouse::setPosition(mousePos, game->GetWindow());
+            }
+        }
+        
+        // Important: Get the current mouse position in screen space (for HUD rendering)
+        sf::Vector2f screenCursorPos = static_cast<sf::Vector2f>(mousePos);
+        
+        // Update cursor position for rendering
+        // Convert from screen space to the current view space
+        sf::Vector2f viewCursorPos = game->GetWindow().mapPixelToCoords(mousePos, game->GetWindow().getDefaultView());
+        
+        cursorOuterCircle.setPosition(viewCursorPos);
+        cursorCenterDot.setPosition(viewCursorPos);
+        cursorHorizontalLine.setPosition(viewCursorPos);
+        cursorVerticalLine.setPosition(viewCursorPos);
     }
     
+    // Update camera position to follow player
     sf::Vector2f localPlayerPos = playerManager->GetLocalPlayer().player.GetPosition();
     game->GetCamera().setCenter(localPlayerPos);
 }
 
 void PlayingState::Render() {
     game->GetWindow().clear(sf::Color::White);
+    
+    // Set the game camera view for world rendering
+    game->GetWindow().setView(game->GetCamera());
     
     if (showGrid) {
         grid.render(game->GetWindow(), game->GetCamera());
@@ -182,14 +244,28 @@ void PlayingState::Render() {
         playerRenderer->Render(game->GetWindow()); // Renders all players
     }
     
+    // Switch to default view for HUD rendering
+    game->GetWindow().setView(game->GetWindow().getDefaultView());
+    
+    // Render HUD elements
     game->GetHUD().render(game->GetWindow(), game->GetWindow().getDefaultView(), game->GetCurrentState());
     
-    // Render custom cursor
+    // Render custom cursor (on top of everything, in default view)
     if (playerLoaded) {
+        // Get current mouse position for accurate cursor rendering
+        sf::Vector2i mousePos = sf::Mouse::getPosition(game->GetWindow());
+        sf::Vector2f cursorPos = static_cast<sf::Vector2f>(mousePos);
+        
+        // Update cursor positions before drawing
+        cursorOuterCircle.setPosition(cursorPos);
+        cursorCenterDot.setPosition(cursorPos);
+        cursorHorizontalLine.setPosition(cursorPos);
+        cursorVerticalLine.setPosition(cursorPos);
+        
         game->GetWindow().draw(cursorOuterCircle);
-        game->GetWindow().draw(cursorCenterDot);
         game->GetWindow().draw(cursorHorizontalLine);
         game->GetWindow().draw(cursorVerticalLine);
+        game->GetWindow().draw(cursorCenterDot);
     }
     
     game->GetWindow().display();
@@ -206,6 +282,20 @@ void PlayingState::ProcessEvents(const sf::Event& event) {
             showLeaderboard = true;
             UpdateLeaderboard();
         }
+        else if (event.key.code == sf::Keyboard::L) {
+            // Toggle cursor lock
+            cursorLocked = !cursorLocked;
+            game->GetWindow().setMouseCursorGrabbed(cursorLocked);
+            std::cout << "Cursor lock " << (cursorLocked ? "enabled" : "disabled") << std::endl;
+        }
+        else if (event.key.code == sf::Keyboard::Escape) {
+            // Potential use: release cursor lock with Escape
+            if (cursorLocked) {
+                cursorLocked = false;
+                game->GetWindow().setMouseCursorGrabbed(false);
+                std::cout << "Cursor lock disabled with Escape" << std::endl;
+            }
+        }
     } 
     else if (event.type == sf::Event::KeyReleased) {
         if (event.key.code == sf::Keyboard::Tab) {
@@ -220,6 +310,18 @@ void PlayingState::ProcessEvents(const sf::Event& event) {
     } 
     else if (event.type == sf::Event::MouseButtonReleased && event.mouseButton.button == sf::Mouse::Left) {
         mouseHeld = false;
+    }
+    else if (event.type == sf::Event::LostFocus) {
+        // Release mouse if window loses focus
+        if (cursorLocked) {
+            game->GetWindow().setMouseCursorGrabbed(false);
+        }
+    }
+    else if (event.type == sf::Event::GainedFocus) {
+        // Re-grab mouse if window regains focus and cursor lock is enabled
+        if (cursorLocked) {
+            game->GetWindow().setMouseCursorGrabbed(true);
+        }
     }
 }
 

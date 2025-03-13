@@ -41,9 +41,11 @@ Player::BulletParams Player::Shoot(const sf::Vector2f& mouseWorldPos) {
     if (shootCooldown <= 0.f) {
         shootCooldown = SHOOT_COOLDOWN_DURATION;
 
-        // Calculate direction from player to mouse
-        sf::Vector2f playerPos = GetPosition();
-        sf::Vector2f direction = mouseWorldPos - playerPos;
+        // Calculate the player's center position rather than top-left
+        sf::Vector2f playerCenter = GetPosition() + sf::Vector2f(shape.getSize().x / 2.f, shape.getSize().y / 2.f);
+        
+        // Calculate direction from player center to mouse
+        sf::Vector2f direction = mouseWorldPos - playerCenter;
         float length = std::sqrt(direction.x * direction.x + direction.y * direction.y);
         if (length > 0.f) {
             direction /= length;  // Normalize direction
@@ -51,13 +53,15 @@ Player::BulletParams Player::Shoot(const sf::Vector2f& mouseWorldPos) {
             direction = sf::Vector2f(1.f, 0.f);  // Default right if mouse is on player
         }
 
-        // Set bullet start position (offset from player)
-        params.position = playerPos + sf::Vector2f(25.f, 25.f);  // 50 units offset
+        // Set bullet start position at player center
+        params.position = playerCenter;
         params.direction = direction;
 
-        std::cout << "[PLAYER] Bullet fired toward (" << direction.x << ", " << direction.y << ")\n";
+        std::cout << "[PLAYER] Bullet fired from center (" << playerCenter.x << ", " << playerCenter.y 
+                 << ") toward (" << mouseWorldPos.x << ", " << mouseWorldPos.y 
+                 << ") with direction (" << direction.x << ", " << direction.y << ")\n";
     } else {
-        // If on cooldown, return default/invalid params (won’t be used)
+        // If on cooldown, return default/invalid params (won't be used)
         params.position = GetPosition();
         params.direction = sf::Vector2f(0.f, 0.f);
     }
