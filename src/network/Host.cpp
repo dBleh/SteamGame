@@ -57,10 +57,7 @@ void HostNetwork::ProcessMovementMessage(const ParsedMessage& parsed, CSteamID s
     rp.player = Player(parsed.position, sf::Color::Blue);
     rp.nameText.setFont(game->GetFont());
     auto& playersMap = playerManager->GetPlayers();
-    if ( !rp.nameText) {
-        rp.nameText.setString("Player_" + parsed.steamID);
-        rp.baseName = "Player_" + parsed.steamID; // Fallback
-    }
+   
     rp.nameText.setCharacterSize(16);
     rp.nameText.setFillColor(sf::Color::Black);
     playerManager->AddOrUpdatePlayer(parsed.steamID, rp);
@@ -106,10 +103,6 @@ void HostNetwork::BroadcastPlayersList() {
     }
 }
 
-void HostNetwork::ProcessChatMessage(const std::string& message, CSteamID sender) {
-    std::string msg = MessageHandler::FormatChatMessage(std::to_string(sender.ConvertToUint64()), message);
-    game->GetNetworkManager().BroadcastMessage(msg);
-}
 
 void HostNetwork::Update() {
     auto now = std::chrono::steady_clock::now();
