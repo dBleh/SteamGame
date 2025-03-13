@@ -6,7 +6,7 @@ Player::Player()
     : movementSpeed(200.f), shootCooldown(0.f) {
     shape.setSize(sf::Vector2f(50.f, 50.f));
     shape.setFillColor(sf::Color::Blue);
-    shape.setPosition(50.f, 50.f);
+    shape.setPosition(100.f, 100.f);
 }
 
 Player::Player(const sf::Vector2f& startPosition, const sf::Color& color)
@@ -52,7 +52,7 @@ Player::BulletParams Player::Shoot(const sf::Vector2f& mouseWorldPos) {
         }
 
         // Set bullet start position (offset from player)
-        params.position = playerPos + sf::Vector2f(25.f, 25.f);  // 50 units offset
+        params.position = playerPos + direction * 50.f;  // 50 units offset
         params.direction = direction;
 
         std::cout << "[PLAYER] Bullet fired toward (" << direction.x << ", " << direction.y << ")\n";
