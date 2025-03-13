@@ -12,7 +12,7 @@ HostNetwork::~HostNetwork() {}
 
 void HostNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
     ParsedMessage parsed = MessageHandler::ParseMessage(msg);
-    std::cout << "[HOST] Received: " << msg << " from " << sender.ConvertToUint64() << "\n";  // Debug log
+    std::cout << "[HOST] Received: " << msg << " from " << sender.ConvertToUint64() << "\n";
     switch (parsed.type) {
         case MessageType::Connection:
             ProcessConnectionMessage(parsed);
@@ -25,6 +25,9 @@ void HostNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
             break;
         case MessageType::ReadyStatus:
             ProcessReadyStatusMessage(parsed);
+            break;
+        case MessageType::Bullet:
+            ProcessBulletMessage(parsed);
             break;
         default:
             std::cout << "[HOST] Unknown message type received: " << msg << "\n";
@@ -62,6 +65,11 @@ void HostNetwork::ProcessMovementMessage(const ParsedMessage& parsed, CSteamID s
     rp.nameText.setFillColor(sf::Color::Black);
     playerManager->AddOrUpdatePlayer(parsed.steamID, rp);
     std::string broadcastMsg = MessageHandler::FormatMovementMessage(parsed.steamID, parsed.position);
+    game->GetNetworkManager().BroadcastMessage(broadcastMsg);
+}
+void HostNetwork::ProcessBulletMessage(const ParsedMessage& parsed) {
+    playerManager->AddBullet(parsed.steamID, parsed.position, parsed.direction, parsed.velocity);
+    std::string broadcastMsg = MessageHandler::FormatBulletMessage(parsed.steamID, parsed.position, parsed.direction, parsed.velocity);
     game->GetNetworkManager().BroadcastMessage(broadcastMsg);
 }
 

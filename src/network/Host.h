@@ -22,7 +22,7 @@ public:
     void BroadcastPlayersList();
     void ProcessChatMessage(const std::string& message, CSteamID sender);
     void Update(); // Time-based
-
+    void ProcessBulletMessage(const ParsedMessage& parsed);
 private:
     void ProcessConnectionMessage(const ParsedMessage& parsed);
     void ProcessMovementMessage(const ParsedMessage& parsed, CSteamID sender);

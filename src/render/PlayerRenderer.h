@@ -3,6 +3,7 @@
 
 #include <SFML/Graphics.hpp>
 #include <iostream>
+#include "../entities/PlayerManager.h"  // Update to include Bullet;
 class PlayerManager; // Forward declaration
 
 class PlayerRenderer {

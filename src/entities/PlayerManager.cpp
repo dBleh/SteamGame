@@ -18,7 +18,7 @@ void PlayerManager::Update() {
         RemotePlayer& rp = pair.second;
         sf::Vector2f pos;
         if (pair.first == localPlayerID) {
-            rp.player.Update(dt);
+            rp.player.Update(dt);  // Local player updates with input
             pos = rp.player.GetPosition();
         } else {
             float elapsed = std::chrono::duration<float>(now - rp.lastUpdateTime).count();
@@ -27,10 +27,19 @@ void PlayerManager::Update() {
             pos = rp.previousPosition + (rp.targetPosition - rp.previousPosition) * t;
             rp.player.SetPosition(pos);
         }
-        // Rebuild nameText from baseName + status
         std::string status = rp.isReady ? " ✓" : " X";
         rp.nameText.setString(rp.baseName + status);
         rp.nameText.setPosition(pos.x, pos.y - 20.f);
+    }
+
+    // Update bullets and remove expired ones
+    for (auto it = bullets.begin(); it != bullets.end();) {
+        it->Update(dt);
+        if (it->IsExpired()) {
+            it = bullets.erase(it);
+        } else {
+            ++it;
+        }
     }
 }
 
@@ -41,7 +50,6 @@ void PlayerManager::AddOrUpdatePlayer(const std::string& id, const RemotePlayer&
     }
     auto now = std::chrono::steady_clock::now();
     if (players.find(id) == players.end()) {
-        // New player
         players[id] = player;
         players[id].playerID = id;
         players[id].previousPosition = player.player.GetPosition();
@@ -49,7 +57,6 @@ void PlayerManager::AddOrUpdatePlayer(const std::string& id, const RemotePlayer&
         players[id].lastUpdateTime = now;
         players[id].baseName = player.baseName.empty() ? player.nameText.getString().toAnsiString() : player.baseName;
     } else if (id != localPlayerID) {
-        // Update existing player, but preserve isReady unless explicitly changed
         players[id].previousPosition = players[id].player.GetPosition();
         players[id].targetPosition = player.player.GetPosition();
         players[id].lastUpdateTime = now;
@@ -57,7 +64,6 @@ void PlayerManager::AddOrUpdatePlayer(const std::string& id, const RemotePlayer&
         players[id].cubeColor = player.cubeColor;
         players[id].isHost = player.isHost;
         players[id].nameText = player.nameText;
-        // Only update isReady if it’s a new player or explicitly intended (e.g., via SetReadyStatus)
     }
 }
 
@@ -66,7 +72,7 @@ void PlayerManager::AddLocalPlayer(const std::string& id, const std::string& nam
     rp.player = Player(position, color);
     rp.nameText.setFont(game->GetFont());
     rp.nameText.setString(name);
-    rp.baseName = name; // Set baseName here
+    rp.baseName = name;
     rp.nameText.setCharacterSize(16);
     rp.nameText.setFillColor(sf::Color::Black);
     rp.previousPosition = position;
@@ -87,6 +93,11 @@ void PlayerManager::SetReadyStatus(const std::string& id, bool ready) {
     } else {
         std::cout << "[PM] Player " << id << " not found for ready status update\n";
     }
+}
+
+void PlayerManager::AddBullet(const std::string& shooterID, const sf::Vector2f& position, const sf::Vector2f& direction, float velocity) {
+    bullets.emplace_back(position, direction, velocity, shooterID);
+    std::cout << "[PM] Added bullet from " << shooterID << " at " << position.x << "," << position.y << "\n";
 }
 
 RemotePlayer& PlayerManager::GetLocalPlayer() {

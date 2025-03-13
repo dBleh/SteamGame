@@ -22,7 +22,8 @@ public:
     void SendConnectionMessage();
     void SendReadyStatus(bool isReady);
     void Update();
-
+    void ProcessBulletMessage(const ParsedMessage& parsed);  // Add to private section
+    CSteamID GetHostID() const { return hostID; }
 private:
     void ProcessChatMessage(const ParsedMessage& parsed);
     void ProcessConnectionMessage(const ParsedMessage& parsed);

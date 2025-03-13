@@ -116,10 +116,8 @@ void LobbyState::Render() {
 
 
 void LobbyState::ProcessEvents(const sf::Event& event) {
-    if (event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::R) {
-        auto now = std::chrono::steady_clock::now();
-        float elapsed = std::chrono::duration<float>(now - lastReadyToggle).count();
-        if (elapsed >= READY_TOGGLE_COOLDOWN) {
+    if (event.type == sf::Event::KeyPressed) {
+        if (event.key.code == sf::Keyboard::R) {
             std::string myID = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
             bool currentReady = playerManager->GetLocalPlayer().isReady;
             bool newReady = !currentReady;
@@ -131,7 +129,18 @@ void LobbyState::ProcessEvents(const sf::Event& event) {
             } else if (clientNetwork) {
                 clientNetwork->SendReadyStatus(newReady);
             }
-            lastReadyToggle = now;
+        } else if (event.key.code == sf::Keyboard::Space) {
+            std::string myID = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
+            sf::Vector2f position = playerManager->GetLocalPlayer().player.GetPosition();
+            sf::Vector2f direction(1.f, 0.f);  // Default right
+            float bulletSpeed = 400.f;
+            playerManager->AddBullet(myID, position + sf::Vector2f(50.f, 0.f), direction, bulletSpeed);
+            std::string msg = MessageHandler::FormatBulletMessage(myID, position + sf::Vector2f(50.f, 0.f), direction, bulletSpeed);
+            if (hostNetwork) {
+                game->GetNetworkManager().BroadcastMessage(msg);
+            } else if (clientNetwork) {
+                game->GetNetworkManager().SendMessage(SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID()), msg);  // Use hostID from ClientNetwork
+            }
         }
     }
 }

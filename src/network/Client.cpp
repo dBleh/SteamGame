@@ -13,7 +13,7 @@ ClientNetwork::~ClientNetwork() {}
 
 void ClientNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
     ParsedMessage parsed = MessageHandler::ParseMessage(msg);
-    std::cout << "[CLIENT] Received: " << msg << " from " << sender.ConvertToUint64() << "\n";  // Debug log
+    std::cout << "[CLIENT] Received: " << msg << " from " << sender.ConvertToUint64() << "\n";
     switch (parsed.type) {
         case MessageType::Chat:
             ProcessChatMessage(parsed);
@@ -27,6 +27,9 @@ void ClientNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
         case MessageType::Movement:
             ProcessMovementMessage(parsed);
             break;
+        case MessageType::Bullet:
+            ProcessBulletMessage(parsed);
+            break;
         default:
             std::cout << "[CLIENT] Unknown message type received: " << msg << "\n";
             break;
@@ -34,7 +37,6 @@ void ClientNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
 }
 
 void ClientNetwork::ProcessChatMessage(const ParsedMessage& parsed) {
-    // Chat UI update if needed (currently a no-op)
     // Placeholder for future chat functionality
 }
 
@@ -50,7 +52,7 @@ void ClientNetwork::ProcessConnectionMessage(const ParsedMessage& parsed) {
     rp.nameText.setCharacterSize(16);
     rp.nameText.setFillColor(sf::Color::Black);
     playerManager->AddOrUpdatePlayer(parsed.steamID, rp);
-    playerManager->SetReadyStatus(parsed.steamID, parsed.isReady);  // Explicitly set initial ready status
+    playerManager->SetReadyStatus(parsed.steamID, parsed.isReady);
 }
 
 void ClientNetwork::ProcessReadyStatusMessage(const ParsedMessage& parsed) {
@@ -75,6 +77,10 @@ void ClientNetwork::ProcessMovementMessage(const ParsedMessage& parsed) {
         rp.nameText.setFillColor(sf::Color::Black);
         playerManager->AddOrUpdatePlayer(parsed.steamID, rp);
     }
+}
+
+void ClientNetwork::ProcessBulletMessage(const ParsedMessage& parsed) {
+    playerManager->AddBullet(parsed.steamID, parsed.position, parsed.direction, parsed.velocity);
 }
 
 void ClientNetwork::SendMovementUpdate(const sf::Vector2f& position) {
@@ -109,7 +115,7 @@ void ClientNetwork::SendReadyStatus(bool isReady) {
         std::cout << "[CLIENT] Sent ready status: " << (isReady ? "true" : "false") << " (" << msg << ")\n";
     } else {
         std::cout << "[CLIENT] Failed to send ready status: " << msg << " - will retry\n";
-        pendingReadyMessage = msg; // Queue for retry
+        pendingReadyMessage = msg;
     }
 }
 
@@ -134,3 +140,4 @@ void ClientNetwork::Update() {
         }
     }
 }
+

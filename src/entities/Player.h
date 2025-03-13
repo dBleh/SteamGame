@@ -3,7 +3,7 @@
 
 #include <SFML/Graphics.hpp>
 #include <steam/steam_api.h>  // Optional: if you want to associate a SteamID with the player
-
+#include <iostream>
 class Player {
 public:
     // Default constructor with preset starting position, color, and movement speed.
@@ -24,15 +24,18 @@ public:
     // Add a const overload for read-only access (used when drawing, etc.).
     const sf::RectangleShape& GetShape() const;
 
-    
+    void Shoot();
     // Set the movement speed.
     void SetSpeed(float speed);
     // Get the movement speed.
     float GetSpeed() const;
+    float shootCooldown;    // Time remaining until next shot allowed
+    static constexpr float SHOOT_COOLDOWN_DURATION = 0.5f;
 
 private:
     sf::RectangleShape shape;  // Represents the player as a cube.
     float movementSpeed;       // Movement speed in pixels per second.
+    
 };
 
 #endif // PLAYER_H

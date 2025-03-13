@@ -19,8 +19,7 @@ Player::Player(const sf::Vector2f& startPosition, const sf::Color& color)
 }
 
 // Update method: moves the player based on keyboard input (WASD).
-void Player::Update(float dt)
-{
+void Player::Update(float dt) {
     sf::Vector2f movement(0.f, 0.f);
     
     if (sf::Keyboard::isKeyPressed(sf::Keyboard::W))
@@ -33,6 +32,22 @@ void Player::Update(float dt)
         movement.x += movementSpeed * dt;
     
     shape.move(movement);
+
+    // Update shoot cooldown
+    if (shootCooldown > 0.f) {
+        shootCooldown -= dt;
+    }
+
+    // Shoot on Space key press
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::Space) && shootCooldown <= 0.f) {
+        Shoot();
+    }
+}
+
+void Player::Shoot() {
+    shootCooldown = SHOOT_COOLDOWN_DURATION;
+    std::cout << "[PLAYER] Bullet fired!\n";
+    // Note: Bullet creation and networking will be handled in PlayerManager/LobbyState
 }
 
 sf::Vector2f Player::GetPosition() const
