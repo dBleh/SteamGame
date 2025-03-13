@@ -43,13 +43,20 @@ void PlayerManager::Update() {
         rp.nameText.setPosition(pos.x, pos.y - 20.f);
     }
 
-    // Update bullets and remove expired ones
-    for (auto it = bullets.begin(); it != bullets.end();) {
-        it->Update(dt);
-        if (it->IsExpired()) {
-            it = bullets.erase(it);
-        } else {
-            ++it;
+    std::vector<size_t> bulletsToRemove;
+    
+    for (size_t i = 0; i < bullets.size(); i++) {
+        bullets[i].Update(dt);
+        if (bullets[i].IsExpired()) {
+            bulletsToRemove.push_back(i);
+        }
+    }
+    
+    // Remove expired bullets safely (from back to front)
+    for (int i = bulletsToRemove.size() - 1; i >= 0; i--) {
+        size_t idx = bulletsToRemove[i];
+        if (idx < bullets.size()) {
+            bullets.erase(bullets.begin() + idx);
         }
     }
     CheckBulletCollisions();
@@ -113,6 +120,12 @@ void PlayerManager::AddBullet(const std::string& shooterID, const sf::Vector2f& 
 }
 
 RemotePlayer& PlayerManager::GetLocalPlayer() {
+    if (players.find(localPlayerID) == players.end()) {
+        std::cerr << "[ERROR] Local player not found!" << std::endl;
+        // Create a temporary player to avoid crash
+        static RemotePlayer defaultPlayer;
+        return defaultPlayer;
+    }
     return players[localPlayerID];
 }
 
@@ -136,10 +149,7 @@ void PlayerManager::CheckBulletCollisions() {
             if (remotePlayer.player.IsDead()) continue;
             
             // Check if bullet belongs to this player (can't shoot yourself)
-            if (bulletIt->BelongsToPlayer(playerID)) {
-                ++bulletIt;
-                continue;
-            }
+            if (bulletIt->BelongsToPlayer(playerID)) continue;
             
             if (bulletIt->CheckCollision(remotePlayer.player.GetShape(), playerID)) {
                 remotePlayer.player.TakeDamage(25); // 4 hits to kill

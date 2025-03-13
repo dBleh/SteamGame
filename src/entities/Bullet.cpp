@@ -25,9 +25,13 @@ bool Bullet::CheckCollision(const sf::RectangleShape& playerShape, const std::st
     // Don't collide with the shooter
     if (shooterID == playerID) return false;
     
-    return shape.getGlobalBounds().intersects(playerShape.getGlobalBounds());
+    bool collision = shape.getGlobalBounds().intersects(playerShape.getGlobalBounds());
+    if (collision) {
+        std::cout << "[BULLET] Collision detected between bullet from " << shooterID 
+                 << " and player " << playerID << std::endl;
+    }
+    return collision;
 }
-
 bool Bullet::BelongsToPlayer(const std::string& playerID) const {
     return shooterID == playerID;
 }

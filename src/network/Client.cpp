@@ -98,6 +98,12 @@ void ClientNetwork::ProcessMovementMessage(const ParsedMessage& parsed) {
     }
 }
 void ClientNetwork::ProcessBulletMessage(const ParsedMessage& parsed) {
+    if (parsed.position.x == 0 && parsed.position.y == 0 && 
+        parsed.direction.x == 0 && parsed.direction.y == 0) {
+        std::cout << "[CLIENT] Received invalid bullet data" << std::endl;
+        return;
+    }
+    
     playerManager->AddBullet(parsed.steamID, parsed.position, parsed.direction, parsed.velocity);
 }
 
