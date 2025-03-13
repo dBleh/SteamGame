@@ -19,20 +19,27 @@ struct CSteamIDHash {
         return std::hash<uint64_t>{}(id.ConvertToUint64());
     }
 };
-
 struct RemotePlayer {
-    std::string playerID;         // Steam ID as string
-    bool isHost = false;          // Host status
-    Player player;               // Player entity with position and color
-    sf::Text nameText;           // Display name
+    std::string playerID;
+    Player player;
+    sf::Text nameText;
+    std::string baseName;
+    sf::Color cubeColor;
+    bool isReady = false;
+    bool isHost = false;
+    
+    // Interpolation values for network movement
     sf::Vector2f previousPosition;
     sf::Vector2f targetPosition;
     std::chrono::steady_clock::time_point lastUpdateTime;
     float interpDuration = 0.1f;
-    bool isReady = false;
-    std::string baseName;
-    sf::Color cubeColor;         // Store the player's cube color
+    
+    // Respawn timer
     float respawnTimer = 0.0f;
+    
+    // Player stats
+    int kills = 0;
+    int money = 0;
 };
 
 #endif // STEAM_HELPERS_H

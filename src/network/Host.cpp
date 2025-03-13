@@ -194,7 +194,12 @@ void HostNetwork::ProcessPlayerDeathMessage(const ParsedMessage& parsed) {
     if (players.find(playerID) != players.end()) {
         RemotePlayer& player = players[playerID];
         player.player.TakeDamage(100); // Kill the player
-        player.respawnTimer = 1.0f;    // Set respawn timer
+        player.respawnTimer = 3.0f;    // Set respawn timer
+    }
+    
+    // Increment the killer's kill count
+    if (players.find(killerID) != players.end()) {
+        playerManager->IncrementPlayerKills(killerID);
     }
     
     // Broadcast the death message to all clients
@@ -222,3 +227,4 @@ void HostNetwork::ProcessPlayerRespawnMessage(const ParsedMessage& parsed) {
     
     std::cout << "[HOST] Broadcasting player respawn: " << playerID << " at position " << respawnPos.x << "," << respawnPos.y << "\n";
 }
+

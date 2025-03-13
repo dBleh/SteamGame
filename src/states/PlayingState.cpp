@@ -13,7 +13,8 @@ PlayingState::PlayingState(Game* game)
       grid(50.f, sf::Color(220, 220, 220)), 
       showGrid(true),
       mouseHeld(false),
-      shootTimer(0.f) {
+      shootTimer(0.f),
+      showLeaderboard(false) {
     
     std::cout << "[DEBUG] PlayingState constructor start\n";
     
@@ -25,6 +26,47 @@ PlayingState::PlayingState(Game* game)
         sf::Vector2f(SCREEN_WIDTH - 150.f, SCREEN_HEIGHT - 30.f), 
         GameState::Playing, HUD::RenderMode::ScreenSpace, true);
     game->GetHUD().updateBaseColor("gridToggle", sf::Color::Black);
+    
+    // Stats HUD initialization
+    game->GetHUD().addElement("playerStats", "HP: 100 | Kills: 0 | Money: 0", 18, 
+        sf::Vector2f(10.f, 10.f), 
+        GameState::Playing, HUD::RenderMode::ScreenSpace, false);
+    game->GetHUD().updateBaseColor("playerStats", sf::Color::White);
+    
+    // Leaderboard initialization (initially hidden)
+    game->GetHUD().addElement("leaderboard", "Leaderboard", 24, 
+        sf::Vector2f(SCREEN_WIDTH * 0.5f, SCREEN_HEIGHT * 0.3f), 
+        GameState::Playing, HUD::RenderMode::ScreenSpace, false);
+    game->GetHUD().updateBaseColor("leaderboard", sf::Color::White);
+    
+    // Custom cursor setup
+    // Create crosshair shapes
+    float cursorSize = 16.f;
+    
+    // Outer circle
+    cursorOuterCircle.setRadius(cursorSize);
+    cursorOuterCircle.setFillColor(sf::Color::Transparent);
+    cursorOuterCircle.setOutlineColor(sf::Color::Black);
+    cursorOuterCircle.setOutlineThickness(2.f);
+    cursorOuterCircle.setOrigin(cursorSize, cursorSize);
+    
+    // Center dot
+    cursorCenterDot.setRadius(2.f);
+    cursorCenterDot.setFillColor(sf::Color::Black);
+    cursorCenterDot.setOrigin(2.f, 2.f);
+    
+    // Horizontal line
+    cursorHorizontalLine.setSize(sf::Vector2f(cursorSize, 2.f));
+    cursorHorizontalLine.setFillColor(sf::Color::Black);
+    cursorHorizontalLine.setOrigin(cursorSize/2.f, 1.f);
+    
+    // Vertical line
+    cursorVerticalLine.setSize(sf::Vector2f(2.f, cursorSize));
+    cursorVerticalLine.setFillColor(sf::Color::Black);
+    cursorVerticalLine.setOrigin(1.f, cursorSize/2.f);
+    
+    // Hide system cursor
+    game->GetWindow().setMouseCursorVisible(false);
 
     // PlayerManager setup - Similar to LobbyState
     CSteamID myID = SteamUser()->GetSteamID();
@@ -46,6 +88,8 @@ PlayingState::PlayingState(Game* game)
     localPlayer.nameText.setCharacterSize(16);
     localPlayer.nameText.setFillColor(sf::Color::Black);
     localPlayer.player.SetRespawnPosition(sf::Vector2f(0.f, 0.f));
+    localPlayer.kills = 0;
+    localPlayer.money = 0;
     playerManager->AddOrUpdatePlayer(myIDStr, localPlayer);
 
     // Network setup - Similar to LobbyState
@@ -105,6 +149,22 @@ void PlayingState::Update(float dt) {
                 shootTimer = 0.1f; // Shoot every 0.1 seconds when holding down
             }
         }
+        
+        // Update statistics display
+        UpdatePlayerStats();
+        
+        // Update leaderboard if visible
+        if (showLeaderboard) {
+            UpdateLeaderboard();
+        }
+        
+        // Update cursor position
+        sf::Vector2i mousePos = sf::Mouse::getPosition(game->GetWindow());
+        sf::Vector2f cursorPos = static_cast<sf::Vector2f>(mousePos);
+        cursorOuterCircle.setPosition(cursorPos);
+        cursorCenterDot.setPosition(cursorPos);
+        cursorHorizontalLine.setPosition(cursorPos);
+        cursorVerticalLine.setPosition(cursorPos);
     }
     
     sf::Vector2f localPlayerPos = playerManager->GetLocalPlayer().player.GetPosition();
@@ -123,6 +183,15 @@ void PlayingState::Render() {
     }
     
     game->GetHUD().render(game->GetWindow(), game->GetWindow().getDefaultView(), game->GetCurrentState());
+    
+    // Render custom cursor
+    if (playerLoaded) {
+        game->GetWindow().draw(cursorOuterCircle);
+        game->GetWindow().draw(cursorCenterDot);
+        game->GetWindow().draw(cursorHorizontalLine);
+        game->GetWindow().draw(cursorVerticalLine);
+    }
+    
     game->GetWindow().display();
 }
 
@@ -132,7 +201,19 @@ void PlayingState::ProcessEvents(const sf::Event& event) {
             // Toggle grid visibility
             showGrid = !showGrid;
         }
+        else if (event.key.code == sf::Keyboard::Tab) {
+            // Toggle leaderboard visibility
+            showLeaderboard = true;
+            UpdateLeaderboard();
+        }
     } 
+    else if (event.type == sf::Event::KeyReleased) {
+        if (event.key.code == sf::Keyboard::Tab) {
+            // Hide leaderboard when Tab is released
+            showLeaderboard = false;
+            game->GetHUD().updateText("leaderboard", "");
+        }
+    }
     else if (event.type == sf::Event::MouseButtonPressed && event.mouseButton.button == sf::Mouse::Left) {
         mouseHeld = true;
         AttemptShoot(event.mouseButton.x, event.mouseButton.y);
@@ -185,4 +266,47 @@ void PlayingState::AttemptShoot(int mouseX, int mouseY) {
             game->GetNetworkManager().SendMessage(clientNetwork->GetHostID(), msg);
         }
     }
+}
+
+void PlayingState::UpdatePlayerStats() {
+    const RemotePlayer& localPlayer = playerManager->GetLocalPlayer();
+    int health = localPlayer.player.GetHealth();
+    int kills = localPlayer.kills;
+    int money = localPlayer.money;
+    
+    std::string statsText = "HP: " + std::to_string(health) + 
+                           " | Kills: " + std::to_string(kills) + 
+                           " | Money: " + std::to_string(money);
+    
+    game->GetHUD().updateText("playerStats", statsText);
+}
+
+void PlayingState::UpdateLeaderboard() {
+    std::string leaderboardText = "LEADERBOARD\n\n";
+    
+    // Get all players sorted by kills
+    auto& playersMap = playerManager->GetPlayers();
+    std::vector<std::pair<std::string, RemotePlayer>> players(playersMap.begin(), playersMap.end());
+    
+    // Sort players by kills (descending)
+    std::sort(players.begin(), players.end(), [](const auto& a, const auto& b) {
+        return a.second.kills > b.second.kills;
+    });
+    
+    // Format the leaderboard text
+    for (const auto& [id, player] : players) {
+        leaderboardText += player.baseName + ": " + 
+                          std::to_string(player.kills) + " kills | " +
+                          std::to_string(player.player.GetHealth()) + " HP | " +
+                          std::to_string(player.money) + " money\n";
+    }
+    
+    // Create a semi-transparent background
+    sf::RectangleShape background;
+    background.setSize(sf::Vector2f(400.f, 300.f));
+    background.setFillColor(sf::Color(0, 0, 0, 180)); // Semi-transparent black
+    background.setPosition(SCREEN_WIDTH * 0.5f - 200.f, SCREEN_HEIGHT * 0.3f - 40.f);
+    
+    // Update the leaderboard text
+    game->GetHUD().updateText("leaderboard", leaderboardText);
 }

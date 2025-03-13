@@ -38,8 +38,15 @@ void PlayerManager::Update() {
             pos = rp.previousPosition + (rp.targetPosition - rp.previousPosition) * t;
             rp.player.SetPosition(pos);
         }
-        std::string status = rp.isReady ? " ✓" : " X";
-        rp.nameText.setString(rp.baseName + status);
+        
+        // Only show ready status in Lobby state
+        if (game->GetCurrentState() == GameState::Lobby) {
+            std::string status = rp.isReady ? " ✓" : " X";
+            rp.nameText.setString(rp.baseName + status);
+        } else {
+            rp.nameText.setString(rp.baseName);
+        }
+        
         rp.nameText.setPosition(pos.x, pos.y - 20.f);
     }
 
@@ -75,6 +82,8 @@ void PlayerManager::AddOrUpdatePlayer(const std::string& id, const RemotePlayer&
         players[id].targetPosition = player.player.GetPosition();
         players[id].lastUpdateTime = now;
         players[id].baseName = player.nameText.getString().toAnsiString();
+        players[id].kills = player.kills;
+        players[id].money = player.money;
     } else if (id != localPlayerID) {
         players[id].previousPosition = players[id].player.GetPosition();
         players[id].targetPosition = player.player.GetPosition();
@@ -83,6 +92,7 @@ void PlayerManager::AddOrUpdatePlayer(const std::string& id, const RemotePlayer&
         players[id].cubeColor = player.cubeColor;
         players[id].isHost = player.isHost;
         players[id].nameText = player.nameText;
+        // Don't override stats when updating position
     }
 }
 
@@ -98,17 +108,22 @@ void PlayerManager::AddLocalPlayer(const std::string& id, const std::string& nam
     rp.targetPosition = position;
     rp.lastUpdateTime = std::chrono::steady_clock::now();
     rp.interpDuration = 0.1f;
+    rp.kills = 0;
+    rp.money = 0;
     players[id] = rp;
     localPlayerID = id;
 }
 
 void PlayerManager::SetReadyStatus(const std::string& id, bool ready) {
-    std::cout << "ready status set " << std::endl;
     if (players.find(id) != players.end()) {
         players[id].isReady = ready;
         std::cout << "[PM] Set ready status for " << id << " to " << (ready ? "true" : "false") << "\n";
-        std::string status = ready ? " ✓" : " X";
-        players[id].nameText.setString(players[id].baseName + status);
+        
+        // Only update the visible name with ready status if in Lobby state
+        if (game->GetCurrentState() == GameState::Lobby) {
+            std::string status = ready ? " ✓" : " X";
+            players[id].nameText.setString(players[id].baseName + status);
+        }
     } else {
         std::cout << "[PM] Player " << id << " not found for ready status update\n";
     }
@@ -137,6 +152,17 @@ std::unordered_map<std::string, RemotePlayer>& PlayerManager::GetPlayers() {
     return players;
 }
 
+void PlayerManager::IncrementPlayerKills(const std::string& playerID) {
+    if (players.find(playerID) != players.end()) {
+        players[playerID].kills++;
+        
+        // Also reward the player with some money
+        players[playerID].money += 50;
+        
+        std::cout << "[PM] Incremented kills for " << playerID << " to " << players[playerID].kills << "\n";
+    }
+}
+
 void PlayerManager::CheckBulletCollisions() {
     for (auto bulletIt = bullets.begin(); bulletIt != bullets.end();) {
         bool bulletHit = false;
@@ -155,6 +181,8 @@ void PlayerManager::CheckBulletCollisions() {
                 remotePlayer.player.TakeDamage(25); // 4 hits to kill
                 
                 if (remotePlayer.player.IsDead()) {
+                    // Increment kill count for the shooter
+                    IncrementPlayerKills(bulletIt->GetShooterID());
                     PlayerDied(playerID, bulletIt->GetShooterID());
                 }
                 

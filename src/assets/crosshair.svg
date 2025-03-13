@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Outer circle -->
+  <circle cx="16" cy="16" r="15" fill="none" stroke="black" stroke-width="2"/>
+  
+  <!-- Center dot -->
+  <circle cx="16" cy="16" r="2" fill="black"/>
+  
+  <!-- Crosshairs -->
+  <line x1="16" y1="5" x2="16" y2="11" stroke="black" stroke-width="2"/>
+  <line x1="16" y1="21" x2="16" y2="27" stroke="black" stroke-width="2"/>
+  <line x1="5" y1="16" x2="11" y2="16" stroke="black" stroke-width="2"/>
+  <line x1="21" y1="16" x2="27" y2="16" stroke="black" stroke-width="2"/>
+</svg>

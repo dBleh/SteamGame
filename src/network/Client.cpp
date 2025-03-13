@@ -179,7 +179,12 @@ void ClientNetwork::ProcessPlayerDeathMessage(const ParsedMessage& parsed) {
     if (players.find(parsed.steamID) != players.end()) {
         RemotePlayer& player = players[parsed.steamID];
         player.player.TakeDamage(100); // Kill the player
-        player.respawnTimer = 1.0f;    // Set respawn timer
+        player.respawnTimer = 3.0f;    // Set respawn timer
+    }
+    
+    // Increment the killer's kill count
+    if (players.find(parsed.killerID) != players.end()) {
+        playerManager->IncrementPlayerKills(parsed.killerID);
     }
 }
 
@@ -191,3 +196,4 @@ void ClientNetwork::ProcessPlayerRespawnMessage(const ParsedMessage& parsed) {
         player.player.Respawn();
     }
 }
+

@@ -6,6 +6,7 @@
 #include "../network/Host.h"
 #include "../network/Client.h"
 #include <memory>
+#include <algorithm>  // For std::sort
 #include <SFML/Graphics.hpp>
 
 class Game;
@@ -25,6 +26,8 @@ public:
 private:
     void AttemptShoot(int mouseX, int mouseY);
     void ProcessEvents(const sf::Event& event);
+    void UpdatePlayerStats();
+    void UpdateLeaderboard();
 
     std::unique_ptr<PlayerManager> playerManager;
     std::unique_ptr<PlayerRenderer> playerRenderer;
@@ -38,6 +41,15 @@ private:
     bool connectionSent;
     bool mouseHeld;
     float shootTimer;
+    
+    // Custom cursor shapes
+    sf::CircleShape cursorOuterCircle;
+    sf::CircleShape cursorCenterDot;
+    sf::RectangleShape cursorHorizontalLine;
+    sf::RectangleShape cursorVerticalLine;
+    
+    // Leaderboard
+    bool showLeaderboard;
 };
 
 #endif // PLAYING_STATE_H
