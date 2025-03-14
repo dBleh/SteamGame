@@ -282,35 +282,33 @@ void HostNetwork::ProcessEnemyHitMessage(const ParsedMessage& parsed) {
     if (playingState) {
         EnemyManager* enemyManager = playingState->GetEnemyManager();
         if (enemyManager) {
-            // Get the enemy by ID
-            bool enemyFound = false;
-            bool enemyWasKilled = false;
-            int enemyHealthBefore = 0;
-            
-            // Find enemy and check current state
-            for (int i = 0; i < enemyManager->GetRemainingEnemies(); i++) {
-                int id = enemyManager->GetEnemyId(i);
-                if (id == parsed.enemyId) {
-                    enemyFound = true;
-                    enemyHealthBefore = enemyManager->GetEnemyHealth(id);
-                    break;
-                }
-            }
+            // Check if enemy exists
+            bool enemyFound = enemyManager->HasEnemy(parsed.enemyId);
             
             if (!enemyFound) {
                 std::cout << "[HOST] Received hit for non-existent enemy " << parsed.enemyId << "\n";
                 return;
             }
             
+            // Store enemy health before applying damage (for debugging)
+            int enemyHealthBefore = enemyManager->GetEnemyHealth(parsed.enemyId);
+            
             // Apply damage if this is a hit message from a client
             // The host already processes local hits directly in CheckBulletCollisions
-            if (parsed.steamID != std::to_string(SteamUser()->GetSteamID().ConvertToUint64())) {
+            std::string localSteamIDStr = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
+            
+            if (parsed.steamID != localSteamIDStr) {
                 // Process the enemy hit from client
-                bool killed = enemyManager->HandleEnemyHit(parsed.enemyId, parsed.damage, false);
-                enemyWasKilled = killed;
+                enemyManager->HandleEnemyHit(parsed.enemyId, parsed.damage, parsed.killed);
                 
-                // Check if enemy died from this hit
+                // Get enemy health after damage (for debugging)
                 int enemyHealthAfter = enemyManager->GetEnemyHealth(parsed.enemyId);
+                bool killed = (enemyHealthAfter <= 0);
+                
+                std::cout << "[HOST] Enemy " << parsed.enemyId 
+                          << " health changed from " << enemyHealthBefore 
+                          << " to " << enemyHealthAfter 
+                          << " after hit from client " << parsed.steamID << "\n";
                 
                 // Broadcast the hit to all clients (including original sender)
                 std::string hitMsg = MessageHandler::FormatEnemyHitMessage(
