@@ -114,20 +114,22 @@ void TriangleEnemyManager::Render(sf::RenderWindow& window)
 
 void TriangleEnemyManager::SpawnWave(int enemyCount)
 {
-    // Only continue if we're the host - clients receive enemies through network
+    // Get the current time for a seed - this will be shared with clients
+    uint32_t seed = static_cast<uint32_t>(std::time(nullptr));
+    
+    // Check if we're the host
     CSteamID localSteamID = SteamUser()->GetSteamID();
     CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
-    if (localSteamID != hostID) return;
+    bool isHost = (localSteamID == hostID);
     
-    // Store the count to spawn over time
-    remainingEnemiestoSpawn = enemyCount;
-    isSpawningWave = true;
+    if (isHost) {
+        // Send a wave start message with the seed and count using MessageHandler
+        std::string message = MessageHandler::FormatTriangleWaveStartMessage(seed, enemyCount);
+        game->GetNetworkManager().BroadcastMessage(message);
+    }
     
-    // Immediately spawn a small batch 
-    SpawnEnemyBatch(5);
-    
-    std::cout << "[HOST] Started spawning wave of " << enemyCount 
-              << " triangle enemies gradually" << std::endl;
+    // Actually generate the enemies using the seed
+    GenerateEnemiesWithSeed(seed, enemyCount);
 }
 void TriangleEnemyManager::SpawnEnemyBatch(int count)
 {
@@ -615,4 +617,48 @@ void TriangleEnemyManager::UpdateVisibleEnemies(const sf::FloatRect& viewBounds)
     
     // Get enemies in the view rect
     visibleEnemies = spatialGrid.GetEnemiesInRect(viewBounds);
+}
+
+void TriangleEnemyManager::GenerateEnemiesWithSeed(uint32_t seed, int enemyCount)
+{
+    // Use the seed for deterministic generation on both host and client
+    std::mt19937 gen(seed);
+    std::uniform_real_distribution<float> xDist(100.f, 2900.f);
+    std::uniform_real_distribution<float> yDist(100.f, 2900.f);
+    
+    // Clear existing enemies
+    enemies.clear();
+    enemyMap.clear();
+    lastSyncedPositions.clear();
+    for (auto& group : updateGroups) {
+        group.enemies.clear();
+    }
+    spatialGrid.Clear();
+    
+    // Reset next enemy ID
+    nextEnemyId = 1;
+    
+    // Generate all enemies at once - no networking required since both sides use same seed
+    for (int i = 0; i < enemyCount; i++) {
+        sf::Vector2f position(xDist(gen), yDist(gen));
+        
+        // Create new enemy
+        auto enemy = std::make_unique<TriangleEnemy>(nextEnemyId++, position);
+        TriangleEnemy* enemyPtr = enemy.get();
+        
+        // Add to containers
+        enemyMap[enemyPtr->GetID()] = enemyPtr;
+        enemies.push_back(std::move(enemy));
+        
+        // Add to spatial grid
+        spatialGrid.AddEnemy(enemyPtr);
+        
+        // Add to appropriate update group
+        AssignEnemyToUpdateGroup(enemyPtr);
+        
+        // Initialize last synced position
+        lastSyncedPositions[enemyPtr->GetID()] = position;
+    }
+    
+    std::cout << "Generated " << enemyCount << " triangle enemies with seed " << seed << std::endl;
 }

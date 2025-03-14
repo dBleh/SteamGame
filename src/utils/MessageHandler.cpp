@@ -268,6 +268,34 @@ ParsedMessage MessageHandler::ParseTriangleEnemySpawnMessage(const std::string& 
     
     return result;
 }
+ParsedMessage MessageHandler::ParseTriangleWaveStartMessage(const std::string& message) {
+    ParsedMessage result;
+    result.type = MessageType::TriangleWaveStart; // Add this to your MessageType enum
+    
+    std::istringstream ss(message);
+    std::string token;
+    
+    // Skip "TWS" token
+    std::getline(ss, token, '|');
+    
+    // Parse seed
+    std::getline(ss, token, '|');
+    try {
+        result.seed = std::stoul(token);
+    } catch (...) {
+        result.seed = 0;
+    }
+    
+    // Parse count
+    std::getline(ss, token, '|');
+    try {
+        result.enemyCount = std::stoi(token);
+    } catch (...) {
+        result.enemyCount = 0;
+    }
+    
+    return result;
+}
 
 ParsedMessage MessageHandler::ParseTriangleEnemyHitMessage(const std::string& message) {
     ParsedMessage result;
@@ -530,6 +558,11 @@ std::string MessageHandler::FormatMinimalTriangleSpawnMessage(int enemyId, const
         << static_cast<int>(position.y);
     return oss.str();
 }
+std::string MessageHandler::FormatTriangleWaveStartMessage(uint32_t seed, int enemyCount) {
+    std::ostringstream oss;
+    oss << "TWS|" << seed << "|" << enemyCount;
+    return oss.str();
+}
 
 ParsedMessage MessageHandler::ParseMessage(const std::string& msg) {
     ParsedMessage parsed{};
@@ -695,6 +728,8 @@ ParsedMessage MessageHandler::ParseMessage(const std::string& msg) {
         return ParseTriangleEnemyFullListMessage(msg);
     }else if (parts[0] == "TS") {
         return ParseMinimalTriangleSpawnMessage(msg);
+    }else if (parts[0] == "TWS") {
+        return ParseTriangleWaveStartMessage(msg);
     }
 
     return parsed;

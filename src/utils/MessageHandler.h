@@ -33,7 +33,8 @@ enum class MessageType {
     TriangleEnemyPositions,
     TriangleEnemyDeath,
     TriangleEnemyBatchSpawn,
-    TriangleEnemyFullList
+    TriangleEnemyFullList,
+    TriangleWaveStart,
 };
 
 struct ParsedMessage {
@@ -60,6 +61,8 @@ struct ParsedMessage {
     std::vector<std::tuple<int, sf::Vector2f, int>> triangleEnemyPositions;
     std::vector<std::pair<int, int>> triangleEnemyHealths;
     std::vector<int> triangleValidEnemyIds;
+    uint32_t seed;
+    int enemyCount;
 };
 
 class MessageHandler {
@@ -74,7 +77,7 @@ public:
     static std::string FormatStartGameMessage(const std::string& hostID);
     static std::string FormatEnemyPositionsMessage(const std::vector<std::pair<int, sf::Vector2f>>& enemyPositions);
     static std::string FormatEnemyPositionsMessage(const std::vector<std::tuple<int, sf::Vector2f, int>>& enemyData);
-
+    static std::string FormatTriangleWaveStartMessage(uint32_t seed, int enemyCount);
     // Enemy-related messages
     static std::string FormatEnemySpawnMessage(int enemyId, const sf::Vector2f& position);
     static std::string FormatEnemyHitMessage(int enemyId, int damage, bool killed, const std::string& shooterID);
@@ -84,6 +87,7 @@ public:
     static std::string FormatWaveCompleteMessage(int waveNumber);
     static std::string FormatEnemyValidationMessage(const std::vector<int>& enemyIds);
     static std::string FormatEnemyValidationRequestMessage();
+    static ParsedMessage ParseTriangleWaveStartMessage(const std::string& message);
 
     
     static std::string FormatTriangleEnemySpawnMessage(int enemyId, const sf::Vector2f& position);

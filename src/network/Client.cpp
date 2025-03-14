@@ -46,6 +46,9 @@ void ClientNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
         case MessageType::TriangleEnemyPositions:
             ProcessTriangleEnemyPositionsMessage(parsed);
             break;
+        case MessageType::TriangleWaveStart:
+            ProcessTriangleWaveStartMessage(parsed);
+            break;
         case MessageType::EnemyPositions:
             ProcessEnemyPositionsMessage(parsed);
             break;
@@ -150,6 +153,17 @@ void ClientNetwork::ProcessMovementMessage(const ParsedMessage& parsed) {
             playerManager->AddOrUpdatePlayer(parsed.steamID, rp);
         }
     }
+}
+
+void ClientNetwork::ProcessTriangleWaveStartMessage(const ParsedMessage& parsed) {
+    PlayingState* playingState = GetPlayingState(game);
+    if (!playingState) return;
+    
+    TriangleEnemyManager* triangleManager = playingState->GetTriangleEnemyManager();
+    if (!triangleManager) return;
+    
+    // Generate enemies with the same seed the host used
+    triangleManager->GenerateEnemiesWithSeed(parsed.seed, parsed.enemyCount);
 }
 void ClientNetwork::ProcessBulletMessage(const ParsedMessage& parsed) {
     // Get local player ID

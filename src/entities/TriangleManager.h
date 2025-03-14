@@ -62,7 +62,7 @@ public:
     
     // Get enemy by ID
     TriangleEnemy* GetEnemy(int enemyId);
-    
+    void GenerateEnemiesWithSeed(uint32_t seed, int enemyCount);
 private:
     Game* game;
     bool isSpawningWave = false;
