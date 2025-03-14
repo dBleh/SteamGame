@@ -339,7 +339,7 @@ void EnemyManager::CheckBulletCollisions(const std::vector<Bullet>& bullets) {
                         game->GetNetworkManager().SendMessage(hostID, msg);
                     }
                     
-                    // Mark this bullet for removal
+                    // Mark this bullet for removal REGARDLESS of being host or client
                     bulletsToRemove.push_back(bulletIndex);
                     bulletHit = true;
                     break; // A bullet can only hit one enemy

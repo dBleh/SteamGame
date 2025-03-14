@@ -36,7 +36,7 @@ void Enemy::Update(float dt, const sf::Vector2f& targetPosition) {
 
 bool Enemy::TakeDamage(int amount) {
     health -= amount;
-    
+    std::cout << "Enemy took damage" << std::endl;
     // Update visuals
     UpdateVisuals();
     
