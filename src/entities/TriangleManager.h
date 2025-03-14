@@ -65,11 +65,16 @@ public:
     
 private:
     Game* game;
+    bool isSpawningWave = false;
+    int remainingEnemiestoSpawn = 0;
+    float spawnTimer = 0.f;
+    static constexpr float SPAWN_INTERVAL = 0.2f;
     PlayerManager* playerManager;
     std::vector<std::unique_ptr<TriangleEnemy>> enemies;
     std::unordered_map<int, TriangleEnemy*> enemyMap; // Fast lookup by ID
     SpatialGrid spatialGrid;
-    
+    void SpawnEnemyBatch(int count);
+
     int nextEnemyId;
     float enemySyncTimer;
     float fullSyncTimer;
