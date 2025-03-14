@@ -282,29 +282,61 @@ void HostNetwork::ProcessEnemyHitMessage(const ParsedMessage& parsed) {
     if (playingState) {
         EnemyManager* enemyManager = playingState->GetEnemyManager();
         if (enemyManager) {
-            // Process the enemy hit
-            enemyManager->HandleEnemyHit(parsed.enemyId, parsed.damage, parsed.killed);
+            // Get the enemy by ID
+            bool enemyFound = false;
+            bool enemyWasKilled = false;
+            int enemyHealthBefore = 0;
             
-            // Broadcast the hit to all clients
-            std::string hitMsg = MessageHandler::FormatEnemyHitMessage(
-                parsed.enemyId, parsed.damage, parsed.killed, parsed.steamID);
-            game->GetNetworkManager().BroadcastMessage(hitMsg);
-            
-            // If enemy was killed, handle rewards
-            if (parsed.killed) {
-                // Find the player that shot the enemy
-                auto& players = playerManager->GetPlayers();
-                auto it = players.find(parsed.steamID);
-                if (it != players.end()) {
-                    // Award kill and money
-                    playerManager->IncrementPlayerKills(parsed.steamID);
-                    it->second.money += 10; // Award money for kill
-                    
-                    // Broadcast enemy death message
-                    std::string deathMsg = MessageHandler::FormatEnemyDeathMessage(
-                        parsed.enemyId, parsed.steamID, true);
-                    game->GetNetworkManager().BroadcastMessage(deathMsg);
+            // Find enemy and check current state
+            for (int i = 0; i < enemyManager->GetRemainingEnemies(); i++) {
+                int id = enemyManager->GetEnemyId(i);
+                if (id == parsed.enemyId) {
+                    enemyFound = true;
+                    enemyHealthBefore = enemyManager->GetEnemyHealth(id);
+                    break;
                 }
+            }
+            
+            if (!enemyFound) {
+                std::cout << "[HOST] Received hit for non-existent enemy " << parsed.enemyId << "\n";
+                return;
+            }
+            
+            // Apply damage if this is a hit message from a client
+            // The host already processes local hits directly in CheckBulletCollisions
+            if (parsed.steamID != std::to_string(SteamUser()->GetSteamID().ConvertToUint64())) {
+                // Process the enemy hit from client
+                bool killed = enemyManager->HandleEnemyHit(parsed.enemyId, parsed.damage, false);
+                enemyWasKilled = killed;
+                
+                // Check if enemy died from this hit
+                int enemyHealthAfter = enemyManager->GetEnemyHealth(parsed.enemyId);
+                
+                // Broadcast the hit to all clients (including original sender)
+                std::string hitMsg = MessageHandler::FormatEnemyHitMessage(
+                    parsed.enemyId, parsed.damage, killed, parsed.steamID);
+                game->GetNetworkManager().BroadcastMessage(hitMsg);
+                
+                // If enemy was killed, handle rewards
+                if (killed) {
+                    // Find the player that shot the enemy
+                    auto& players = playerManager->GetPlayers();
+                    auto it = players.find(parsed.steamID);
+                    if (it != players.end()) {
+                        // Award kill and money
+                        playerManager->IncrementPlayerKills(parsed.steamID);
+                        it->second.money += 10; // Award money for kill
+                        
+                        // Broadcast enemy death message
+                        std::string deathMsg = MessageHandler::FormatEnemyDeathMessage(
+                            parsed.enemyId, parsed.steamID, true);
+                        game->GetNetworkManager().BroadcastMessage(deathMsg);
+                    }
+                }
+            } else {
+                // For host's own hits, we've already applied damage in CheckBulletCollisions
+                // and sent the network message, so we don't need to do anything here
+                std::cout << "[HOST] Ignoring redundant hit message for own bullet\n";
             }
         }
     }

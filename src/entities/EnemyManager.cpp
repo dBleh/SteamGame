@@ -305,27 +305,23 @@ void EnemyManager::CheckBulletCollisions(const std::vector<Bullet>& bullets) {
                     CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
                     bool isHost = (localSteamID == hostID);
                     
-                    // If we're the host, actually apply damage and broadcast
-                    bool killed = false;
                     if (isHost) {
-                        killed = enemy.TakeDamage(20); // Each bullet does 20 damage
+                        // ONLY THE HOST APPLIES ACTUAL DAMAGE
+                        bool killed = enemy.TakeDamage(20); // Each bullet does 20 damage
                         
-                        // Immediately broadcast hit message with higher priority
+                        // Host immediately broadcasts hit message
                         std::string msg = MessageHandler::FormatEnemyHitMessage(
                             enemy.GetID(), 20, killed, bullet.GetShooterID());
                         game->GetNetworkManager().BroadcastMessage(msg);
                     } else {
-                        // If we're a client, only update visuals temporarily until server confirms
-                        // This gives immediate feedback without changing actual health
-                        
+                        // CLIENT ONLY APPLIES VISUAL EFFECT - NO DAMAGE
                         // Store current health
                         int currentHealth = enemy.GetHealth();
                         
-                        // Apply temporary visual damage (will be overwritten by server update)
+                        // Apply temporary visual damage without changing actual health
                         int tempHealth = currentHealth - 20;
                         if (tempHealth < 0) tempHealth = 0;
                         
-                        // Update enemy's appearance without changing actual health
                         float healthPercent = static_cast<float>(tempHealth) / 40.0f;
                         sf::Color newColor(
                             255,  // Full red
@@ -334,13 +330,13 @@ void EnemyManager::CheckBulletCollisions(const std::vector<Bullet>& bullets) {
                         );
                         enemy.GetShape().setFillColor(newColor);
                         
-                        // Send hit message to host immediately
+                        // Send hit message to host
                         std::string msg = MessageHandler::FormatEnemyHitMessage(
                             enemy.GetID(), 20, false, bullet.GetShooterID());
                         game->GetNetworkManager().SendMessage(hostID, msg);
                     }
                     
-                    // Mark this bullet for removal REGARDLESS of being host or client
+                    // Mark bullet for immediate removal regardless of being host or client
                     bulletsToRemove.push_back(bulletIndex);
                     bulletHit = true;
                     break; // A bullet can only hit one enemy
@@ -354,9 +350,8 @@ void EnemyManager::CheckBulletCollisions(const std::vector<Bullet>& bullets) {
         }
     }
     
-    // IMMEDIATE REMOVAL: Remove bullets as soon as we detect hits
+    // Immediately remove bullets that hit enemies
     if (!bulletsToRemove.empty()) {
-        // If we have bullets to remove, inform the PlayerManager
         playerManager->RemoveBullets(bulletsToRemove);
     }
 }
@@ -471,22 +466,49 @@ void EnemyManager::CheckPlayerCollisions() {
 }
 
 void EnemyManager::HandleEnemyHit(int enemyId, int damage, bool killed) {
+    // Find the enemy by ID
     for (auto& enemy : enemies) {
         if (enemy.GetID() == enemyId) {
-            // Apply damage to sync state
+            // Skip if enemy is already dead
             if (!enemy.IsAlive()) {
-                // Enemy already dead locally
                 return;
             }
             
-            // Apply damage
-            bool diedLocally = enemy.TakeDamage(damage);
+            // Check if we're host or client
+            CSteamID localSteamID = SteamUser()->GetSteamID();
+            CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+            bool isHost = (localSteamID == hostID);
             
-            // Handle discrepancy
-            if (killed && !diedLocally) {
-                // Force enemy to die if network says it should be dead
-                enemy.TakeDamage(1000);
+            if (isHost) {
+                // As host, we've already applied damage in CheckBulletCollisions
+                // Only ensure the enemy is dead if it should be
+                if (killed && enemy.IsAlive()) {
+                    std::cout << "[HOST] Forcing enemy " << enemyId << " to die due to network sync\n";
+                    enemy.TakeDamage(1000);
+                }
+            } else {
+                // As client, apply the damage from the network message
+                // This is our authoritative source of enemy health
+                
+                // Set enemy health directly instead of using TakeDamage (to avoid double damage)
+                int newHealth = enemy.GetHealth() - damage;
+                if (newHealth < 0) newHealth = 0;
+                
+                std::cout << "[CLIENT] Updating enemy " << enemyId 
+                          << " health from " << enemy.GetHealth() 
+                          << " to " << newHealth << "\n";
+                
+                // Update health and visuals
+                enemy.SetHealth(newHealth);
+                enemy.UpdateVisuals();
+                
+                // If the server says the enemy should be dead, make sure it is
+                if (killed && enemy.IsAlive()) {
+                    std::cout << "[CLIENT] Forcing enemy " << enemyId << " to die based on server message\n";
+                    enemy.TakeDamage(1000);
+                }
             }
+            
             return;
         }
     }

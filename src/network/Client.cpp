@@ -318,21 +318,21 @@ void ClientNetwork::ProcessEnemyHitMessage(const ParsedMessage& parsed) {
     if (playingState) {
         EnemyManager* enemyManager = playingState->GetEnemyManager();
         if (enemyManager) {
-            // Process the enemy hit
-            bool isLocalHit = false;
-            std::string localSteamIDStr = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
-            
             // Check if this hit was from the local player
-            if (parsed.steamID == localSteamIDStr) {
-                isLocalHit = true;
+            std::string localSteamIDStr = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
+            bool isLocalHit = (parsed.steamID == localSteamIDStr);
+            
+            if (isLocalHit) {
                 std::cout << "[CLIENT] Received confirmation of local player's hit on enemy " << parsed.enemyId << "\n";
             }
             
-            // For hits by the local player, we've already applied damage visually,
-            // so only apply the actual health change if it's a killing blow or from another player
-            if (!isLocalHit || parsed.killed) {
-                enemyManager->HandleEnemyHit(parsed.enemyId, parsed.damage, parsed.killed);
-            }
+            // For clients, we need to update the enemy health based on host's message
+            // Use the HandleEnemyHit method, but we should modify it to properly handle
+            // the case for clients
+            enemyManager->HandleEnemyHit(parsed.enemyId, parsed.damage, parsed.killed);
+            
+            // Note: HandleEnemyHit should be responsible for properly updating
+            // the enemy state without double-applying damage
         }
     }
 }
