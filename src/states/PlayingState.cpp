@@ -429,9 +429,20 @@ void PlayingState::AttemptShoot(int mouseX, int mouseY) {
         std::string msg = MessageHandler::FormatBulletMessage(myID, params.position, params.direction, bulletSpeed);
         
         if (hostNetwork) {
-            game->GetNetworkManager().BroadcastMessage(msg);
+            // If we're the host, broadcast to all clients
+            if (game->GetNetworkManager().BroadcastMessage(msg)) {
+                std::cout << "[HOST] Broadcast bullet message to all clients\n";
+            } else {
+                std::cout << "[HOST] Failed to broadcast bullet message\n";
+            }
         } else if (clientNetwork) {
-            game->GetNetworkManager().SendMessage(clientNetwork->GetHostID(), msg);
+            // If we're a client, send to the host
+            CSteamID hostID = clientNetwork->GetHostID();
+            if (game->GetNetworkManager().SendMessage(hostID, msg)) {
+                std::cout << "[CLIENT] Sent bullet message to host\n";
+            } else {
+                std::cout << "[CLIENT] Failed to send bullet message to host\n";
+            }
         }
     }
 }

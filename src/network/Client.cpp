@@ -142,15 +142,17 @@ void ClientNetwork::ProcessBulletMessage(const ParsedMessage& parsed) {
     // Get local player ID
     std::string localSteamIDStr = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
     
-    // Skip adding bullets that were fired by the local player
-    // (we already added them when we shot)
+    // We need to check if this bullet was already processed locally
+    // If the shooter is the local player and we already created this bullet locally,
+    // we don't need to create it again
     if (parsed.steamID == localSteamIDStr) {
+        // This is our own bullet that we've already added locally when we shot
         return;
     }
     
+    // For bullets from other players, add them to our game
     playerManager->AddBullet(parsed.steamID, parsed.position, parsed.direction, parsed.velocity);
 }
-
 void ClientNetwork::SendMovementUpdate(const sf::Vector2f& position) {
     std::string msg = MessageHandler::FormatMovementMessage(
         std::to_string(SteamUser()->GetSteamID().ConvertToUint64()),
