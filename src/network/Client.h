@@ -36,7 +36,8 @@ private:
     void ProcessBulletMessage(const ParsedMessage& parsed);
     void ProcessPlayerDeathMessage(const ParsedMessage& parsed);
     void ProcessPlayerRespawnMessage(const ParsedMessage& parsed);
-    
+    void ProcessEnemyValidationMessage(const ParsedMessage& parsed);
+
     // Enemy-related message handlers
     void ProcessEnemySpawnMessage(const ParsedMessage& parsed);
     void ProcessEnemyHitMessage(const ParsedMessage& parsed);

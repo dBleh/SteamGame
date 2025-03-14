@@ -39,6 +39,9 @@ void ClientNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
         case MessageType::EnemyPositions:
             ProcessEnemyPositionsMessage(parsed);
             break;
+        case MessageType::EnemyValidation:
+            ProcessEnemyValidationMessage(parsed);
+            break;
         case MessageType::StartGame:
             std::cout << "[CLIENT] Received start game message, changing to Playing state" << std::endl;
             if (game->GetCurrentState() != GameState::Playing) {
@@ -324,41 +327,54 @@ void ClientNetwork::ProcessEnemyHitMessage(const ParsedMessage& parsed) {
 
 void ClientNetwork::ProcessEnemyDeathMessage(const ParsedMessage& parsed) {
     // Get the PlayingState and its EnemyManager
-    if (game->GetCurrentState() == GameState::Playing) {
-        PlayingState* playingState = dynamic_cast<PlayingState*>(game->GetState());
-        if (playingState) {
-            EnemyManager* enemyManager = playingState->GetEnemyManager();
-            if (enemyManager) {
-                // Handle enemy death
-                enemyManager->RemoveEnemy(parsed.enemyId);
-                
-                // If this was a rewarded kill for the local player, update UI
-                std::string localSteamIDStr = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
-                if (parsed.rewardKill && parsed.killerID == localSteamIDStr) {
-                    std::cout << "[CLIENT] Local player killed enemy " << parsed.enemyId << "\n";
-                    // UI updates will happen through PlayerManager
-                }
-            }
+    PlayingState* playingState = GetPlayingState(game);
+    if (!playingState) {
+        std::cout << "[CLIENT] Cannot process enemy death: PlayingState not available" << std::endl;
+        return;
+    }
+
+    EnemyManager* enemyManager = playingState->GetEnemyManager();
+    if (!enemyManager) {
+        std::cout << "[CLIENT] Cannot process enemy death: EnemyManager not available" << std::endl;
+        return;
+    }
+
+    // Check if we have this enemy
+    if (enemyManager->HasEnemy(parsed.enemyId)) {
+        // Handle enemy death
+        enemyManager->RemoveEnemy(parsed.enemyId);
+        std::cout << "[CLIENT] Removed enemy " << parsed.enemyId << " after death message" << std::endl;
+        
+        // If this was a rewarded kill for the local player, update UI
+        std::string localSteamIDStr = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
+        if (parsed.rewardKill && parsed.killerID == localSteamIDStr) {
+            std::cout << "[CLIENT] Local player killed enemy " << parsed.enemyId << "\n";
+            // UI updates will happen through PlayerManager
         }
+    } else {
+        std::cout << "[CLIENT] Received death message for unknown enemy: " << parsed.enemyId << std::endl;
     }
 }
 
 void ClientNetwork::ProcessWaveStartMessage(const ParsedMessage& parsed) {
     // Get the PlayingState and its EnemyManager
-    if (game->GetCurrentState() == GameState::Playing) {
-        PlayingState* playingState = dynamic_cast<PlayingState*>(game->GetState());
-        if (playingState) {
-            EnemyManager* enemyManager = playingState->GetEnemyManager();
-            if (enemyManager) {
-                // As a client, we don't spawn enemies, but we update our wave number
-                if (parsed.waveNumber > enemyManager->GetCurrentWave()) {
-                    std::cout << "[CLIENT] Starting wave " << parsed.waveNumber << "\n";
-                    // The enemies will be spawned via EnemySpawn messages from the host
-                }
+    PlayingState* playingState = GetPlayingState(game);
+    if (playingState) {
+        EnemyManager* enemyManager = playingState->GetEnemyManager();
+        if (enemyManager) {
+            // Clear any lingering enemies before new wave starts
+            std::vector<int> emptyList;
+            enemyManager->RemoveStaleEnemies(emptyList);
+            
+            // As a client, we don't spawn enemies, but we update our wave number
+            if (parsed.waveNumber > enemyManager->GetCurrentWave()) {
+                std::cout << "[CLIENT] Starting wave " << parsed.waveNumber << "\n";
+                // The enemies will be spawned via EnemySpawn messages from the host
             }
         }
     }
 }
+
 
 void ClientNetwork::ProcessWaveCompleteMessage(const ParsedMessage& parsed) {
     // Get the PlayingState and its EnemyManager
@@ -376,10 +392,59 @@ void ClientNetwork::ProcessWaveCompleteMessage(const ParsedMessage& parsed) {
 
 void ClientNetwork::ProcessEnemyPositionsMessage(const ParsedMessage& parsed) {
     PlayingState* playingState = GetPlayingState(game);
+    if (!playingState) return;
+    
+    EnemyManager* enemyManager = playingState->GetEnemyManager();
+    if (!enemyManager) return;
+    
+    // Extract all enemy IDs from the message
+    std::vector<int> receivedIds;
+    for (const auto& enemyPos : parsed.enemyPositions) {
+        receivedIds.push_back(enemyPos.first);
+    }
+    
+    // Check if we're missing any of these enemies
+    for (const auto& enemyPos : parsed.enemyPositions) {
+        int id = enemyPos.first;
+        if (!enemyManager->HasEnemy(id)) {
+            // We're missing this enemy, create it
+            std::cout << "[CLIENT] Creating missing enemy " << id << " from position update" << std::endl;
+            enemyManager->AddEnemy(id, enemyPos.second);
+        }
+    }
+    
+    // Now update positions
+    enemyManager->UpdateEnemyPositions(parsed.enemyPositions);
+    
+    // Get all enemy IDs we currently have
+    std::vector<int> localIds = enemyManager->GetAllEnemyIds();
+    
+    // Check for enemies we have that weren't in the message
+    for (int localId : localIds) {
+        bool found = false;
+        for (int receivedId : receivedIds) {
+            if (localId == receivedId) {
+                found = true;
+                break;
+            }
+        }
+        
+        // If we have an enemy that wasn't in the update, it might be a ghost
+        if (!found) {
+            std::cout << "[CLIENT] Potential ghost enemy " << localId << " not in position update" << std::endl;
+            // We'll keep it for now - it will be removed in the next validation
+        }
+    }
+}
+void ClientNetwork::ProcessEnemyValidationMessage(const ParsedMessage& parsed) {
+    // Access the PlayingState's EnemyManager
+    PlayingState* playingState = GetPlayingState(game);
     if (playingState) {
         EnemyManager* enemyManager = playingState->GetEnemyManager();
         if (enemyManager) {
-            enemyManager->UpdateEnemyPositions(parsed.enemyPositions);
+            // Process the validation by comparing our local enemy list with the valid IDs
+            enemyManager->ValidateEnemyList(parsed.validEnemyIds);
+            std::cout << "[CLIENT] Processed enemy validation with " << parsed.validEnemyIds.size() << " enemies" << std::endl;
         }
     }
 }

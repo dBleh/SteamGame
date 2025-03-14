@@ -25,7 +25,9 @@ public:
     int GetRemainingEnemies() const;
     bool IsWaveComplete() const;
     float GetWaveTimer() const;
-    
+    void SyncFullEnemyList();
+    void ValidateEnemyList(const std::vector<int>& activeEnemyIds);
+
     // Network synchronization
     void AddEnemy(int id, const sf::Vector2f& position);
     void RemoveEnemy(int id);
@@ -35,7 +37,10 @@ public:
     // Collision checking
     void CheckBulletCollisions(const std::vector<Bullet>& bullets);
     void CheckPlayerCollisions();
-    
+    void RemoveStaleEnemies(const std::vector<int>& validIds);
+    std::vector<int> GetAllEnemyIds() const;
+    bool HasEnemy(int id) const;
+
     // Serialization for network
     std::string SerializeEnemies() const;
     void DeserializeEnemies(const std::string& data);
@@ -52,10 +57,11 @@ private:
     bool waveActive;
     int nextEnemyId;
     float enemySyncTimer = 0.0f;
-static constexpr float ENEMY_SYNC_INTERVAL = 0.1f; // 10 times per second
+    static constexpr float ENEMY_SYNC_INTERVAL = 0.1f; // 10 times per second
     // Random number generation
     std::mt19937 rng;
-    
+    float fullSyncTimer = 0.0f;
+    const float FULL_SYNC_INTERVAL = 5.0f;
     // Spawn enemies in a wave
     void SpawnWave();
     sf::Vector2f GetRandomSpawnPosition();

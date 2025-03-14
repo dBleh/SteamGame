@@ -38,6 +38,7 @@ private:
     void ProcessEnemyDeathMessage(const ParsedMessage& parsed);
     void ProcessWaveStartMessage(const ParsedMessage& parsed);
     void ProcessWaveCompleteMessage(const ParsedMessage& parsed);
+    void ProcessEnemyValidationRequestMessage(const ParsedMessage& parsed);
 
     Game* game;
     PlayerManager* playerManager;

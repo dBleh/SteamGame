@@ -19,7 +19,9 @@ enum class MessageType {
     PlayerDamage,
     WaveStart,
     WaveComplete,
-    EnemyPositions  // New message type for syncing enemy positions
+    EnemyPositions,
+    EnemyValidation,
+    EnemyValidationRequest 
 };
 
 struct ParsedMessage {
@@ -34,7 +36,7 @@ struct ParsedMessage {
     bool isHost;
     sf::Vector2f direction;  // For Bullet
     float velocity;          // For Bullet
-    
+    std::vector<int> validEnemyIds;
     // Enemy-related fields
     int enemyId;             // ID of the enemy
     int damage;              // Damage amount
@@ -63,7 +65,9 @@ public:
     static std::string FormatPlayerDamageMessage(const std::string& playerID, int damage, int enemyId);
     static std::string FormatWaveStartMessage(int waveNumber);
     static std::string FormatWaveCompleteMessage(int waveNumber);
-    
+    static std::string FormatEnemyValidationMessage(const std::vector<int>& enemyIds);
+    static std::string FormatEnemyValidationRequestMessage();
+
     static ParsedMessage ParseMessage(const std::string& msg);
 };
 

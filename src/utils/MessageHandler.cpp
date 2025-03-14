@@ -50,7 +50,16 @@ std::string MessageHandler::FormatPlayerDeathMessage(const std::string& playerID
     oss << "D|" << playerID << "|" << killerID;
     return oss.str();
 }
-
+std::string MessageHandler::FormatEnemyValidationMessage(const std::vector<int>& enemyIds) {
+    std::ostringstream oss;
+    oss << "EV|" << enemyIds.size();
+    
+    for (int id : enemyIds) {
+        oss << "|" << id;
+    }
+    
+    return oss.str();
+}
 std::string MessageHandler::FormatPlayerRespawnMessage(const std::string& playerID, const sf::Vector2f& position) {
     std::ostringstream oss;
     oss << "RS|" << playerID << "|" << position.x << "," << position.y;
@@ -106,6 +115,10 @@ std::string MessageHandler::FormatWaveCompleteMessage(int waveNumber) {
     std::ostringstream oss;
     oss << "WC|" << waveNumber;
     return oss.str();
+}
+
+std::string MessageHandler::FormatEnemyValidationRequestMessage() {
+    return "EVR|";  // Simple message, no additional data needed
 }
 
 ParsedMessage MessageHandler::ParseMessage(const std::string& msg) {
@@ -220,6 +233,16 @@ ParsedMessage MessageHandler::ParseMessage(const std::string& msg) {
             enemyStream >> id >> comma >> x >> comma >> y;
             parsed.enemyPositions.emplace_back(id, sf::Vector2f(x, y));
         }
+    }else if (parts[0] == "EV" && parts.size() >= 2) {
+        parsed.type = MessageType::EnemyValidation;
+        int numEnemies = std::stoi(parts[1]);
+        
+        for (int i = 0; i < numEnemies && i + 2 < parts.size(); ++i) {
+            parsed.validEnemyIds.push_back(std::stoi(parts[i + 2]));
+        }
+    }
+    else if (parts[0] == "EVR") {
+        parsed.type = MessageType::EnemyValidationRequest;
     }
 
     return parsed;

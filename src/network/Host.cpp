@@ -58,6 +58,9 @@ void HostNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
         case MessageType::PlayerRespawn:
             ProcessPlayerRespawnMessage(parsed);
             break;
+        case MessageType::EnemyValidationRequest:
+            ProcessEnemyValidationRequestMessage(parsed);
+            break;
         case MessageType::StartGame:
             std::cout << "[HOST] Received start game message, changing to Playing state" << std::endl;
             if (game->GetCurrentState() != GameState::Playing) {
@@ -309,30 +312,48 @@ void HostNetwork::ProcessEnemyHitMessage(const ParsedMessage& parsed) {
 
 void HostNetwork::ProcessEnemyDeathMessage(const ParsedMessage& parsed) {
     // Get the PlayingState and its EnemyManager
-    if (game->GetCurrentState() == GameState::Playing) {
-        PlayingState* playingState = dynamic_cast<PlayingState*>(game->GetState());
-        if (playingState) {
-            EnemyManager* enemyManager = playingState->GetEnemyManager();
-            if (enemyManager) {
-                // Handle enemy death
-                enemyManager->RemoveEnemy(parsed.enemyId);
-                
-                // If this was a rewarded kill, increment player stats
-                if (parsed.rewardKill && !parsed.killerID.empty()) {
-                    auto& players = playerManager->GetPlayers();
-                    auto it = players.find(parsed.killerID);
-                    if (it != players.end()) {
-                        playerManager->IncrementPlayerKills(parsed.killerID);
-                        it->second.money += 10; // Award money for kill
-                    }
-                }
-                
-                // Broadcast to ensure all clients know
-                std::string deathMsg = MessageHandler::FormatEnemyDeathMessage(
-                    parsed.enemyId, parsed.killerID, parsed.rewardKill);
-                game->GetNetworkManager().BroadcastMessage(deathMsg);
+    PlayingState* playingState = GetPlayingState(game);
+    if (!playingState) {
+        std::cout << "[HOST] Cannot process enemy death: PlayingState not available" << std::endl;
+        return;
+    }
+
+    EnemyManager* enemyManager = playingState->GetEnemyManager();
+    if (!enemyManager) {
+        std::cout << "[HOST] Cannot process enemy death: EnemyManager not available" << std::endl;
+        return;
+    }
+
+    // Check if we have this enemy
+    if (enemyManager->HasEnemy(parsed.enemyId)) {
+        // Handle enemy death
+        enemyManager->RemoveEnemy(parsed.enemyId);
+        std::cout << "[HOST] Removed enemy " << parsed.enemyId << " after death message" << std::endl;
+        
+        // If this was a rewarded kill, increment player stats
+        if (parsed.rewardKill && !parsed.killerID.empty()) {
+            auto& players = playerManager->GetPlayers();
+            auto it = players.find(parsed.killerID);
+            if (it != players.end()) {
+                playerManager->IncrementPlayerKills(parsed.killerID);
+                it->second.money += 10; // Award money for kill
             }
         }
+        
+        // Broadcast to ensure all clients know - send multiple times for reliability
+        std::string deathMsg = MessageHandler::FormatEnemyDeathMessage(
+            parsed.enemyId, parsed.killerID, parsed.rewardKill);
+        
+        // Send the message twice for redundancy
+        game->GetNetworkManager().BroadcastMessage(deathMsg);
+        
+        // Send a second copy after a short delay (simulated here)
+        // In a real implementation, you might want to use a timer
+        game->GetNetworkManager().BroadcastMessage(deathMsg);
+        
+        std::cout << "[HOST] Broadcast enemy death message for enemy " << parsed.enemyId << " (duplicated for reliability)" << std::endl;
+    } else {
+        std::cout << "[HOST] Received death message for unknown enemy: " << parsed.enemyId << std::endl;
     }
 }
 
@@ -345,12 +366,27 @@ void HostNetwork::ProcessWaveStartMessage(const ParsedMessage& parsed) {
             if (enemyManager) {
                 // Start the wave if we're the host
                 if (SteamUser()->GetSteamID() == SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID())) {
+                    // Clear any lingering enemies before starting new wave
+                    std::vector<int> emptyList;
+                    enemyManager->RemoveStaleEnemies(emptyList);
+                    
+                    // Start the wave
                     enemyManager->StartNextWave();
                     
                     // Broadcast wave start to ensure all clients know
                     std::string waveMsg = MessageHandler::FormatWaveStartMessage(
                         enemyManager->GetCurrentWave());
+                        
+                    // Broadcast multiple times for reliability
                     game->GetNetworkManager().BroadcastMessage(waveMsg);
+                    
+                    // Send a second copy after a short delay for reliability
+                    game->GetNetworkManager().BroadcastMessage(waveMsg);
+                    
+                    std::cout << "[HOST] Broadcast wave start for wave " << enemyManager->GetCurrentWave() << " (duplicated for reliability)" << std::endl;
+                    
+                    // Force a full sync right after spawning
+                    enemyManager->SyncFullEnemyList();
                 }
             }
         }
@@ -364,4 +400,19 @@ void HostNetwork::ProcessWaveCompleteMessage(const ParsedMessage& parsed) {
     // Broadcast to ensure all clients know
     std::string waveMsg = MessageHandler::FormatWaveCompleteMessage(parsed.waveNumber);
     game->GetNetworkManager().BroadcastMessage(waveMsg);
+}
+
+void HostNetwork::ProcessEnemyValidationRequestMessage(const ParsedMessage& parsed) {
+    // Get the PlayingState and its EnemyManager
+    if (game->GetCurrentState() == GameState::Playing) {
+        PlayingState* playingState = dynamic_cast<PlayingState*>(game->GetState());
+        if (playingState) {
+            EnemyManager* enemyManager = playingState->GetEnemyManager();
+            if (enemyManager) {
+                // A client has requested validation, so send the full enemy list
+                std::cout << "[HOST] Received enemy validation request, sending full list" << std::endl;
+                enemyManager->SyncFullEnemyList();
+            }
+        }
+    }
 }

@@ -29,10 +29,24 @@ void EnemyManager::Update(float dt) {
         return;
     }
     
-    // Remove dead enemies from the vector
+    // Update full sync timer
+    fullSyncTimer -= dt;
+    if (fullSyncTimer <= 0.0f) {
+        SyncFullEnemyList();
+        fullSyncTimer = FULL_SYNC_INTERVAL;
+    }
+    
+    // Remove dead enemies from the vector more robustly
+    size_t beforeSize = enemies.size();
     enemies.erase(std::remove_if(enemies.begin(), enemies.end(), 
         [](const Enemy& e) { return !e.IsAlive(); }), enemies.end());
+    size_t afterSize = enemies.size();
     
+    if (beforeSize != afterSize) {
+        std::cout << "Removed " << (beforeSize - afterSize) << " dead enemies" << std::endl;
+    }
+    
+    // Rest of the existing code remains the same...
     // Only update if we have enemies and a wave is active
     if (enemies.empty()) {
         // All enemies are dead, start timer for next wave
@@ -77,10 +91,19 @@ void EnemyManager::Render(sf::RenderWindow& window) {
 }
 
 void EnemyManager::StartNextWave() {
+    // Force clear all enemies before starting new wave
+    if (!enemies.empty()) {
+        std::cout << "[EM] Clearing " << enemies.size() << " enemies before starting new wave" << std::endl;
+        enemies.clear();
+    }
+    
     currentWave++;
     std::cout << "Starting wave " << currentWave << std::endl;
     waveActive = true;
     SpawnWave();
+    
+    // Reset the full sync timer to trigger a sync soon after wave start
+    fullSyncTimer = 1.0f;  // Sync after 1 second
 }
 
 void EnemyManager::SpawnWave() {
@@ -208,11 +231,26 @@ void EnemyManager::AddEnemy(int id, const sf::Vector2f& position) {
 }
 
 void EnemyManager::RemoveEnemy(int id) {
-    for (auto it = enemies.begin(); it != enemies.end(); ++it) {
-        if (it->GetID() == id) {
-            enemies.erase(it);
-            return;
+    bool found = false;
+    size_t index = 0;
+    
+    // Find the enemy by ID
+    for (size_t i = 0; i < enemies.size(); ++i) {
+        if (enemies[i].GetID() == id) {
+            found = true;
+            index = i;
+            break;
         }
+    }
+    
+    if (found) {
+        std::cout << "[EM] Removing enemy " << id << " at position (" 
+                  << enemies[index].GetPosition().x << "," 
+                  << enemies[index].GetPosition().y << ")" << std::endl;
+                  
+        enemies.erase(enemies.begin() + index);
+    } else {
+        std::cout << "[EM] Attempted to remove non-existent enemy " << id << std::endl;
     }
 }
 
@@ -428,4 +466,124 @@ void EnemyManager::DeserializeEnemies(const std::string& data) {
     
     // If we have enemies, the wave is active
     waveActive = !enemies.empty();
+}
+
+
+std::vector<int> EnemyManager::GetAllEnemyIds() const {
+    std::vector<int> ids;
+    ids.reserve(enemies.size());
+    for (const auto& enemy : enemies) {
+        ids.push_back(enemy.GetID());
+    }
+    return ids;
+}
+
+bool EnemyManager::HasEnemy(int id) const {
+    for (const auto& enemy : enemies) {
+        if (enemy.GetID() == id) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void EnemyManager::SyncFullEnemyList() {
+    CSteamID localSteamID = SteamUser()->GetSteamID();
+    CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+    
+    // Only host sends full enemy list
+    if (localSteamID != hostID || enemies.empty()) {
+        return;
+    }
+    
+    // Collect all enemy IDs in a format suitable for transmission
+    std::vector<int> enemyIds;
+    std::vector<std::pair<int, sf::Vector2f>> enemyData;
+    
+    for (const auto& enemy : enemies) {
+        if (enemy.IsAlive()) {
+            enemyIds.push_back(enemy.GetID());
+            enemyData.emplace_back(enemy.GetID(), enemy.GetPosition());
+        }
+    }
+    
+    // Create and send a message with all active enemy IDs
+    std::ostringstream oss;
+    oss << "EV|" << enemyIds.size();
+    for (int id : enemyIds) {
+        oss << "|" << id;
+    }
+    game->GetNetworkManager().BroadcastMessage(oss.str());
+    
+    // Also send positions for these enemies
+    std::string posMsg = MessageHandler::FormatEnemyPositionsMessage(enemyData);
+    game->GetNetworkManager().BroadcastMessage(posMsg);
+    
+    std::cout << "[HOST] Sent full enemy validation with " << enemyIds.size() << " enemies" << std::endl;
+}
+
+void EnemyManager::ValidateEnemyList(const std::vector<int>& validIds) {
+    // First, identify enemies that shouldn't exist
+    std::vector<int> localIds = GetAllEnemyIds();
+    std::vector<int> toRemove;
+    
+    // Find IDs in our local list that aren't in the valid list
+    for (int localId : localIds) {
+        bool found = false;
+        for (int validId : validIds) {
+            if (localId == validId) {
+                found = true;
+                break;
+            }
+        }
+        
+        if (!found) {
+            toRemove.push_back(localId);
+        }
+    }
+    
+    // Remove enemies that shouldn't exist
+    for (int id : toRemove) {
+        std::cout << "[CLIENT] Removing ghost enemy: " << id << std::endl;
+        RemoveEnemy(id);
+    }
+    
+    // Now check for missing enemies that should exist
+    for (int validId : validIds) {
+        if (!HasEnemy(validId)) {
+            // Request the enemy's data from the host
+            std::cout << "[CLIENT] Requesting missing enemy: " << validId << std::endl;
+            
+            // This could be a new network message type, but for now
+            // we'll just create a placeholder enemy at (0,0) that will
+            // get its position updated in the next position sync
+            AddEnemy(validId, sf::Vector2f(0.f, 0.f));
+        }
+    }
+}
+
+void EnemyManager::RemoveStaleEnemies(const std::vector<int>& validIds) {
+    // Helper method to remove any enemies not in the valid list
+    std::vector<int> toRemove;
+    
+    for (const auto& enemy : enemies) {
+        int id = enemy.GetID();
+        bool found = false;
+        
+        for (int validId : validIds) {
+            if (id == validId) {
+                found = true;
+                break;
+            }
+        }
+        
+        if (!found) {
+            toRemove.push_back(id);
+        }
+    }
+    
+    for (int id : toRemove) {
+        RemoveEnemy(id);
+        std::cout << "[SYNC] Removed stale enemy: " << id << std::endl;
+    }
 }
