@@ -111,16 +111,13 @@ void TriangleEnemyManager::SpawnWave(int enemyCount)
     std::uniform_real_distribution<float> xDist(100.f, 2900.f);
     std::uniform_real_distribution<float> yDist(100.f, 2900.f);
     
-    // Track newly created enemies for batch spawn messages
-    std::vector<std::tuple<int, sf::Vector2f, int>> currentBatchData;
-    
     // Check if we're the host (only host should broadcast)
     CSteamID localSteamID = SteamUser()->GetSteamID();
     CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
     bool isHost = (localSteamID == hostID);
     
-    // Create enemies in smaller network batches
-    constexpr int NETWORK_BATCH_SIZE = 20; // Smaller batch size to avoid packet size limits
+    // Use an extremely small batch size to avoid packet size limits
+    constexpr int NETWORK_BATCH_SIZE = 5; // Tiny batch size for small packets
     
     for (int i = 0; i < enemyCount; i++) {
         sf::Vector2f position(xDist(gen), yDist(gen));
@@ -142,34 +139,26 @@ void TriangleEnemyManager::SpawnWave(int enemyCount)
         // Initialize last synced position
         lastSyncedPositions[enemyPtr->GetID()] = position;
         
-        // Add to current batch data for network message
+        // Send individual enemy spawn messages instead of batches
         if (isHost) {
-            currentBatchData.emplace_back(
-                enemyPtr->GetID(),
-                position,
-                enemyPtr->GetHealth()
-            );
+            // Send direct spawn message for individual enemy
+            std::string spawnMsg = MessageHandler::FormatTriangleEnemySpawnMessage(
+                enemyPtr->GetID(), position);
+            game->GetNetworkManager().BroadcastMessage(spawnMsg);
             
-            // Send smaller network batches to avoid packet size limits
-            if (currentBatchData.size() >= NETWORK_BATCH_SIZE) {
-                std::string batchMsg = MessageHandler::FormatTriangleEnemyBatchSpawnMessage(currentBatchData);
-                game->GetNetworkManager().BroadcastMessage(batchMsg);
-                
-                // Clear batch after sending
-                currentBatchData.clear();
+            // Only send one message every few enemies to avoid network congestion
+            if (i % NETWORK_BATCH_SIZE == 0) {
+                // Small artificial delay for network timing
+                for (int j = 0; j < 10000; j++) {
+                    // Empty loop to create a small delay without using sleep
+                }
             }
         }
     }
     
-    // Send any remaining enemies in the final batch
-    if (isHost && !currentBatchData.empty()) {
-        std::string batchMsg = MessageHandler::FormatTriangleEnemyBatchSpawnMessage(currentBatchData);
-        game->GetNetworkManager().BroadcastMessage(batchMsg);
-    }
-    
     if (isHost) {
         std::cout << "[HOST] Spawned and broadcast " << enemyCount 
-                  << " triangle enemies in smaller batches" << std::endl;
+                  << " triangle enemies individually" << std::endl;
     }
 }
 void TriangleEnemyManager::AddEnemy(int id, const sf::Vector2f& position) {
