@@ -352,7 +352,6 @@ void PlayingState::ProcessEvents(const sf::Event& event) {
             // Toggle cursor lock
             cursorLocked = !cursorLocked;
             game->GetWindow().setMouseCursorGrabbed(cursorLocked);
-            std::cout << "Cursor lock " << (cursorLocked ? "enabled" : "disabled") << std::endl;
         }
         else if (event.key.code == sf::Keyboard::Escape) {
             // Potential use: release cursor lock with Escape

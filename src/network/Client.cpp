@@ -285,11 +285,7 @@ void ClientNetwork::ProcessPlayerRespawnMessage(const ParsedMessage& parsed) {
         // Check health after respawn
         int newHealth = player.player.GetHealth();
         bool isDeadNow = player.player.IsDead();
-        
-        std::cout << "[CLIENT] Player " << normalizedID << " respawned from network message. Health: " 
-                  << oldHealth << " -> " << newHealth 
-                  << ", Dead: " << (wasDead ? "Yes" : "No") << " -> " << (isDeadNow ? "Yes" : "No")
-                  << ", Is local player: " << (normalizedID == localSteamIDStr ? "Yes" : "No") << "\n";
+  
                   
         // If health is not 100 after respawn, force it
         if (newHealth < 100) {
@@ -308,8 +304,7 @@ void ClientNetwork::ProcessEnemySpawnMessage(const ParsedMessage& parsed) {
         if (enemyManager) {
             // Spawn the enemy
             enemyManager->AddEnemy(parsed.enemyId, parsed.position);
-            std::cout << "[CLIENT] Spawned enemy " << parsed.enemyId << " at position (" 
-                      << parsed.position.x << ", " << parsed.position.y << ")\n";
+          
         }
     }
 }
@@ -322,8 +317,7 @@ void ClientNetwork::ProcessEnemyHitMessage(const ParsedMessage& parsed) {
         if (enemyManager) {
             // Process the enemy hit
             enemyManager->HandleEnemyHit(parsed.enemyId, parsed.damage, parsed.killed);
-            std::cout << "[CLIENT] Enemy " << parsed.enemyId << " took " << parsed.damage 
-                      << " damage from " << parsed.steamID << (parsed.killed ? " and was killed" : "") << "\n";
+           
         }
     }
 }

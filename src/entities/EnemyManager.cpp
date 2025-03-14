@@ -193,7 +193,6 @@ void EnemyManager::AddEnemy(int id, const sf::Vector2f& position) {
     // Check if enemy with this ID already exists
     for (auto& enemy : enemies) {
         if (enemy.GetID() == id) {
-            std::cout << "Enemy ID " << id << " already exists, not adding duplicate" << std::endl;
             return;
         }
     }
@@ -236,7 +235,14 @@ void EnemyManager::SyncEnemyState(int id, const sf::Vector2f& position, int heal
 }
 
 void EnemyManager::CheckBulletCollisions(const std::vector<Bullet>& bullets) {
-    for (const auto& bullet : bullets) {
+    // Create a vector to track which bullets need to be removed
+    std::vector<size_t> bulletsToRemove;
+    
+    // Check each bullet against each enemy
+    for (size_t bulletIndex = 0; bulletIndex < bullets.size(); bulletIndex++) {
+        const Bullet& bullet = bullets[bulletIndex];
+        bool bulletHit = false;
+        
         for (auto& enemy : enemies) {
             if (enemy.IsAlive()) {
                 if (enemy.GetShape().getGlobalBounds().intersects(bullet.GetShape().getGlobalBounds())) {
@@ -253,17 +259,23 @@ void EnemyManager::CheckBulletCollisions(const std::vector<Bullet>& bullets) {
                         game->GetNetworkManager().BroadcastMessage(msg);
                     }
                     
-                    // If enemy died, check if a player killed it
-                    if (killed) {
-                        std::cout << "Enemy " << enemy.GetID() << " killed by bullet from " 
-                                  << bullet.GetShooterID() << std::endl;
-                    }
-                    
-                    // Break since this bullet has collided
-                    break;
+                    // Mark this bullet for removal
+                    bulletsToRemove.push_back(bulletIndex);
+                    bulletHit = true;
+                    break; // A bullet can only hit one enemy
                 }
             }
         }
+        
+        if (bulletHit) {
+            // No need to check this bullet against other enemies
+            continue;
+        }
+    }
+    
+    // If we have bullets to remove, inform the PlayerManager
+    if (!bulletsToRemove.empty()) {
+        playerManager->RemoveBullets(bulletsToRemove);
     }
 }
 void EnemyManager::SyncEnemyPositions() {
@@ -376,9 +388,6 @@ void EnemyManager::HandleEnemyHit(int enemyId, int damage, bool killed) {
             return;
         }
     }
-    
-    // Enemy not found - should be spawned by host
-    std::cout << "Received hit for unknown enemy ID: " << enemyId << std::endl;
 }
 
 std::string EnemyManager::SerializeEnemies() const {

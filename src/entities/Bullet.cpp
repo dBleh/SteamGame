@@ -47,11 +47,6 @@ bool Bullet::CheckCollision(const sf::RectangleShape& playerShape, const std::st
         std::cout << "[BULLET] Error normalizing IDs for collision: " << e.what() << "\n";
     }
     
-    // Debug print to see what's being compared
-    std::cout << "[BULLET] Collision check - BulletOwner: '" << normalizedShooterID 
-              << "', Player: '" << normalizedPlayerID 
-              << "', Same? " << (normalizedShooterID == normalizedPlayerID ? "YES" : "NO") << "\n";
-    
     // Don't collide with the shooter (using normalized IDs)
     if (normalizedShooterID == normalizedPlayerID) {
         std::cout << "[BULLET] Self collision prevented\n";
@@ -59,10 +54,6 @@ bool Bullet::CheckCollision(const sf::RectangleShape& playerShape, const std::st
     }
     
     bool collision = shape.getGlobalBounds().intersects(playerShape.getGlobalBounds());
-    if (collision) {
-        std::cout << "[BULLET] Collision detected between bullet from " << shooterID 
-                 << " and player " << playerID << std::endl;
-    }
     return collision;
 }
 bool Bullet::BelongsToPlayer(const std::string& playerID) const {

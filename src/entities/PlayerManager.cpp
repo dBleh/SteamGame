@@ -80,30 +80,7 @@ void PlayerManager::Update() {
         
         rp.nameText.setPosition(pos.x, pos.y - 20.f);
     }
-    static float diagnosticTimer = 0.0f;
-    diagnosticTimer += dt;
-    if (diagnosticTimer >= 5.0f) {  // Every 5 seconds
-        std::cout << "[PM] Current bullet count: " << bullets.size() << "\n";
-        
-        // Log details about bullets for debugging
-        if (!bullets.empty()) {
-            std::cout << "[PM] Active bullets:\n";
-            for (size_t i = 0; i < std::min(bullets.size(), size_t(10)); ++i) {  // Show up to 10 bullets
-                std::cout << "  [" << i << "] Owner: " << bullets[i].GetShooterID() 
-                          << ", Pos: (" << bullets[i].GetPosition().x << "," << bullets[i].GetPosition().y << ")"
-                          << ", Expired: " << (bullets[i].IsExpired() ? "Yes" : "No") << "\n";
-            }
-            
-            // If too many bullets (potential memory issue), force cleanup
-            if (bullets.size() > 1000) {  // Arbitrary threshold
-                std::cout << "[PM] WARNING: Too many bullets (" << bullets.size() << "), forcing cleanup\n";
-                // Keep only recent bullets
-                bullets.erase(bullets.begin(), bullets.begin() + bullets.size() - 100);
-            }
-        }
-        
-        diagnosticTimer = 0.0f;
-    }
+   
     std::vector<size_t> bulletsToRemove;
     
     for (size_t i = 0; i < bullets.size(); i++) {
@@ -139,7 +116,6 @@ void PlayerManager::Update() {
     
     // Remove expired bullets safely (from back to front)
     if (!bulletsToRemove.empty()) {
-        std::cout << "[PM] Removing " << bulletsToRemove.size() << " expired/distant bullets\n";
         
         // Sort indices in descending order for safe removal
         std::sort(bulletsToRemove.begin(), bulletsToRemove.end(), std::greater<size_t>());
@@ -200,36 +176,28 @@ void PlayerManager::AddLocalPlayer(const std::string& id, const std::string& nam
 
 void PlayerManager::SetReadyStatus(const std::string& id, bool ready) {
     if (players.find(id) != players.end()) {
-        players[id].isReady = ready;
-        std::cout << "[PM] Set ready status for " << id << " to " << (ready ? "true" : "false") << "\n";
-        
+        players[id].isReady = ready;        
         // Only update the visible name with ready status if in Lobby state
         if (game->GetCurrentState() == GameState::Lobby) {
             std::string status = ready ? " ✓" : " X";
             players[id].nameText.setString(players[id].baseName + status);
         }
-    } else {
-        std::cout << "[PM] Player " << id << " not found for ready status update\n";
     }
 }
 
 void PlayerManager::AddBullet(const std::string& shooterID, const sf::Vector2f& position, const sf::Vector2f& direction, float velocity) {
     // Validate input parameters
     if (direction.x == 0.f && direction.y == 0.f) {
-        std::cout << "[PM] Attempted to add bullet with zero direction, ignoring\n";
         return;
     }
     
     if (shooterID.empty()) {
-        std::cout << "[PM] Attempted to add bullet with empty shooter ID, ignoring\n";
         return;
     }
     
     // For debugging: print the ID being added and local ID for comparison
     std::string localSteamIDStr = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
-    std::cout << "[PM] Bullet ID check - ShooterID: '" << shooterID 
-              << "', LocalID: '" << localSteamIDStr 
-              << "', Same? " << (shooterID == localSteamIDStr ? "YES" : "NO") << "\n";
+
     
     // Ensure we use the exact same string format for IDs
     std::string normalizedID = shooterID;
@@ -243,8 +211,7 @@ void PlayerManager::AddBullet(const std::string& shooterID, const sf::Vector2f& 
     
     // Add the bullet with the normalized ID
     bullets.emplace_back(position, direction, velocity, normalizedID);
-    std::cout << "[PM] Added bullet from " << normalizedID 
-              << " at (" << position.x << "," << position.y << ")\n";
+
 }
 
 RemotePlayer& PlayerManager::GetLocalPlayer() {
@@ -272,7 +239,7 @@ void PlayerManager::IncrementPlayerKills(const std::string& playerID) {
         // Also reward the player with some money
         players[playerID].money += 50;
         
-        std::cout << "[PM] Incremented kills for " << playerID << " to " << players[playerID].kills << "\n";
+
     }
 }
 const std::vector<Bullet>& PlayerManager::GetAllBullets() const {
@@ -316,7 +283,7 @@ void PlayerManager::CheckBulletCollisions() {
 }
 
 void PlayerManager::PlayerDied(const std::string& playerID, const std::string& killerID) {
-    std::cout << "[PM] Player " << playerID << " was killed by " << killerID << "\n";
+
     
     // Schedule respawn after 3 seconds
     players[playerID].respawnTimer = 3.0f;
@@ -371,9 +338,7 @@ void PlayerManager::RespawnPlayer(const std::string& playerID) {
         int newHealth = it->second.player.GetHealth();
         bool isDeadNow = it->second.player.IsDead();
         
-        std::cout << "[PM] Player " << normalizedID << " respawned. Health: " 
-                  << oldHealth << " -> " << newHealth 
-                  << ", Dead: " << (wasDead ? "Yes" : "No") << " -> " << (isDeadNow ? "Yes" : "No") << "\n";
+     
         
         // If this is the local player, notify the network of respawn
         if (normalizedID == normalizedLocalID) {
@@ -403,5 +368,21 @@ void PlayerManager::RespawnPlayer(const std::string& playerID) {
         }
     } else {
         std::cout << "[PM] Could not find player " << normalizedID << " to respawn\n";
+    }
+}
+void PlayerManager::RemoveBullets(const std::vector<size_t>& indicesToRemove) {
+    if (indicesToRemove.empty()) {
+        return;
+    }
+    
+    // Create a sorted copy of indices (sorted in descending order)
+    std::vector<size_t> sortedIndices = indicesToRemove;
+    std::sort(sortedIndices.begin(), sortedIndices.end(), std::greater<size_t>());
+    
+    // Remove bullets from back to front to avoid invalidating indices
+    for (size_t index : sortedIndices) {
+        if (index < bullets.size()) {
+            bullets.erase(bullets.begin() + index);
+        }
     }
 }

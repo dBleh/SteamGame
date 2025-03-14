@@ -39,6 +39,8 @@ public:
     const std::vector<Bullet>& GetAllBullets() const;
     void UpdateBullets(float dt);
     void PlayerDied(const std::string& playerID, const std::string& killerID);
+    void RemoveBullets(const std::vector<size_t>& indicesToRemove);
+
 private:
     Game* game;
     std::string localPlayerID;

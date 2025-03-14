@@ -58,9 +58,6 @@ Player::BulletParams Player::Shoot(const sf::Vector2f& mouseWorldPos) {
         params.direction = direction;
         params.success = true; // Indicate successful shot
 
-        std::cout << "[PLAYER] Bullet fired from center (" << playerCenter.x << ", " << playerCenter.y 
-                 << ") toward (" << mouseWorldPos.x << ", " << mouseWorldPos.y 
-                 << ") with direction (" << direction.x << ", " << direction.y << ")\n";
     } else {
         // If on cooldown, return default/invalid params with success = false
         params.position = GetPosition();

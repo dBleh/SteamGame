@@ -251,7 +251,7 @@ void HostNetwork::ProcessPlayerDeathMessage(const ParsedMessage& parsed) {
     std::string deathMsg = MessageHandler::FormatPlayerDeathMessage(playerID, killerID);
     game->GetNetworkManager().BroadcastMessage(deathMsg);
     
-    std::cout << "[HOST] Broadcasting player death: " << playerID << " killed by " << killerID << "\n";
+
 }
 
 void HostNetwork::ProcessPlayerRespawnMessage(const ParsedMessage& parsed) {
@@ -270,7 +270,6 @@ void HostNetwork::ProcessPlayerRespawnMessage(const ParsedMessage& parsed) {
     std::string respawnMsg = MessageHandler::FormatPlayerRespawnMessage(playerID, respawnPos);
     game->GetNetworkManager().BroadcastMessage(respawnMsg);
     
-    std::cout << "[HOST] Broadcasting player respawn: " << playerID << " at position " << respawnPos.x << "," << respawnPos.y << "\n";
 }
 
 
@@ -361,7 +360,6 @@ void HostNetwork::ProcessWaveStartMessage(const ParsedMessage& parsed) {
 void HostNetwork::ProcessWaveCompleteMessage(const ParsedMessage& parsed) {
     // Wave complete messages are primarily for clients
     // But we'll process it anyway for consistency
-    std::cout << "[HOST] Wave " << parsed.waveNumber << " complete\n";
     
     // Broadcast to ensure all clients know
     std::string waveMsg = MessageHandler::FormatWaveCompleteMessage(parsed.waveNumber);
