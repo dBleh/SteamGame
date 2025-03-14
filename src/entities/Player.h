@@ -15,7 +15,10 @@ public:
     };
     Player();
     Player(const sf::Vector2f& startPosition, const sf::Color& color);
-    
+    void SetHealth(int newHealth) {
+        health = newHealth;
+        isDead = (health <= 0);
+    }
     void Update(float dt);
     BulletParams Shoot(const sf::Vector2f& mouseWorldPos);
     

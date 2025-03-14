@@ -17,15 +17,46 @@ void PlayerManager::Update() {
     for (auto& pair : players) {
         RemotePlayer& rp = pair.second;
 
-        if (rp.player.IsDead() && rp.respawnTimer > 0.0f) {
-            rp.respawnTimer -= dt;
-            if (rp.respawnTimer <= 0.0f) {
-                // Set respawn position to 0,0
-                rp.player.SetRespawnPosition(sf::Vector2f(0.f, 0.f));
-                RespawnPlayer(pair.first);
+        // Handle respawning for dead players
+        if (rp.player.IsDead()) {
+            // Output respawn status for debugging
+            static std::chrono::steady_clock::time_point lastDebugOutput = std::chrono::steady_clock::now();
+            float debugElapsed = std::chrono::duration<float>(now - lastDebugOutput).count();
+            
+            if (debugElapsed >= 1.0f) {  // Once per second
+                std::cout << "[PM] Player " << pair.first << " is dead. Respawn timer: " 
+                          << rp.respawnTimer << ", Health: " << rp.player.GetHealth() << "\n";
+                lastDebugOutput = now;
+            }
+            
+            if (rp.respawnTimer > 0.0f) {
+                rp.respawnTimer -= dt;
+                if (rp.respawnTimer <= 0.0f) {
+                    std::cout << "[PM] Respawn timer expired for " << pair.first << "\n";
+                    
+                    // Set respawn position to origin
+                    rp.player.SetRespawnPosition(sf::Vector2f(0.f, 0.f));
+                    
+                    // Call respawn
+                    RespawnPlayer(pair.first);
+                    
+                    // Double-check health after respawn
+                    if (rp.player.GetHealth() < 100) {
+                        std::cout << "[PM] WARNING: Player health not fully restored after respawn: " 
+                                  << rp.player.GetHealth() << "/100\n";
+                        
+                        // Force health to 100 as a fallback
+                        rp.player.Respawn();
+                    }
+                }
+            } else if (pair.first == localPlayerID) {
+                // If local player is dead but has no respawn timer, set one
+                if (rp.respawnTimer <= 0.0f) {
+                    std::cout << "[PM] Setting respawn timer for local player\n";
+                    rp.respawnTimer = 3.0f;
+                }
             }
         }
-
         
         sf::Vector2f pos;
         if (pair.first == localPlayerID) {
@@ -309,26 +340,68 @@ void PlayerManager::PlayerDied(const std::string& playerID, const std::string& k
 }
 
 void PlayerManager::RespawnPlayer(const std::string& playerID) {
-    if (players.find(playerID) != players.end()) {
-        players[playerID].player.Respawn();
+    // Normalize the player ID for consistent comparison
+    std::string normalizedID = playerID;
+    try {
+        uint64_t idNum = std::stoull(playerID);
+        normalizedID = std::to_string(idNum);
+    } catch (const std::exception& e) {
+        std::cout << "[PM] Error normalizing player ID in RespawnPlayer: " << e.what() << "\n";
+    }
+    
+    // Normalize the local player ID too
+    std::string normalizedLocalID = localPlayerID;
+    try {
+        uint64_t idNum = std::stoull(localPlayerID);
+        normalizedLocalID = std::to_string(idNum);
+    } catch (const std::exception& e) {
+        std::cout << "[PM] Error normalizing local ID in RespawnPlayer: " << e.what() << "\n";
+    }
+    
+    auto it = players.find(normalizedID);
+    if (it != players.end()) {
+        // Save health before respawn for debugging
+        int oldHealth = it->second.player.GetHealth();
+        bool wasDead = it->second.player.IsDead();
+        
+        // Call respawn
+        it->second.player.Respawn();
+        
+        // Check health after respawn
+        int newHealth = it->second.player.GetHealth();
+        bool isDeadNow = it->second.player.IsDead();
+        
+        std::cout << "[PM] Player " << normalizedID << " respawned. Health: " 
+                  << oldHealth << " -> " << newHealth 
+                  << ", Dead: " << (wasDead ? "Yes" : "No") << " -> " << (isDeadNow ? "Yes" : "No") << "\n";
         
         // If this is the local player, notify the network of respawn
-        if (playerID == localPlayerID) {
-            sf::Vector2f respawnPos = players[playerID].player.GetPosition();
+        if (normalizedID == normalizedLocalID) {
+            sf::Vector2f respawnPos = it->second.player.GetPosition();
             
-            // Check if we're the host by comparing with the lobby owner
+            // Check if we're the host
             CSteamID localSteamID = SteamUser()->GetSteamID();
             CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
             
             if (localSteamID == hostID) {
                 // We are the host, broadcast to all clients
-                std::string respawnMsg = MessageHandler::FormatPlayerRespawnMessage(playerID, respawnPos);
-                game->GetNetworkManager().BroadcastMessage(respawnMsg);
+                std::string respawnMsg = MessageHandler::FormatPlayerRespawnMessage(normalizedID, respawnPos);
+                if (game->GetNetworkManager().BroadcastMessage(respawnMsg)) {
+                    std::cout << "[PM] Broadcast respawn message for local player\n";
+                } else {
+                    std::cout << "[PM] Failed to broadcast respawn message\n";
+                }
             } else {
                 // We are a client, send to host
-                std::string respawnMsg = MessageHandler::FormatPlayerRespawnMessage(playerID, respawnPos);
-                game->GetNetworkManager().SendMessage(hostID, respawnMsg);
+                std::string respawnMsg = MessageHandler::FormatPlayerRespawnMessage(normalizedID, respawnPos);
+                if (game->GetNetworkManager().SendMessage(hostID, respawnMsg)) {
+                    std::cout << "[PM] Sent respawn message to host\n";
+                } else {
+                    std::cout << "[PM] Failed to send respawn message to host\n";
+                }
             }
         }
+    } else {
+        std::cout << "[PM] Could not find player " << normalizedID << " to respawn\n";
     }
 }

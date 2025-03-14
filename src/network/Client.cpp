@@ -255,14 +255,51 @@ void ClientNetwork::ProcessPlayerDeathMessage(const ParsedMessage& parsed) {
 }
 
 void ClientNetwork::ProcessPlayerRespawnMessage(const ParsedMessage& parsed) {
+    // Normalize the player ID
+    std::string normalizedID = parsed.steamID;
+    try {
+        uint64_t idNum = std::stoull(parsed.steamID);
+        normalizedID = std::to_string(idNum);
+    } catch (const std::exception& e) {
+        std::cout << "[CLIENT] Error normalizing player ID in ProcessPlayerRespawnMessage: " << e.what() << "\n";
+    }
+    
+    // Get local player ID for comparison
+    std::string localSteamIDStr = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
+    
+    // Find player in map
     auto& players = playerManager->GetPlayers();
-    if (players.find(parsed.steamID) != players.end()) {
-        RemotePlayer& player = players[parsed.steamID];
+    auto it = players.find(normalizedID);
+    
+    if (it != players.end()) {
+        RemotePlayer& player = it->second;
+        
+        // Save health before respawn for debugging
+        int oldHealth = player.player.GetHealth();
+        bool wasDead = player.player.IsDead();
+        
+        // Set respawn position and call respawn
         player.player.SetRespawnPosition(parsed.position);
         player.player.Respawn();
+        
+        // Check health after respawn
+        int newHealth = player.player.GetHealth();
+        bool isDeadNow = player.player.IsDead();
+        
+        std::cout << "[CLIENT] Player " << normalizedID << " respawned from network message. Health: " 
+                  << oldHealth << " -> " << newHealth 
+                  << ", Dead: " << (wasDead ? "Yes" : "No") << " -> " << (isDeadNow ? "Yes" : "No")
+                  << ", Is local player: " << (normalizedID == localSteamIDStr ? "Yes" : "No") << "\n";
+                  
+        // If health is not 100 after respawn, force it
+        if (newHealth < 100) {
+            std::cout << "[CLIENT] WARNING: Player health not fully restored after respawn, forcing to 100\n";
+            player.player.TakeDamage(-100);  // Hack to add health
+        }
+    } else {
+        std::cout << "[CLIENT] Could not find player " << normalizedID << " to respawn from network message\n";
     }
 }
-
 void ClientNetwork::ProcessEnemySpawnMessage(const ParsedMessage& parsed) {
     // Access the PlayingState's EnemyManager through the Game
     PlayingState* playingState = GetPlayingState(game);
