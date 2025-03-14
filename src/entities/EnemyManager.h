@@ -47,7 +47,7 @@ private:
     
     int currentWave;
     float waveTimer;            // Timer between waves
-    static constexpr float WAVE_COOLDOWN = 10.0f;  // Seconds between waves
+    float waveCooldown = 2.0f;  // Seconds between waves
     bool waveActive;
     int nextEnemyId;
     

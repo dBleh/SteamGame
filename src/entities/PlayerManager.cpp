@@ -162,7 +162,10 @@ void PlayerManager::IncrementPlayerKills(const std::string& playerID) {
         std::cout << "[PM] Incremented kills for " << playerID << " to " << players[playerID].kills << "\n";
     }
 }
-
+const std::vector<Bullet>& PlayerManager::GetAllBullets() const {
+    // Simply return the bullets collection
+    return bullets;
+}
 void PlayerManager::CheckBulletCollisions() {
     for (auto bulletIt = bullets.begin(); bulletIt != bullets.end();) {
         bool bulletHit = false;

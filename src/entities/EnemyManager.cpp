@@ -29,11 +29,25 @@ void EnemyManager::Update(float dt) {
         return;
     }
     
+    // Remove dead enemies from the vector
+    enemies.erase(std::remove_if(enemies.begin(), enemies.end(), 
+        [](const Enemy& e) { return !e.IsAlive(); }), enemies.end());
+    
     // Only update if we have enemies and a wave is active
     if (enemies.empty()) {
         // All enemies are dead, start timer for next wave
         waveActive = false;
-        waveTimer = WAVE_COOLDOWN;
+        waveTimer = waveCooldown;
+        
+        // Broadcast wave complete message (only host should do this)
+        CSteamID localSteamID = SteamUser()->GetSteamID();
+        CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+        
+        if (localSteamID == hostID) {
+            std::string msg = MessageHandler::FormatWaveCompleteMessage(currentWave);
+            game->GetNetworkManager().BroadcastMessage(msg);
+        }
+        
         return;
     }
     

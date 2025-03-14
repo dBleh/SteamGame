@@ -24,7 +24,7 @@ PlayingState::PlayingState(Game* game)
     
     // HUD initialization
     game->GetHUD().addElement("gameHeader", "Game In Progress", 32, sf::Vector2f(SCREEN_WIDTH * 0.5f, 20.f), GameState::Playing, HUD::RenderMode::ScreenSpace, true);
-    game->GetHUD().updateBaseColor("gameHeader", sf::Color::White);
+    game->GetHUD().updateBaseColor("gameHeader", sf::Color::Black);
     game->GetHUD().addElement("playerLoading", "Loading players...", 24, sf::Vector2f(50.f, SCREEN_HEIGHT - 150.f), GameState::Playing, HUD::RenderMode::ScreenSpace, false);
     game->GetHUD().addElement("gridToggle", "Press G to toggle grid", 20, 
         sf::Vector2f(SCREEN_WIDTH - 150.f, SCREEN_HEIGHT - 30.f), 
@@ -140,6 +140,14 @@ PlayingState::PlayingState(Game* game)
         sf::Vector2f(SCREEN_WIDTH - 150.f, SCREEN_HEIGHT - 60.f), 
         GameState::Playing, HUD::RenderMode::ScreenSpace, true);
     game->GetHUD().updateBaseColor("cursorLockHint", sf::Color::Black);
+
+    enemyManager = std::make_unique<EnemyManager>(game, playerManager.get());
+
+// Add enemy wave info HUD
+game->GetHUD().addElement("waveInfo", "Wave: 0 | Enemies: 0", 18, 
+    sf::Vector2f(10.f, 40.f), 
+    GameState::Playing, HUD::RenderMode::ScreenSpace, true);
+game->GetHUD().updateBaseColor("waveInfo", sf::Color::Black);
 }
 
 PlayingState::~PlayingState() {
@@ -148,6 +156,42 @@ PlayingState::~PlayingState() {
     game->GetWindow().setMouseCursorVisible(true);
 }
 
+void PlayingState::UpdateWaveInfo() {
+    if (!enemyManager) return;
+    
+    int currentWave = enemyManager->GetCurrentWave();
+    int remainingEnemies = enemyManager->GetRemainingEnemies();
+    float waveTimer = enemyManager->GetWaveTimer();
+    
+    std::string waveText;
+    if (enemyManager->IsWaveComplete()) {
+        waveText = "Wave: " + std::to_string(currentWave) + 
+                  " complete | Next wave in: " + std::to_string(static_cast<int>(waveTimer));
+    } else {
+        waveText = "Wave: " + std::to_string(currentWave) + 
+                  " | Enemies: " + std::to_string(remainingEnemies);
+    }
+    
+    game->GetHUD().updateText("waveInfo", waveText);
+}
+
+void PlayingState::StartFirstWave() {
+    // Only the host should start the wave
+    CSteamID myID = SteamUser()->GetSteamID();
+    CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+    
+    if (myID == hostID && enemyManager) {
+        // Start the first wave
+        enemyManager->StartNextWave();
+        
+        // Broadcast the wave start to all clients
+        std::string waveMsg = MessageHandler::FormatWaveStartMessage(
+            enemyManager->GetCurrentWave());
+        game->GetNetworkManager().BroadcastMessage(waveMsg);
+    }
+}
+
+// Update the PlayingState::Update method to include enemy manager and wave info
 void PlayingState::Update(float dt) {
     if (!playerLoaded) {
         loadingTimer += dt;
@@ -158,12 +202,26 @@ void PlayingState::Update(float dt) {
                 clientNetwork->SendConnectionMessage();
                 connectionSent = true;
             }
+            
+            // Start the first wave once players are loaded
+            StartFirstWave();
         }
     } else {
         // Update PlayerManager (includes local player movement)
         playerManager->Update();
         if (clientNetwork) clientNetwork->Update();
         if (hostNetwork) hostNetwork->Update();
+        
+        // Update EnemyManager
+        if (enemyManager) {
+            enemyManager->Update(dt);
+            
+            // Check bullet collisions with enemies
+            enemyManager->CheckBulletCollisions(playerManager->GetAllBullets());
+            
+            // Update wave info in HUD
+            UpdateWaveInfo();
+        }
         
         // Handle continuous shooting if mouse button is held down
         if (mouseHeld) {
@@ -231,11 +289,12 @@ void PlayingState::Update(float dt) {
     // Update camera position to follow player
     sf::Vector2f localPlayerPos = playerManager->GetLocalPlayer().player.GetPosition();
     game->GetCamera().setCenter(localPlayerPos);
+    
 }
 
+// Update the PlayingState::Render method to render enemies
 void PlayingState::Render() {
-    game->GetWindow().clear(sf::Color::White);
-    
+    game->GetWindow().clear(sf::Color(37, 37, 38));    
     // Set the game camera view for world rendering
     game->GetWindow().setView(game->GetCamera());
     
@@ -245,6 +304,11 @@ void PlayingState::Render() {
     
     if (playerLoaded) {
         playerRenderer->Render(game->GetWindow()); // Renders all players
+        
+        // Render enemies
+        if (enemyManager) {
+            enemyManager->Render(game->GetWindow());
+        }
     }
     
     // Switch to default view for HUD rendering
@@ -273,7 +337,6 @@ void PlayingState::Render() {
     
     game->GetWindow().display();
 }
-
 void PlayingState::ProcessEvents(const sf::Event& event) {
     if (event.type == sf::Event::KeyPressed) {
         if (event.key.code == sf::Keyboard::G) {

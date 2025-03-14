@@ -15,7 +15,7 @@ void PlayerRenderer::Render(sf::RenderWindow& window) {
         window.draw(pair.second.player.GetShape());
         window.draw(pair.second.nameText);
     }
-    auto& bullets = playerManager->GetBullets();
+    auto& bullets = playerManager->GetAllBullets();
     for (auto& bullet : bullets) {
         window.draw(bullet.GetShape());
     }

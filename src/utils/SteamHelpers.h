@@ -2,6 +2,7 @@
 #define STEAM_HELPERS_H
 
 #include "../entities/Player.h"
+#include "../entities/Bullet.h"
 #include <SFML/Graphics.hpp>
 #include <steam/steam_api.h>
 #include <cstdint>
@@ -9,6 +10,7 @@
 #include <unordered_map>
 #include <string>
 #include <chrono>
+#include <vector>
 
 // Forward declarations
 class Game;
@@ -41,7 +43,7 @@ struct RemotePlayer {
     sf::Vector2f targetPosition;
     std::chrono::steady_clock::time_point lastUpdateTime;
     float interpDuration = 0.1f;
-    
+    std::vector<Bullet> bullets;
     // Respawn timer
     float respawnTimer = 0.0f;
     
