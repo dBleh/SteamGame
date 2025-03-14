@@ -111,58 +111,65 @@ void TriangleEnemyManager::SpawnWave(int enemyCount)
     std::uniform_real_distribution<float> xDist(100.f, 2900.f);
     std::uniform_real_distribution<float> yDist(100.f, 2900.f);
     
-    // Track newly created enemies for batch spawn message
-    std::vector<std::tuple<int, sf::Vector2f, int>> spawnData;
-    spawnData.reserve(enemyCount);
+    // Track newly created enemies for batch spawn messages
+    std::vector<std::tuple<int, sf::Vector2f, int>> currentBatchData;
     
-    // Create enemies in batches for better performance
-    constexpr int BATCH_SIZE = 100;
-    for (int i = 0; i < enemyCount; i += BATCH_SIZE) {
-        int batchCount = std::min(BATCH_SIZE, enemyCount - i);
+    // Check if we're the host (only host should broadcast)
+    CSteamID localSteamID = SteamUser()->GetSteamID();
+    CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+    bool isHost = (localSteamID == hostID);
+    
+    // Create enemies in smaller network batches
+    constexpr int NETWORK_BATCH_SIZE = 20; // Smaller batch size to avoid packet size limits
+    
+    for (int i = 0; i < enemyCount; i++) {
+        sf::Vector2f position(xDist(gen), yDist(gen));
         
-        for (int j = 0; j < batchCount; ++j) {
-            sf::Vector2f position(xDist(gen), yDist(gen));
-            
-            // Create new enemy with unique ID
-            auto enemy = std::make_unique<TriangleEnemy>(nextEnemyId++, position);
-            TriangleEnemy* enemyPtr = enemy.get();
-            
-            // Add to containers
-            enemyMap[enemyPtr->GetID()] = enemyPtr;
-            enemies.push_back(std::move(enemy));
-            
-            // Add to spatial grid
-            spatialGrid.AddEnemy(enemyPtr);
-            
-            // Add to appropriate update group
-            AssignEnemyToUpdateGroup(enemyPtr);
-            
-            // Initialize last synced position
-            lastSyncedPositions[enemyPtr->GetID()] = position;
-            
-            // Add to spawn data for network message
-            spawnData.emplace_back(
+        // Create new enemy with unique ID
+        auto enemy = std::make_unique<TriangleEnemy>(nextEnemyId++, position);
+        TriangleEnemy* enemyPtr = enemy.get();
+        
+        // Add to containers
+        enemyMap[enemyPtr->GetID()] = enemyPtr;
+        enemies.push_back(std::move(enemy));
+        
+        // Add to spatial grid
+        spatialGrid.AddEnemy(enemyPtr);
+        
+        // Add to appropriate update group
+        AssignEnemyToUpdateGroup(enemyPtr);
+        
+        // Initialize last synced position
+        lastSyncedPositions[enemyPtr->GetID()] = position;
+        
+        // Add to current batch data for network message
+        if (isHost) {
+            currentBatchData.emplace_back(
                 enemyPtr->GetID(),
                 position,
                 enemyPtr->GetHealth()
             );
+            
+            // Send smaller network batches to avoid packet size limits
+            if (currentBatchData.size() >= NETWORK_BATCH_SIZE) {
+                std::string batchMsg = MessageHandler::FormatTriangleEnemyBatchSpawnMessage(currentBatchData);
+                game->GetNetworkManager().BroadcastMessage(batchMsg);
+                
+                // Clear batch after sending
+                currentBatchData.clear();
+            }
         }
     }
     
-    // Only send network messages if we're the host
-    CSteamID localSteamID = SteamUser()->GetSteamID();
-    CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
-    
-    if (localSteamID == hostID && !spawnData.empty()) {
-        // Send batch spawn message to all clients
-        std::string batchMsg = MessageHandler::FormatTriangleEnemyBatchSpawnMessage(spawnData);
+    // Send any remaining enemies in the final batch
+    if (isHost && !currentBatchData.empty()) {
+        std::string batchMsg = MessageHandler::FormatTriangleEnemyBatchSpawnMessage(currentBatchData);
         game->GetNetworkManager().BroadcastMessage(batchMsg);
-        
-        // Also do a full sync to ensure all clients are updated
-        SyncFullEnemyList();
-        
+    }
+    
+    if (isHost) {
         std::cout << "[HOST] Spawned and broadcast " << enemyCount 
-                  << " triangle enemies" << std::endl;
+                  << " triangle enemies in smaller batches" << std::endl;
     }
 }
 void TriangleEnemyManager::AddEnemy(int id, const sf::Vector2f& position) {
