@@ -331,7 +331,7 @@ void ClientNetwork::ProcessEnemyHitMessage(const ParsedMessage& parsed) {
             // For hits by the local player, we've already applied damage visually,
             // so only apply the actual health change if it's a killing blow or from another player
             if (!isLocalHit || parsed.killed) {
-                enemyManager->HandleEnemyHit(parsed.enemyId, parsed.damage, parsed.killed);
+                enemyManager->HandleEnemyHit(parsed.enemyId, parsed.damage, parsed.killed,parsed.steamID);
             }
         }
     }

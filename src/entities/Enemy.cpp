@@ -46,7 +46,37 @@ bool Enemy::TakeDamage(int amount) {
     }
     return false; // Enemy still alive
 }
-
+void Enemy::ProcessHit(int damage, const std::string& bulletID) {
+    // Current timestamp (could use game time instead)
+    float currentTime = static_cast<float>(std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count()) / 1000.0f;
+    
+    // Check if we've recently processed a hit from this bullet
+    auto it = recentHits.find(bulletID);
+    if (it != recentHits.end()) {
+        // If this bullet hit recently (within 0.5 seconds), ignore it
+        if (currentTime - it->second < 0.5f) {
+            std::cout << "[ENEMY] Ignoring duplicate hit from bullet " << bulletID << std::endl;
+            return;
+        }
+    }
+    
+    // Record this hit with current timestamp
+    recentHits[bulletID] = currentTime;
+    
+    // Clean up old entries (optional, for memory management)
+    for (auto it = recentHits.begin(); it != recentHits.end();) {
+        if (currentTime - it->second > 1.0f) {
+            it = recentHits.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    
+    // Now actually apply the damage
+    TakeDamage(damage);
+    std::cout << "[ENEMY] Processing hit from bullet " << bulletID << std::endl;
+}
 bool Enemy::CheckCollision(const sf::RectangleShape& playerShape) {
     if (isDead) return false;
     

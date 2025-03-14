@@ -42,6 +42,8 @@ struct ParsedMessage {
     sf::Vector2f direction;  // For Bullet
     float velocity;          // For Bullet
     std::vector<int> validEnemyIds;
+    std::string bulletID;
+
     // Enemy-related fields
     int enemyId;             // ID of the enemy
     int damage;              // Damage amount
@@ -67,7 +69,7 @@ public:
 
     // Enemy-related messages
     static std::string FormatEnemySpawnMessage(int enemyId, const sf::Vector2f& position);
-    static std::string FormatEnemyHitMessage(int enemyId, int damage, bool killed, const std::string& shooterID);
+    static std::string FormatEnemyHitMessage(int enemyId, int damage, bool killed, const std::string& shooterID, const std::string& bulletID);
     static std::string FormatEnemyDeathMessage(int enemyId, const std::string& killerID, bool rewardKill);
     static std::string FormatPlayerDamageMessage(const std::string& playerID, int damage, int enemyId);
     static std::string FormatWaveStartMessage(int waveNumber);

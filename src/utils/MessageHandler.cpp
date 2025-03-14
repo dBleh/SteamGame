@@ -109,9 +109,9 @@ std::string MessageHandler::FormatEnemyPositionsMessage(const std::vector<std::t
     
     return oss.str();
 }
-std::string MessageHandler::FormatEnemyHitMessage(int enemyId, int damage, bool killed, const std::string& shooterID) {
+std::string MessageHandler::FormatEnemyHitMessage(int enemyId, int damage, bool killed, const std::string& shooterID, const std::string& bulletID) {
     std::ostringstream oss;
-    oss << "EH|" << enemyId << "|" << damage << "|" << (killed ? "1" : "0") << "|" << shooterID;
+    oss << "EH|" << enemyId << "|" << damage << "|" << (killed ? "1" : "0") << "|" << shooterID << "|" << bulletID;
     return oss.str();
 }
 
@@ -221,12 +221,13 @@ ParsedMessage MessageHandler::ParseMessage(const std::string& msg) {
         char comma;
         posStream >> x >> comma >> y;
         parsed.position = sf::Vector2f(x, y);
-    } else if (parts[0] == "EH" && parts.size() >= 5) {
+    } else if (parts[0] == "EH" && parts.size() >= 6) {
         parsed.type = MessageType::EnemyHit;
         parsed.enemyId = std::stoi(parts[1]);
         parsed.damage = std::stoi(parts[2]);
         parsed.killed = (parts[3] == "1");
         parsed.steamID = parts[4];  // Shooter ID
+        parsed.bulletID = parts[5]; // Bullet ID
     } else if (parts[0] == "ED" && parts.size() >= 4) {
         parsed.type = MessageType::EnemyDeath;
         parsed.enemyId = std::stoi(parts[1]);

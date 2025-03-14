@@ -1,7 +1,7 @@
 #include "Bullet.h"
 
-Bullet::Bullet(const sf::Vector2f& position, const sf::Vector2f& direction, float speed, const std::string& shooterID)
-    : lifetime(5.f), shooterID(shooterID) {
+Bullet::Bullet(const sf::Vector2f& position, const sf::Vector2f& direction, float speed, const std::string& shooterID, const std::string& id)
+    : lifetime(5.f), shooterID(shooterID), bulletID(id) {
     // Create smaller bullet for better precision
     shape.setSize(sf::Vector2f(8.f, 8.f));  
     shape.setFillColor(sf::Color::Black);
