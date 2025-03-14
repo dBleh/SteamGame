@@ -11,8 +11,8 @@ public:
     struct BulletParams {
         sf::Vector2f position;
         sf::Vector2f direction;
+        bool success = false; // Added flag to indicate if shot was successful
     };
-    
     Player();
     Player(const sf::Vector2f& startPosition, const sf::Color& color);
     
@@ -34,7 +34,8 @@ public:
     
     // New getter for health
     int GetHealth() const { return health; }
-    
+    float GetShootCooldown() const;
+
 private:
     sf::RectangleShape shape;
     float movementSpeed;
@@ -42,6 +43,7 @@ private:
     int health;
     bool isDead;
     sf::Vector2f respawnPosition;
+    
 };
 
 #endif // PLAYER_H

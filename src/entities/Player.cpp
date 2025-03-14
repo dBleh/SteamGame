@@ -56,14 +56,16 @@ Player::BulletParams Player::Shoot(const sf::Vector2f& mouseWorldPos) {
         // Set bullet start position at player center
         params.position = playerCenter;
         params.direction = direction;
+        params.success = true; // Indicate successful shot
 
         std::cout << "[PLAYER] Bullet fired from center (" << playerCenter.x << ", " << playerCenter.y 
                  << ") toward (" << mouseWorldPos.x << ", " << mouseWorldPos.y 
                  << ") with direction (" << direction.x << ", " << direction.y << ")\n";
     } else {
-        // If on cooldown, return default/invalid params (won't be used)
+        // If on cooldown, return default/invalid params with success = false
         params.position = GetPosition();
         params.direction = sf::Vector2f(0.f, 0.f);
+        params.success = false;
     }
 
     return params;
@@ -80,7 +82,9 @@ void Player::SetPosition(const sf::Vector2f& pos) {
 sf::RectangleShape& Player::GetShape() {
     return shape;
 }
-
+float Player::GetShootCooldown() const {
+    return shootCooldown;
+}
 const sf::RectangleShape& Player::GetShape() const {
     return shape;
 }

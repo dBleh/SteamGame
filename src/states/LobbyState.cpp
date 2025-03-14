@@ -282,7 +282,7 @@ void LobbyState::AttemptShoot(int mouseX, int mouseY) {
     Player::BulletParams params = playerManager->GetLocalPlayer().player.Shoot(mouseWorldPos);
     
     // Only create and send bullet if shooting was successful (not on cooldown)
-    if (params.direction != sf::Vector2f(0.f, 0.f)) {  // Check if direction is valid
+    if (params.success) {  // Use the success flag instead of checking direction vector
         float bulletSpeed = 400.f;
         
         // As the local player, we always add our own bullets locally
@@ -297,11 +297,7 @@ void LobbyState::AttemptShoot(int mouseX, int mouseY) {
         } else if (clientNetwork) {
             // If we're a client, send to the host
             CSteamID hostID = clientNetwork->GetHostID();
-            if (game->GetNetworkManager().SendMessage(hostID, msg)) {
-                std::cout << "[CLIENT] Sent bullet message to host\n";
-            } else {
-                std::cout << "[CLIENT] Failed to send bullet message to host\n";
-            }
+            game->GetNetworkManager().SendMessage(hostID, msg);
         }
     }
 }

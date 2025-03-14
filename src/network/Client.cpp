@@ -42,7 +42,6 @@ void ClientNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
         case MessageType::StartGame:
             std::cout << "[CLIENT] Received start game message, changing to Playing state" << std::endl;
             if (game->GetCurrentState() != GameState::Playing) {
-                std::cout << "Starting client playing state" <<std::endl;
                 game->SetCurrentState(GameState::Playing);
             }
             break;
@@ -152,8 +151,17 @@ void ClientNetwork::ProcessBulletMessage(const ParsedMessage& parsed) {
     }
     
     // For bullets from other players, add them to our game
-    playerManager->AddBullet(parsed.steamID, parsed.position, parsed.direction, parsed.velocity);
+    // Make sure the bullet has valid data (non-zero direction)
+    if (parsed.direction.x != 0.f || parsed.direction.y != 0.f) {
+        playerManager->AddBullet(parsed.steamID, parsed.position, parsed.direction, parsed.velocity);
+        std::cout << "[CLIENT] Added bullet from " << parsed.steamID 
+                  << " at pos (" << parsed.position.x << "," << parsed.position.y 
+                  << ") with dir (" << parsed.direction.x << "," << parsed.direction.y << ")\n";
+    } else {
+        std::cout << "[CLIENT] Received bullet with invalid direction\n";
+    }
 }
+
 void ClientNetwork::SendMovementUpdate(const sf::Vector2f& position) {
     std::string msg = MessageHandler::FormatMovementMessage(
         std::to_string(SteamUser()->GetSteamID().ConvertToUint64()),

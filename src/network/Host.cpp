@@ -136,11 +136,23 @@ void HostNetwork::ProcessBulletMessage(const ParsedMessage& parsed) {
     // Get local player ID (host's ID)
     std::string localSteamIDStr = std::to_string(game->GetLocalSteamID().ConvertToUint64());
     
+    // Validate the bullet data before broadcasting
+    if (parsed.direction.x == 0.f && parsed.direction.y == 0.f) {
+        std::cout << "[HOST] Received invalid bullet direction, ignoring\n";
+        return;
+    }
+    
     // Broadcast this bullet to all clients (including the one who sent it)
     // This ensures all clients see all bullets
     std::string broadcastMsg = MessageHandler::FormatBulletMessage(
         parsed.steamID, parsed.position, parsed.direction, parsed.velocity);
-    game->GetNetworkManager().BroadcastMessage(broadcastMsg);
+    
+    bool sent = game->GetNetworkManager().BroadcastMessage(broadcastMsg);
+    if (sent) {
+        std::cout << "[HOST] Broadcast bullet from " << parsed.steamID << "\n";
+    } else {
+        std::cout << "[HOST] Failed to broadcast bullet message\n";
+    }
     
     // Skip adding bullets that were fired by the host (local player)
     // since they've already been added when the host shot
