@@ -9,7 +9,7 @@ class Game;
 class EnemyManager;
 class PlayingState;
 
-
+static const size_t MAX_PACKET_SIZE = 900; 
 enum class MessageType {
     Connection,
     Movement,
@@ -35,6 +35,9 @@ enum class MessageType {
     TriangleEnemyBatchSpawn,
     TriangleEnemyFullList,
     TriangleWaveStart,
+    ChunkStart,
+    ChunkPart,
+    ChunkEnd
 };
 
 struct ParsedMessage {
@@ -63,6 +66,11 @@ struct ParsedMessage {
     std::vector<int> triangleValidEnemyIds;
     uint32_t seed;
     int enemyCount;
+    std::string chunkId;
+    int chunkNum;
+    int totalChunks;
+    std::string chunkType;
+    
 };
 
 class MessageHandler {
@@ -117,8 +125,22 @@ public:
     static ParsedMessage ParseTriangleEnemyFullListMessage(const std::string& message);
     static std::string FormatMinimalTriangleSpawnMessage(int enemyId, const sf::Vector2f& position);
 
+    static std::vector<std::string> ChunkMessage(const std::string& message, const std::string& messageType);
+    static std::string FormatChunkStartMessage(const std::string& messageType, int totalChunks, const std::string& chunkId);
+    static std::string FormatChunkPartMessage(const std::string& chunkId, int chunkNum, const std::string& chunkData);
+    static std::string FormatChunkEndMessage(const std::string& chunkId);
+    
+    // Message reconstruction
+    static void AddChunk(const std::string& chunkId, int chunkNum, const std::string& chunkData);
+    static bool IsChunkComplete(const std::string& chunkId, int expectedChunks);
+    static std::string GetReconstructedMessage(const std::string& chunkId);
+    static void ClearChunks(const std::string& chunkId);
+
 // Parsing function for minimal triangle spawn message
-static ParsedMessage ParseMinimalTriangleSpawnMessage(const std::string& message);
+    static ParsedMessage ParseMinimalTriangleSpawnMessage(const std::string& message);
+    static std::unordered_map<std::string, std::vector<std::string>> chunkStorage;
+    static std::unordered_map<std::string, std::string> chunkTypes;
+    static std::unordered_map<std::string, int> chunkCounts;
 
 
     static ParsedMessage ParseMessage(const std::string& msg);

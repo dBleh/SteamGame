@@ -216,7 +216,8 @@ void LobbyState::Render() {
 
 void LobbyState::ProcessEvents(const sf::Event& event) {
     if (event.type == sf::Event::KeyPressed) {
-        if (event.key.code == sf::Keyboard::R) {
+        // Check if the ready toggle key was pressed
+        if (event.key.code == game->GetInputManager().GetKeyBinding(GameAction::ToggleReady)) {
             // Toggle ready status
             std::string myID = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
             bool currentReady = playerManager->GetLocalPlayer().isReady;
@@ -230,7 +231,7 @@ void LobbyState::ProcessEvents(const sf::Event& event) {
                 clientNetwork->SendReadyStatus(newReady);
             }
         }
-        else if (event.key.code == sf::Keyboard::G) {
+        else if (event.key.code == game->GetInputManager().GetKeyBinding(GameAction::ToggleGrid)) {
             // Toggle grid visibility
             showGrid = !showGrid;
         }
@@ -340,7 +341,9 @@ void LobbyState::Update(float dt) {
         }
     } else {
         // Update PlayerManager (includes local player movement)
-        playerManager->Update();
+        // Use the new Update method that takes Game pointer
+        playerManager->Update(game);
+        
         if (clientNetwork) clientNetwork->Update();
         if (hostNetwork) hostNetwork->Update();
         

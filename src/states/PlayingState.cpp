@@ -176,10 +176,31 @@ PlayingState::PlayingState(Game* game)
     continueButtonText.setCharacterSize(20);
     continueButtonText.setFillColor(sf::Color(220, 220, 220));
     
+    // Setup custom cursor elements
+    // Outer circle
+    cursorOuterCircle.setRadius(8.f);
+    cursorOuterCircle.setFillColor(sf::Color::Transparent);
+    cursorOuterCircle.setOutlineColor(sf::Color(200, 200, 255, 180));
+    cursorOuterCircle.setOutlineThickness(1.f);
+    cursorOuterCircle.setOrigin(8.f, 8.f);
     
+    // Center dot
+    cursorCenterDot.setRadius(1.5f);
+    cursorCenterDot.setFillColor(sf::Color(200, 200, 255));
+    cursorCenterDot.setOrigin(1.5f, 1.5f);
+    
+    // Crosshair lines
+    cursorHorizontalLine.setSize(sf::Vector2f(12.f, 1.f));
+    cursorHorizontalLine.setFillColor(sf::Color(200, 200, 255, 180));
+    cursorHorizontalLine.setOrigin(6.f, 0.5f);
+    
+    cursorVerticalLine.setSize(sf::Vector2f(1.f, 12.f));
+    cursorVerticalLine.setFillColor(sf::Color(200, 200, 255, 180));
+    cursorVerticalLine.setOrigin(0.5f, 6.f);
     
     // Hide system cursor and lock it to window
     game->GetWindow().setMouseCursorGrabbed(true);
+    game->GetWindow().setMouseCursorVisible(false);
     
     // Calculate window center
     windowCenter = sf::Vector2i(
@@ -191,11 +212,11 @@ PlayingState::PlayingState(Game* game)
     sf::Mouse::setPosition(windowCenter, game->GetWindow());
 
     // ===== PLAYER MANAGER SETUP =====
+    // Setup Player Manager first
     CSteamID myID = SteamUser()->GetSteamID();
     std::string myIDStr = std::to_string(myID.ConvertToUint64());
     playerManager = std::make_unique<PlayerManager>(game, myIDStr);
-    playerRenderer = std::make_unique<PlayerRenderer>(playerManager.get());
-
+    
     std::string myName = SteamFriends()->GetPersonaName();
     CSteamID hostIDSteam = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
     
@@ -213,13 +234,24 @@ PlayingState::PlayingState(Game* game)
     localPlayer.kills = 0;
     localPlayer.money = 0;
     playerManager->AddOrUpdatePlayer(myIDStr, localPlayer);
+    
+    // Create PlayerRenderer after PlayerManager
+    playerRenderer = std::make_unique<PlayerRenderer>(playerManager.get());
+
+    // ===== ENEMY MANAGER SETUP =====
+    // Create the Enemy Managers after Player Manager
+    enemyManager = std::make_unique<EnemyManager>(game, playerManager.get());
+    triangleEnemyManager = std::make_unique<TriangleEnemyManager>(game, playerManager.get());
 
     // ===== NETWORK SETUP =====
+    // Create networking components last, so they can use the other managers
     if (myID == hostIDSteam) {
         hostNetwork = std::make_unique<HostNetwork>(game, playerManager.get());
         game->GetNetworkManager().SetMessageHandler(
             [this](const std::string& msg, CSteamID sender) {
-                hostNetwork->ProcessMessage(msg, sender);
+                if (hostNetwork) {
+                    hostNetwork->ProcessMessage(msg, sender);
+                }
             }
         );
         // Broadcast host's connection
@@ -232,27 +264,44 @@ PlayingState::PlayingState(Game* game)
         );
         game->GetNetworkManager().BroadcastMessage(hostConnectMsg);
         std::cout << "[HOST] Sent host connection message in PlayingState: " << hostConnectMsg << "\n";
-        hostNetwork->BroadcastFullPlayerList();
+        
+        if (hostNetwork) {
+            hostNetwork->BroadcastFullPlayerList();
+        }
     } else {
         clientNetwork = std::make_unique<ClientNetwork>(game, playerManager.get());
         game->GetNetworkManager().SetMessageHandler(
             [this](const std::string& msg, CSteamID sender) {
-                clientNetwork->ProcessMessage(msg, sender);
+                if (clientNetwork) {
+                    clientNetwork->ProcessMessage(msg, sender);
+                }
             }
         );
-        clientNetwork->SendConnectionMessage();
+        
+        if (clientNetwork) {
+            clientNetwork->SendConnectionMessage();
+        }
     }
     
-    // ===== ENEMY MANAGER SETUP =====
-    enemyManager = std::make_unique<EnemyManager>(game, playerManager.get());
-    triangleEnemyManager = std::make_unique<TriangleEnemyManager>(game, playerManager.get());
-
+    std::cout << "[DEBUG] PlayingState constructor completed\n";
 }
 
 PlayingState::~PlayingState() {
     // Make sure to release the cursor when leaving this state
     game->GetWindow().setMouseCursorGrabbed(false);
+    game->GetWindow().setMouseCursorVisible(true);
     
+  
+    
+    // Clean up components in the correct order to avoid any crashes
+    hostNetwork.reset();
+    clientNetwork.reset();
+    triangleEnemyManager.reset();
+    enemyManager.reset();
+    playerRenderer.reset();
+    playerManager.reset();
+    
+    std::cout << "[DEBUG] PlayingState destructor completed\n";
 }
 
 void PlayingState::UpdateWaveInfo() {
@@ -281,27 +330,61 @@ void PlayingState::UpdateWaveInfo() {
 
 void PlayingState::StartFirstWave() {
     // Only the host should start the wave
+    if (!playerLoaded) return;
+    
     CSteamID myID = SteamUser()->GetSteamID();
     CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
     
     if (myID == hostID) {
+        std::cout << "[HOST] Starting first wave" << std::endl;
+        
         // Start the regular enemy wave
         if (enemyManager) {
-            enemyManager->StartNextWave();
-            
-            // Broadcast the wave start to all clients
-            std::string waveMsg = MessageHandler::FormatWaveStartMessage(
-                enemyManager->GetCurrentWave());
-            game->GetNetworkManager().BroadcastMessage(waveMsg);
+            try {
+                enemyManager->StartNextWave();
+                
+                // Broadcast the wave start to all clients
+                std::string waveMsg = MessageHandler::FormatWaveStartMessage(
+                    enemyManager->GetCurrentWave());
+                game->GetNetworkManager().BroadcastMessage(waveMsg);
+                
+                std::cout << "[HOST] Regular enemy wave started" << std::endl;
+            } catch (const std::exception& e) {
+                std::cerr << "[ERROR] Failed to start enemy wave: " << e.what() << std::endl;
+            }
         }
         
         // Also spawn triangle enemies
         if (triangleEnemyManager) {
-            // Spawn 100 triangle enemies
-            triangleEnemyManager->SpawnWave(1000);
-            
-            // Synchronize with clients
-            triangleEnemyManager->SyncFullEnemyList();
+            try {
+                // Spawn 100 triangle enemies
+                triangleEnemyManager->SpawnWave(100); // Reduced from 1000 to prevent overload
+                
+                // Synchronize with clients
+                triangleEnemyManager->SyncFullEnemyList();
+                
+                std::cout << "[HOST] Triangle enemy wave started" << std::endl;
+            } catch (const std::exception& e) {
+                std::cerr << "[ERROR] Failed to start triangle enemies: " << e.what() << std::endl;
+            }
+        }
+    }
+}
+
+bool PlayingState::isPointInRect(const sf::Vector2f& point, const sf::FloatRect& rect) {
+    return point.x >= rect.left && point.x <= rect.left + rect.width &&
+           point.y >= rect.top && point.y <= rect.top + rect.height;
+}
+
+void PlayingState::updateButtonHoverState(sf::RectangleShape& button, const sf::Vector2f& mousePos, bool& isHovered) {
+    bool hovering = isPointInRect(mousePos, button.getGlobalBounds());
+    
+    if (hovering != isHovered) {
+        isHovered = hovering;
+        if (isHovered) {
+            button.setFillColor(sf::Color(80, 80, 100, 230)); // Lighter when hovered
+        } else {
+            button.setFillColor(sf::Color(60, 60, 60, 230)); // Default color
         }
     }
 }
@@ -324,8 +407,8 @@ void PlayingState::Update(float dt) {
             StartFirstWave();
         }
     } else {
-        // Update PlayerManager (includes local player movement)
-        playerManager->Update();
+        // Update PlayerManager with the game instance (for InputManager access)
+        playerManager->Update(game);
         if (clientNetwork) clientNetwork->Update();
         if (hostNetwork) hostNetwork->Update();
         
@@ -348,13 +431,16 @@ void PlayingState::Update(float dt) {
         }
         
         // Handle continuous shooting if mouse button is held down
-        if (mouseHeld) {
-            shootTimer -= dt;
-            if (shootTimer <= 0.f) {
-                // Get current mouse position in window coordinates
-                sf::Vector2i mousePos = sf::Mouse::getPosition(game->GetWindow());
-                AttemptShoot(mousePos.x, mousePos.y);
-                shootTimer = 0.1f; // Shoot every 0.1 seconds when holding down
+        if (!showEscapeMenu && playerLoaded) {
+            // Check if the shoot action is active through InputHandler
+            if (game->GetInputHandler()->IsActionActive(InputAction::Shoot)) {
+                shootTimer -= dt;
+                if (shootTimer <= 0.f) {
+                    // Get current mouse position and attempt to shoot
+                    sf::Vector2i mousePos = sf::Mouse::getPosition(game->GetWindow());
+                    AttemptShoot(mousePos.x, mousePos.y);
+                    shootTimer = 0.1f; // Shoot every 0.1 seconds when holding down
+                }
             }
         }
         
@@ -370,7 +456,7 @@ void PlayingState::Update(float dt) {
         sf::Vector2i mousePos = sf::Mouse::getPosition(game->GetWindow());
         
         // Handle cursor lock if enabled
-        if (cursorLocked) {
+        if (cursorLocked && !showEscapeMenu) {
             sf::Vector2u windowSize = game->GetWindow().getSize();
             bool needsRepositioning = false;
             
@@ -426,136 +512,181 @@ void PlayingState::Update(float dt) {
                 }
             }
         }
+        
+        // Update escape menu button hover states
+        if (showEscapeMenu) {
+            static bool continueHovered = false;
+            static bool returnHovered = false;
+            
+            float centerX = BASE_WIDTH / 2.0f;
+            float centerY = BASE_HEIGHT / 2.0f;
+            
+            // Update button positions
+            continueButton.setPosition(
+                centerX - continueButton.getSize().x / 2.0f,
+                centerY - 40.0f
+            );
+            
+            returnButton.setPosition(
+                centerX - returnButton.getSize().x / 2.0f,
+                centerY + 30.0f
+            );
+            
+            updateButtonHoverState(continueButton, mouseUIPos, continueHovered);
+            updateButtonHoverState(returnButton, mouseUIPos, returnHovered);
+        }
     }
     
     // Center camera on local player
     sf::Vector2f localPlayerPos = playerManager->GetLocalPlayer().player.GetPosition();
     game->GetCamera().setCenter(localPlayerPos);
+    
+    // Update the custom cursor position
+    sf::Vector2i mousePos = sf::Mouse::getPosition(game->GetWindow());
+    sf::Vector2f mousePosView = game->GetWindow().mapPixelToCoords(mousePos, game->GetUIView());
+    
+    cursorOuterCircle.setPosition(mousePosView);
+    cursorCenterDot.setPosition(mousePosView);
+    cursorHorizontalLine.setPosition(mousePosView);
+    cursorVerticalLine.setPosition(mousePosView);
 }
 
 void PlayingState::Render() {
     game->GetWindow().clear(MAIN_BACKGROUND_COLOR);
     
-    // Set the game camera view for world rendering
-    game->GetWindow().setView(game->GetCamera());
-    
-    if (showGrid) {
-        grid.render(game->GetWindow(), game->GetCamera());
-    }
-    
-    if (playerLoaded) {
-        playerRenderer->Render(game->GetWindow()); // Renders all players
+    try {
+        // Set the game camera view for world rendering
+        game->GetWindow().setView(game->GetCamera());
         
-        // Render enemies
-        if (enemyManager) {
-            enemyManager->Render(game->GetWindow());
+        if (showGrid) {
+            grid.render(game->GetWindow(), game->GetCamera());
         }
-        if (triangleEnemyManager) {
-            triangleEnemyManager->Render(game->GetWindow());
+        
+        if (playerLoaded) {
+            // Render all players
+            if (playerRenderer) {
+                playerRenderer->Render(game->GetWindow());
+            }
+            
+            // Render enemies
+            if (enemyManager) {
+                enemyManager->Render(game->GetWindow());
+            }
+            if (triangleEnemyManager) {
+                triangleEnemyManager->Render(game->GetWindow());
+            }
         }
+        
+        // Switch to UI view for HUD rendering
+        game->GetWindow().setView(game->GetUIView());
+        
+        // Render HUD elements using the UI view
+        game->GetHUD().render(game->GetWindow(), game->GetUIView(), GameState::Playing);
+        
+        // Render escape menu if active
+        if (showEscapeMenu) {
+            // Draw a semi-transparent overlay for the entire screen
+            sf::RectangleShape overlay;
+            overlay.setSize(sf::Vector2f(BASE_WIDTH, BASE_HEIGHT));
+            overlay.setFillColor(sf::Color(0, 0, 0, 150));
+            game->GetWindow().draw(overlay);
+            
+            // Position menu elements using fixed coordinates based on BASE_WIDTH and BASE_HEIGHT
+            float centerX = BASE_WIDTH / 2.0f;
+            float centerY = BASE_HEIGHT / 2.0f;
+            
+            // Update menu background position
+            menuBackground.setPosition(
+                centerX - menuBackground.getSize().x / 2.0f,
+                centerY - menuBackground.getSize().y / 2.0f
+            );
+            
+            // Position the title at the top of the menu
+            sf::FloatRect titleBounds = menuTitle.getLocalBounds();
+            menuTitle.setOrigin(
+                titleBounds.left + titleBounds.width / 2.0f,
+                titleBounds.top + titleBounds.height / 2.0f
+            );
+            menuTitle.setPosition(
+                centerX,
+                centerY - menuBackground.getSize().y / 2.0f + 40.0f
+            );
+            
+            // Position the continue button
+            continueButton.setPosition(
+                centerX - continueButton.getSize().x / 2.0f,
+                centerY - 40.0f
+            );
+            
+            // Position the continue button text
+            sf::FloatRect continueBounds = continueButtonText.getLocalBounds();
+            continueButtonText.setOrigin(
+                continueBounds.left + continueBounds.width / 2.0f,
+                continueBounds.top + continueBounds.height / 2.0f
+            );
+            continueButtonText.setPosition(
+                centerX,
+                centerY - 40.0f + continueButton.getSize().y / 2.0f - 5.0f
+            );
+            
+            // Position the return button below the continue button
+            returnButton.setPosition(
+                centerX - returnButton.getSize().x / 2.0f,
+                centerY + 30.0f
+            );
+            
+            // Position the return button text
+            sf::FloatRect returnBounds = returnButtonText.getLocalBounds();
+            returnButtonText.setOrigin(
+                returnBounds.left + returnBounds.width / 2.0f,
+                returnBounds.top + returnBounds.height / 2.0f
+            );
+            returnButtonText.setPosition(
+                centerX,
+                centerY + 30.0f + returnButton.getSize().y / 2.0f - 5.0f
+            );
+            
+            // Draw the menu components
+            game->GetWindow().draw(menuBackground);
+            game->GetWindow().draw(menuTitle);
+            game->GetWindow().draw(continueButton);
+            game->GetWindow().draw(continueButtonText);
+            game->GetWindow().draw(returnButton);
+            game->GetWindow().draw(returnButtonText);
+        }
+        
+        // Render custom cursor if not in escape menu
+        if (!showEscapeMenu) {
+            game->GetWindow().draw(cursorOuterCircle);
+            game->GetWindow().draw(cursorCenterDot);
+            game->GetWindow().draw(cursorHorizontalLine);
+            game->GetWindow().draw(cursorVerticalLine);
+        }
+        
+        game->GetWindow().display();
+    } catch (const std::exception& e) {
+        std::cerr << "[ERROR] Exception in PlayingState::Render: " << e.what() << std::endl;
     }
-    
-    // Switch to UI view for HUD rendering
-    game->GetWindow().setView(game->GetUIView());
-    
-    // Render HUD elements using the UI view
-    game->GetHUD().render(game->GetWindow(), game->GetUIView(), GameState::Playing);
-    
-    // Render escape menu if active
-    // Replace the escape menu rendering code in PlayingState::Render() method:
-
-    // Render escape menu if active
-    if (showEscapeMenu) {
-        // Draw a semi-transparent overlay for the entire screen
-        sf::RectangleShape overlay;
-        overlay.setSize(sf::Vector2f(BASE_WIDTH, BASE_HEIGHT));
-        overlay.setFillColor(sf::Color(0, 0, 0, 150));
-        game->GetWindow().draw(overlay);
-        
-        // Position menu elements using fixed coordinates based on BASE_WIDTH and BASE_HEIGHT
-        float centerX = BASE_WIDTH / 2.0f;
-        float centerY = BASE_HEIGHT / 2.0f;
-        
-        // Update menu background position
-        menuBackground.setPosition(
-            centerX - menuBackground.getSize().x / 2.0f,
-            centerY - menuBackground.getSize().y / 2.0f
-        );
-        
-        // Position the title at the top of the menu
-        sf::FloatRect titleBounds = menuTitle.getLocalBounds();
-        menuTitle.setOrigin(
-            titleBounds.left + titleBounds.width / 2.0f,
-            titleBounds.top + titleBounds.height / 2.0f
-        );
-        menuTitle.setPosition(
-            centerX,
-            centerY - menuBackground.getSize().y / 2.0f + 40.0f
-        );
-        
-        // Position the continue button
-        continueButton.setPosition(
-            centerX - continueButton.getSize().x / 2.0f,
-            centerY - 40.0f
-        );
-        
-        // Position the continue button text
-        sf::FloatRect continueBounds = continueButtonText.getLocalBounds();
-        continueButtonText.setOrigin(
-            continueBounds.left + continueBounds.width / 2.0f,
-            continueBounds.top + continueBounds.height / 2.0f
-        );
-        continueButtonText.setPosition(
-            centerX,
-            centerY - 40.0f + continueButton.getSize().y / 2.0f - 5.0f
-        );
-        
-        // Position the return button below the continue button
-        returnButton.setPosition(
-            centerX - returnButton.getSize().x / 2.0f,
-            centerY + 30.0f
-        );
-        
-        // Position the return button text
-        sf::FloatRect returnBounds = returnButtonText.getLocalBounds();
-        returnButtonText.setOrigin(
-            returnBounds.left + returnBounds.width / 2.0f,
-            returnBounds.top + returnBounds.height / 2.0f
-        );
-        returnButtonText.setPosition(
-            centerX,
-            centerY + 30.0f + returnButton.getSize().y / 2.0f - 5.0f
-        );
-        
-        // Draw the menu components
-        game->GetWindow().draw(menuBackground);
-        game->GetWindow().draw(menuTitle);
-        game->GetWindow().draw(continueButton);
-        game->GetWindow().draw(continueButtonText);
-        game->GetWindow().draw(returnButton);
-        game->GetWindow().draw(returnButtonText);
-    }
-    
-    game->GetWindow().display();
 }
 
 void PlayingState::ProcessEvents(const sf::Event& event) {
     if (event.type == sf::Event::KeyPressed) {
-        if (event.key.code == sf::Keyboard::G) {
+        // Use InputManager for keybindings
+        if (game->GetInputManager().IsActionTriggered(GameAction::ToggleGrid, event)) {
             // Toggle grid visibility
             showGrid = !showGrid;
         }
-        else if (event.key.code == sf::Keyboard::Tab) {
+        else if (game->GetInputManager().IsActionTriggered(GameAction::ShowLeaderboard, event)) {
             // Toggle leaderboard visibility
             showLeaderboard = true;
             UpdateLeaderboard();
         }
-        else if (event.key.code == sf::Keyboard::L) {
+        else if (game->GetInputManager().IsActionTriggered(GameAction::ToggleCursorLock, event)) {
             // Toggle cursor lock
             cursorLocked = !cursorLocked;
             game->GetWindow().setMouseCursorGrabbed(cursorLocked);
         }
-        else if (event.key.code == sf::Keyboard::Escape) {
+        else if (game->GetInputManager().IsActionTriggered(GameAction::OpenMenu, event)) {
             // Toggle escape menu
             showEscapeMenu = !showEscapeMenu;
             
@@ -572,7 +703,7 @@ void PlayingState::ProcessEvents(const sf::Event& event) {
         }
     } 
     else if (event.type == sf::Event::KeyReleased) {
-        if (event.key.code == sf::Keyboard::Tab) {
+        if (event.key.code == game->GetInputManager().GetKeyBinding(GameAction::ShowLeaderboard)) {
             // Hide leaderboard when Tab is released
             showLeaderboard = false;
             game->GetHUD().updateText("leaderboard", "");
@@ -687,157 +818,170 @@ bool PlayingState::IsFullyLoaded() {
 }
 
 void PlayingState::AttemptShoot(int mouseX, int mouseY) {
-    std::string myID = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
-    
-    // Don't shoot if player is dead
-    if (playerManager->GetLocalPlayer().player.IsDead()) {
-        return;
-    }
-    
-    // Get mouse position in screen coordinates and convert to world coordinates
-    sf::Vector2i mouseScreenPos(mouseX, mouseY);
-    sf::Vector2f mouseWorldPos = game->GetWindow().mapPixelToCoords(mouseScreenPos, game->GetCamera());
-    
-    // Trigger shooting and get bullet parameters
-    Player::BulletParams params = playerManager->GetLocalPlayer().player.Shoot(mouseWorldPos);
-    
-    // Only create and send bullet if shooting was successful (not on cooldown)
-    if (params.success) {
-        float bulletSpeed = 400.f;
+    try {
+        std::string myID = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
         
-        // As the local player, we always add our own bullets locally
-        playerManager->AddBullet(myID, params.position, params.direction, bulletSpeed);
-        
-        // Send bullet message to others
-        std::string msg = MessageHandler::FormatBulletMessage(myID, params.position, params.direction, bulletSpeed);
-        
-        if (hostNetwork) {
-            // If we're the host, broadcast to all clients
-            game->GetNetworkManager().BroadcastMessage(msg);
-        } else if (clientNetwork) {
-            // If we're a client, send to the host
-            CSteamID hostID = clientNetwork->GetHostID();
-            game->GetNetworkManager().SendMessage(hostID, msg);
+        // Don't shoot if player is dead
+        if (playerManager->GetLocalPlayer().player.IsDead()) {
+            return;
         }
+        
+        // Get mouse position in screen coordinates and convert to world coordinates
+        sf::Vector2i mouseScreenPos(mouseX, mouseY);
+        sf::Vector2f mouseWorldPos = game->GetWindow().mapPixelToCoords(mouseScreenPos, game->GetCamera());
+        
+        // Trigger shooting and get bullet parameters
+        Player::BulletParams params = playerManager->GetLocalPlayer().player.Shoot(mouseWorldPos);
+        
+        // Only create and send bullet if shooting was successful (not on cooldown)
+        if (params.success) {
+            float bulletSpeed = 400.f;
+            
+            // As the local player, we always add our own bullets locally
+            playerManager->AddBullet(myID, params.position, params.direction, bulletSpeed);
+            
+            // Send bullet message to others
+            std::string msg = MessageHandler::FormatBulletMessage(myID, params.position, params.direction, bulletSpeed);
+            
+            if (hostNetwork) {
+                // If we're the host, broadcast to all clients
+                game->GetNetworkManager().BroadcastMessage(msg);
+            } else if (clientNetwork) {
+                // If we're a client, send to the host
+                CSteamID hostID = clientNetwork->GetHostID();
+                game->GetNetworkManager().SendMessage(hostID, msg);
+            }
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "[ERROR] Exception in PlayingState::AttemptShoot: " << e.what() << std::endl;
     }
 }
 
 void PlayingState::UpdatePlayerStats() {
-    const RemotePlayer& localPlayer = playerManager->GetLocalPlayer();
-    int health = localPlayer.player.GetHealth();
-    int kills = localPlayer.kills;
-    int money = localPlayer.money;
-    
-    // Format stats with modern UI style
-    std::string statsText = "HP: " + std::to_string(health) + 
-                           " | Kills: " + std::to_string(kills) + 
-                           " | Money: " + std::to_string(money);
-    
-    // Change color based on health status
-    if (health < 30) {
-        game->GetHUD().updateBaseColor("playerStats", sf::Color(255, 0, 0)); // Red for low health
-    } else if (health < 70) {
-        game->GetHUD().updateBaseColor("playerStats", sf::Color(255, 165, 0)); // Orange for medium health
-    } else {
-        game->GetHUD().updateBaseColor("playerStats", sf::Color::Black); // Normal color for good health
-    }
-    
-    game->GetHUD().updateText("playerStats", statsText);
-}
-void PlayingState::UpdateLeaderboard() {
-    std::string leaderboardText = "LEADERBOARD\n\n";
-    
-    // Get all players sorted by kills
-    auto& playersMap = playerManager->GetPlayers();
-    std::vector<std::pair<std::string, RemotePlayer>> players(playersMap.begin(), playersMap.end());
-    
-    // Sort players by kills (descending)
-    std::sort(players.begin(), players.end(), [](const auto& a, const auto& b) {
-        return a.second.kills > b.second.kills;
-    });
-    
-    // Format the leaderboard text with modern styling
-    for (size_t i = 0; i < players.size(); i++) {
-        const auto& [id, player] = players[i];
+    try {
+        const RemotePlayer& localPlayer = playerManager->GetLocalPlayer();
+        int health = localPlayer.player.GetHealth();
+        int kills = localPlayer.kills;
+        int money = localPlayer.money;
         
-        // Add rank number and highlight the top player
-        if (i == 0) {
-            leaderboardText += "🏆 ";
+        // Format stats with modern UI style
+        std::string statsText = "HP: " + std::to_string(health) + 
+                               " | Kills: " + std::to_string(kills) + 
+                               " | Money: " + std::to_string(money);
+        
+        // Change color based on health status
+        if (health < 30) {
+            game->GetHUD().updateBaseColor("playerStats", sf::Color(255, 0, 0)); // Red for low health
+        } else if (health < 70) {
+            game->GetHUD().updateBaseColor("playerStats", sf::Color(255, 165, 0)); // Orange for medium health
         } else {
-            leaderboardText += std::to_string(i + 1) + ". ";
+            game->GetHUD().updateBaseColor("playerStats", sf::Color::Black); // Normal color for good health
         }
         
-        // Add player info
-        leaderboardText += player.baseName + 
-                          (player.isHost ? " (Host)" : "") + 
-                          "\nKills: " + std::to_string(player.kills) + 
-                          " | HP: " + std::to_string(player.player.GetHealth()) + 
-                          " | Money: " + std::to_string(player.money) + "\n\n";
+        game->GetHUD().updateText("playerStats", statsText);
+    } catch (const std::exception& e) {
+        std::cerr << "[ERROR] Exception in PlayingState::UpdatePlayerStats: " << e.what() << std::endl;
     }
-    
-    if (players.empty()) {
-        leaderboardText += "No players found.";
+}
+
+void PlayingState::UpdateLeaderboard() {
+    try {
+        std::string leaderboardText = "LEADERBOARD\n\n";
+        
+        // Get all players sorted by kills
+        auto& playersMap = playerManager->GetPlayers();
+        std::vector<std::pair<std::string, RemotePlayer>> players(playersMap.begin(), playersMap.end());
+        
+        // Sort players by kills (descending)
+        std::sort(players.begin(), players.end(), [](const auto& a, const auto& b) {
+            return a.second.kills > b.second.kills;
+        });
+        
+        // Format the leaderboard text with modern styling
+        for (size_t i = 0; i < players.size(); i++) {
+            const auto& [id, player] = players[i];
+            
+            // Add rank number and highlight the top player
+            if (i == 0) {
+                leaderboardText += "🏆 ";
+            } else {
+                leaderboardText += std::to_string(i + 1) + ". ";
+            }
+            
+            // Add player info
+            leaderboardText += player.baseName + 
+                              (player.isHost ? " (Host)" : "") + 
+                              "\nKills: " + std::to_string(player.kills) + 
+                              " | HP: " + std::to_string(player.player.GetHealth()) + 
+                              " | Money: " + std::to_string(player.money) + "\n\n";
+        }
+        
+        if (players.empty()) {
+            leaderboardText += "No players found.";
+        }
+        
+        // Create a semi-transparent background for the leaderboard
+        // Use fixed position based on BASE_WIDTH and BASE_HEIGHT
+        float centerX = BASE_WIDTH / 2.0f;
+        float centerY = BASE_HEIGHT / 2.0f;
+        
+        // Use UI view for drawing the leaderboard background
+        sf::View oldView = game->GetWindow().getView();
+        game->GetWindow().setView(game->GetUIView());
+        
+        // Create a glass-like background
+        sf::RectangleShape leaderboardBg;
+        leaderboardBg.setSize(sf::Vector2f(500.f, 400.f));
+        leaderboardBg.setFillColor(sf::Color(30, 30, 50, 220)); // Dark blue semi-transparent
+        leaderboardBg.setOutlineColor(sf::Color(100, 100, 200, 150)); // Light blue outline
+        leaderboardBg.setOutlineThickness(2.f);
+        leaderboardBg.setPosition(
+            centerX - 250.f,  // Centered horizontally (500/2 = 250)
+            centerY - 200.f   // Centered vertically (400/2 = 200)
+        );
+        
+        // Add a header bar
+        sf::RectangleShape headerBar;
+        headerBar.setSize(sf::Vector2f(500.f, 50.f));
+        headerBar.setFillColor(sf::Color(50, 50, 80, 230)); // Slightly lighter than background
+        headerBar.setPosition(
+            centerX - 250.f,
+            centerY - 200.f
+        );
+        
+        // Create header text
+        sf::Text headerText;
+        headerText.setFont(game->GetFont());
+        headerText.setString("LEADERBOARD");
+        headerText.setCharacterSize(24);
+        headerText.setFillColor(sf::Color(220, 220, 255)); // Light blue-white
+        headerText.setStyle(sf::Text::Bold);
+        
+        // Center the header text on the header bar
+        sf::FloatRect headerBounds = headerText.getLocalBounds();
+        headerText.setOrigin(
+            headerBounds.left + headerBounds.width / 2.0f,
+            headerBounds.top + headerBounds.height / 2.0f
+        );
+        headerText.setPosition(
+            centerX,
+            centerY - 200.f + 25.f // Centered on the header bar
+        );
+        
+        // Display the background and header
+        game->GetWindow().draw(leaderboardBg);
+        game->GetWindow().draw(headerBar);
+        game->GetWindow().draw(headerText);
+        
+        // Update the content area
+        game->GetHUD().updateText("leaderboard", leaderboardText);
+        
+        // Position the leaderboard text below the header
+        game->GetHUD().updateElementPosition("leaderboard", sf::Vector2f(centerX - 220.f, centerY - 130.f));
+        
+        // Restore previous view
+        game->GetWindow().setView(oldView);
+    } catch (const std::exception& e) {
+        std::cerr << "[ERROR] Exception in PlayingState::UpdateLeaderboard: " << e.what() << std::endl;
     }
-    
-    // Create a semi-transparent background for the leaderboard
-    // Use fixed position based on BASE_WIDTH and BASE_HEIGHT
-    float centerX = BASE_WIDTH / 2.0f;
-    float centerY = BASE_HEIGHT / 2.0f;
-    
-    // Use UI view for drawing the leaderboard background
-    sf::View oldView = game->GetWindow().getView();
-    game->GetWindow().setView(game->GetUIView());
-    
-    // Create a glass-like background
-    sf::RectangleShape leaderboardBg;
-    leaderboardBg.setSize(sf::Vector2f(500.f, 400.f));
-    leaderboardBg.setFillColor(sf::Color(30, 30, 50, 220)); // Dark blue semi-transparent
-    leaderboardBg.setOutlineColor(sf::Color(100, 100, 200, 150)); // Light blue outline
-    leaderboardBg.setOutlineThickness(2.f);
-    leaderboardBg.setPosition(
-        centerX - 250.f,  // Centered horizontally (500/2 = 250)
-        centerY - 200.f   // Centered vertically (400/2 = 200)
-    );
-    
-    // Add a header bar
-    sf::RectangleShape headerBar;
-    headerBar.setSize(sf::Vector2f(500.f, 50.f));
-    headerBar.setFillColor(sf::Color(50, 50, 80, 230)); // Slightly lighter than background
-    headerBar.setPosition(
-        centerX - 250.f,
-        centerY - 200.f
-    );
-    
-    // Create header text
-    sf::Text headerText;
-    headerText.setFont(game->GetFont());
-    headerText.setString("LEADERBOARD");
-    headerText.setCharacterSize(24);
-    headerText.setFillColor(sf::Color(220, 220, 255)); // Light blue-white
-    headerText.setStyle(sf::Text::Bold);
-    
-    // Center the header text on the header bar
-    sf::FloatRect headerBounds = headerText.getLocalBounds();
-    headerText.setOrigin(
-        headerBounds.left + headerBounds.width / 2.0f,
-        headerBounds.top + headerBounds.height / 2.0f
-    );
-    headerText.setPosition(
-        centerX,
-        centerY - 200.f + 25.f // Centered on the header bar
-    );
-    
-    // Display the background and header
-    game->GetWindow().draw(leaderboardBg);
-    game->GetWindow().draw(headerBar);
-    game->GetWindow().draw(headerText);
-    
-    // Update the content area
-    game->GetHUD().updateText("leaderboard", leaderboardText);
-    
-    // Position the leaderboard text below the header
-    game->GetHUD().updateElementPosition("leaderboard", sf::Vector2f(centerX - 220.f, centerY - 130.f));
-    
-    // Restore previous view
-    game->GetWindow().setView(oldView);
 }

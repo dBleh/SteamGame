@@ -9,6 +9,128 @@ PlayerManager::PlayerManager(Game* game, const std::string& localID)
 PlayerManager::~PlayerManager() {
 }
 
+void PlayerManager::Update(Game* game) {
+    auto now = std::chrono::steady_clock::now();
+    float dt = std::chrono::duration<float>(now - lastFrameTime).count();
+    lastFrameTime = now;
+
+    for (auto& pair : players) {
+        RemotePlayer& rp = pair.second;
+
+        // Handle respawning for dead players
+        if (rp.player.IsDead()) {
+            // Output respawn status for debugging
+            static std::chrono::steady_clock::time_point lastDebugOutput = std::chrono::steady_clock::now();
+            float debugElapsed = std::chrono::duration<float>(now - lastDebugOutput).count();
+            
+            if (debugElapsed >= 1.0f) {  // Once per second
+                std::cout << "[PM] Player " << pair.first << " is dead. Respawn timer: " 
+                          << rp.respawnTimer << ", Health: " << rp.player.GetHealth() << "\n";
+                lastDebugOutput = now;
+            }
+            
+            if (rp.respawnTimer > 0.0f) {
+                rp.respawnTimer -= dt;
+                if (rp.respawnTimer <= 0.0f) {
+                    std::cout << "[PM] Respawn timer expired for " << pair.first << "\n";
+                    
+                    // Set respawn position to origin
+                    rp.player.SetRespawnPosition(sf::Vector2f(0.f, 0.f));
+                    
+                    // Call respawn
+                    RespawnPlayer(pair.first);
+                    
+                    // Double-check health after respawn
+                    if (rp.player.GetHealth() < 100) {
+                        std::cout << "[PM] WARNING: Player health not fully restored after respawn: " 
+                                  << rp.player.GetHealth() << "/100\n";
+                        
+                        // Force health to 100 as a fallback
+                        rp.player.Respawn();
+                    }
+                }
+            } else if (pair.first == localPlayerID) {
+                // If local player is dead but has no respawn timer, set one
+                if (rp.respawnTimer <= 0.0f) {
+                    std::cout << "[PM] Setting respawn timer for local player\n";
+                    rp.respawnTimer = 3.0f;
+                }
+            }
+        }
+        
+        sf::Vector2f pos;
+        if (pair.first == localPlayerID) {
+            // For local player, use the InputManager for movement
+            rp.player.Update(dt, game->GetInputManager());
+            pos = rp.player.GetPosition();
+        } else {
+            // For remote players, use interpolation
+            float elapsed = std::chrono::duration<float>(now - rp.lastUpdateTime).count();
+            float t = elapsed / rp.interpDuration;
+            if (t > 1.0f) t = 1.0f;
+            pos = rp.previousPosition + (rp.targetPosition - rp.previousPosition) * t;
+            rp.player.SetPosition(pos);
+        }
+        
+        // Only show ready status in Lobby state
+        if (game->GetCurrentState() == GameState::Lobby) {
+            std::string status = rp.isReady ? " ✓" : " X";
+            rp.nameText.setString(rp.baseName + status);
+        } else {
+            rp.nameText.setString(rp.baseName);
+        }
+        
+        rp.nameText.setPosition(pos.x, pos.y - 20.f);
+    }
+   
+    std::vector<size_t> bulletsToRemove;
+    
+    for (size_t i = 0; i < bullets.size(); i++) {
+        bullets[i].Update(dt);
+        
+        // Mark expired bullets or those far away from all players
+        if (bullets[i].IsExpired()) {
+            bulletsToRemove.push_back(i);
+        } else {
+            // Also remove bullets that are far away from any player
+            bool tooFarFromAllPlayers = true;
+            sf::Vector2f bulletPos = bullets[i].GetPosition();
+            
+            for (const auto& pair : players) {
+                if (pair.second.player.IsDead()) continue;
+                
+                sf::Vector2f playerPos = pair.second.player.GetPosition();
+                float distSquared = (bulletPos.x - playerPos.x) * (bulletPos.x - playerPos.x) +
+                                    (bulletPos.y - playerPos.y) * (bulletPos.y - playerPos.y);
+                
+                // If bullet is within reasonable distance of any player, keep it
+                if (distSquared < 1000*1000) {  // 1000 pixels
+                    tooFarFromAllPlayers = false;
+                    break;
+                }
+            }
+            
+            if (tooFarFromAllPlayers) {
+                bulletsToRemove.push_back(i);
+            }
+        }
+    }
+    
+    // Remove expired bullets safely (from back to front)
+    if (!bulletsToRemove.empty()) {
+        // Sort indices in descending order for safe removal
+        std::sort(bulletsToRemove.begin(), bulletsToRemove.end(), std::greater<size_t>());
+        
+        for (size_t idx : bulletsToRemove) {
+            if (idx < bullets.size()) {
+                bullets.erase(bullets.begin() + idx);
+            }
+        }
+    }
+    
+    CheckBulletCollisions();
+}
+
 void PlayerManager::Update() {
     auto now = std::chrono::steady_clock::now();
     float dt = std::chrono::duration<float>(now - lastFrameTime).count();
@@ -60,7 +182,7 @@ void PlayerManager::Update() {
         
         sf::Vector2f pos;
         if (pair.first == localPlayerID) {
-            rp.player.Update(dt);  // Local player updates with input
+            rp.player.Update(dt);  // Use the old Update method without InputManager
             pos = rp.player.GetPosition();
         } else {
             float elapsed = std::chrono::duration<float>(now - rp.lastUpdateTime).count();

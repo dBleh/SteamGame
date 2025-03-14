@@ -1,8 +1,11 @@
+// State.h
 #ifndef STATE_H
 #define STATE_H
 
 #include <SFML/Graphics.hpp>
-#include "../Game.h"
+
+// Forward declaration
+class Game;
 
 class State {
 public:

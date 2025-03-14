@@ -2,6 +2,7 @@
 #include "states/MainMenuState.h"
 #include "states/LobbyCreationState.h"
 #include "states/LobbySearchState.h"
+#include "states/SettingsState.h"
 #include "states/PlayingState.h"
 #include "states/LobbyState.h"
 #include <steam/steam_api.h>
@@ -29,6 +30,9 @@ Game::Game() : hud(font) {
 
     networkManager = std::make_unique<NetworkManager>(this);
     state = std::make_unique<MainMenuState>(this);
+
+    settingsManager = std::make_shared<SettingsManager>();
+    inputHandler = std::make_shared<InputHandler>(settingsManager);
 
     // Initialize camera for game world
     camera.setSize(BASE_WIDTH, BASE_HEIGHT);
@@ -99,6 +103,12 @@ void Game::Run() {
                     stateChanged = true;
                 }
                 break;
+            case GameState::Settings:
+                if (!dynamic_cast<SettingsState*>(state.get())) {
+                    state = std::make_unique<SettingsState>(this);
+                    stateChanged = true;
+                }
+                break;
             default:
                 break;
         }
@@ -124,19 +134,21 @@ void Game::ProcessEvents(sf::Event& event) {
     if (event.type == sf::Event::Resized) {
         AdjustViewToWindow();
     }
-    if (event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::F11) {
-        // Toggle fullscreen with F11
-        static bool isFullscreen = false;
-        isFullscreen = !isFullscreen;
-        
-        if (isFullscreen) {
-            window.create(sf::VideoMode::getDesktopMode(), "SteamGame", sf::Style::Fullscreen);
-        } else {
-            window.create(sf::VideoMode(BASE_WIDTH, BASE_HEIGHT), "SteamGame");
+    if (event.type == sf::Event::KeyPressed) {
+        if (event.key.code == sf::Keyboard::F11) {
+            // Toggle fullscreen with F11
+            static bool isFullscreen = false;
+            isFullscreen = !isFullscreen;
+            
+            if (isFullscreen) {
+                window.create(sf::VideoMode::getDesktopMode(), "SteamGame", sf::Style::Fullscreen);
+            } else {
+                window.create(sf::VideoMode(BASE_WIDTH, BASE_HEIGHT), "SteamGame");
+            }
+            
+            window.setFramerateLimit(60);
+            AdjustViewToWindow();
         }
-        
-        window.setFramerateLimit(60);
-        AdjustViewToWindow();
     }
     if (event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::R) {
         std::cout << "Triggering ready state" << std::endl;

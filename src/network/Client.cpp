@@ -15,6 +15,13 @@ ClientNetwork::~ClientNetwork() {}
 
 void ClientNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
     ParsedMessage parsed = MessageHandler::ParseMessage(msg);
+    
+    // Handle chunk messages (which are processed internally by ParseMessage)
+    // If this is a chunk message that's not yet complete, just return
+    if (parsed.type == MessageType::ChunkStart || 
+        parsed.type == MessageType::ChunkPart) {
+        return;
+    }
     switch (parsed.type) {
         case MessageType::Chat:
             ProcessChatMessage(parsed);

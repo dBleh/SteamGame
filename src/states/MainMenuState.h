@@ -2,6 +2,10 @@
 #define MAIN_MENU_STATE_H
 
 #include "State.h"
+#include <SFML/Graphics.hpp>
+
+// Forward declarations
+class Game;
 
 class MainMenuState : public State {
 public:
@@ -11,7 +15,9 @@ public:
     void ProcessEvent(const sf::Event& event) override;
 
 private:
-    void ProcessEvents(const sf::Event& event);
+    // No longer need this method as it's duplicating functionality
+    // void ProcessEvents(const sf::Event& event);
+    
     void addSeparatorLine(Game* game, const std::string& id, float yPos, float windowWidth);
 };
 

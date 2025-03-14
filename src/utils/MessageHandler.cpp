@@ -4,6 +4,11 @@
 #include "../Game.h"
 #include "../states/PlayingState.h"
 #include "../entities/EnemyManager.h"
+
+
+std::unordered_map<std::string, std::vector<std::string>> MessageHandler::chunkStorage;
+std::unordered_map<std::string, std::string> MessageHandler::chunkTypes;
+std::unordered_map<std::string, int> MessageHandler::chunkCounts;
 std::string MessageHandler::FormatConnectionMessage(const std::string& steamID, const std::string& steamName, const sf::Color& color, bool isReady, bool isHost) {
     std::ostringstream oss;
     oss << "C|" << steamID << "|" << steamName << "|" << static_cast<int>(color.r) << "," 
@@ -17,7 +22,105 @@ std::string MessageHandler::FormatMovementMessage(const std::string& steamID, co
     oss << "M|" << steamID << "|" << position.x << "," << position.y;
     return oss.str();
 }
+std::vector<std::string> MessageHandler::ChunkMessage(const std::string& message, const std::string& messageType) {
+    std::vector<std::string> chunks;
+    
+    // If the message is small enough to send directly, don't chunk it
+    if (message.size() <= MAX_PACKET_SIZE) {
+        chunks.push_back(message);
+        return chunks;
+    }
+    
+    // Generate a unique chunk ID (timestamp + random number)
+    auto now = std::chrono::system_clock::now();
+    auto timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
+    std::string chunkId = std::to_string(timestamp) + "_" + std::to_string(rand() % 10000);
+    
+    // Split the message into chunks
+    size_t chunkSize = MAX_PACKET_SIZE - 50; // Leave room for chunk headers
+    size_t numChunks = (message.size() + chunkSize - 1) / chunkSize; // Ceiling division
+    
+    // Add the start message
+    chunks.push_back(FormatChunkStartMessage(messageType, static_cast<int>(numChunks), chunkId));
+    
+    // Split and add each chunk
+    for (size_t i = 0; i < numChunks; i++) {
+        size_t start = i * chunkSize;
+        size_t end = std::min(start + chunkSize, message.size());
+        std::string chunkData = message.substr(start, end - start);
+        
+        chunks.push_back(FormatChunkPartMessage(chunkId, static_cast<int>(i), chunkData));
+    }
+    
+    // Add the end message
+    chunks.push_back(FormatChunkEndMessage(chunkId));
+    
+    return chunks;
+}
 
+std::string MessageHandler::FormatChunkStartMessage(const std::string& messageType, int totalChunks, const std::string& chunkId) {
+    std::ostringstream oss;
+    oss << "CHUNK_START|" << messageType << "|" << totalChunks << "|" << chunkId;
+    return oss.str();
+}
+
+std::string MessageHandler::FormatChunkPartMessage(const std::string& chunkId, int chunkNum, const std::string& chunkData) {
+    std::ostringstream oss;
+    oss << "CHUNK_PART|" << chunkId << "|" << chunkNum << "|" << chunkData;
+    return oss.str();
+}
+
+std::string MessageHandler::FormatChunkEndMessage(const std::string& chunkId) {
+    std::ostringstream oss;
+    oss << "CHUNK_END|" << chunkId;
+    return oss.str();
+}
+
+void MessageHandler::AddChunk(const std::string& chunkId, int chunkNum, const std::string& chunkData) {
+    // Ensure the vector is large enough
+    if (chunkStorage[chunkId].size() <= static_cast<size_t>(chunkNum)) {
+        chunkStorage[chunkId].resize(chunkNum + 1);
+    }
+    
+    // Store the chunk
+    chunkStorage[chunkId][chunkNum] = chunkData;
+}
+
+bool MessageHandler::IsChunkComplete(const std::string& chunkId, int expectedChunks) {
+    // Check if we have the right number of chunks
+    if (chunkStorage.find(chunkId) == chunkStorage.end() ||
+        chunkStorage[chunkId].size() != static_cast<size_t>(expectedChunks)) {
+        return false;
+    }
+    
+    // Check that no chunks are empty
+    for (const auto& chunk : chunkStorage[chunkId]) {
+        if (chunk.empty()) {
+            return false;
+        }
+    }
+    
+    return true;
+}
+
+std::string MessageHandler::GetReconstructedMessage(const std::string& chunkId) {
+    if (chunkStorage.find(chunkId) == chunkStorage.end()) {
+        return "";
+    }
+    
+    std::string result;
+    for (const auto& chunk : chunkStorage[chunkId]) {
+        result += chunk;
+    }
+    
+    return result;
+}
+
+void MessageHandler::ClearChunks(const std::string& chunkId) {
+    chunkStorage.erase(chunkId);
+    chunkTypes.erase(chunkId);
+    chunkCounts.erase(chunkId);
+}
 std::string MessageHandler::FormatChatMessage(const std::string& steamID, const std::string& message) {
     std::ostringstream oss;
     oss << "T|" << steamID << "|" << message;
@@ -730,6 +833,54 @@ ParsedMessage MessageHandler::ParseMessage(const std::string& msg) {
         return ParseMinimalTriangleSpawnMessage(msg);
     }else if (parts[0] == "TWS") {
         return ParseTriangleWaveStartMessage(msg);
+    }else if (parts[0] == "CHUNK_START" && parts.size() >= 4) {
+        parsed.type = MessageType::ChunkStart;
+        parsed.chunkType = parts[1];
+        parsed.totalChunks = std::stoi(parts[2]);
+        parsed.chunkId = parts[3];
+        
+        // Initialize storage for this chunk group
+        chunkStorage[parsed.chunkId].clear();
+        chunkStorage[parsed.chunkId].resize(parsed.totalChunks);
+        chunkTypes[parsed.chunkId] = parsed.chunkType;
+        chunkCounts[parsed.chunkId] = parsed.totalChunks;
+    }
+    else if (parts[0] == "CHUNK_PART" && parts.size() >= 4) {
+        parsed.type = MessageType::ChunkPart;
+        parsed.chunkId = parts[1];
+        parsed.chunkNum = std::stoi(parts[2]);
+        
+        // Reconstruct the chunk data (which may contain pipe characters)
+        std::string chunkData;
+        for (size_t i = 3; i < parts.size(); i++) {
+            if (i > 3) chunkData += "|";
+            chunkData += parts[i];
+        }
+        
+        // Store the chunk
+        AddChunk(parsed.chunkId, parsed.chunkNum, chunkData);
+    }
+    else if (parts[0] == "CHUNK_END" && parts.size() >= 2) {
+        parsed.type = MessageType::ChunkEnd;
+        parsed.chunkId = parts[1];
+        
+        // Check if all chunks have been received
+        if (chunkCounts.find(parsed.chunkId) != chunkCounts.end() &&
+            IsChunkComplete(parsed.chunkId, chunkCounts[parsed.chunkId])) {
+            
+            // Reconstruct and re-parse the complete message
+            std::string completeMessage = GetReconstructedMessage(parsed.chunkId);
+            std::string messageType = chunkTypes[parsed.chunkId];
+            
+            // Clear chunk storage
+            ClearChunks(parsed.chunkId);
+            
+            // Prepend the original message type
+            completeMessage = messageType + "|" + completeMessage;
+            
+            // Re-parse the complete message
+            return ParseMessage(completeMessage);
+        }
     }
 
     return parsed;

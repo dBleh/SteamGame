@@ -24,7 +24,7 @@ public:
     void Update();
     void AddLocalPlayer(const std::string& id, const std::string& name, const sf::Vector2f& position, const sf::Color& color);
     void RemovePlayer(const std::string& id);
-
+    void Update(Game* game);
     // Player management
     void AddOrUpdatePlayer(const std::string& playerID, const RemotePlayer& player);
     RemotePlayer& GetLocalPlayer();

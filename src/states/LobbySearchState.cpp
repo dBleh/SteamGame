@@ -1,5 +1,6 @@
 #include "LobbySearchState.h"
 #include "../utils/Config.h"
+#include "../Game.h"
 #include <steam/steam_api.h>
 #include <iostream>
 

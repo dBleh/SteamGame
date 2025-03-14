@@ -112,8 +112,7 @@ void TriangleEnemyManager::Render(sf::RenderWindow& window)
     }
 }
 
-void TriangleEnemyManager::SpawnWave(int enemyCount)
-{
+void TriangleEnemyManager::SpawnWave(int enemyCount) {
     // Get the current time for a seed - this will be shared with clients
     uint32_t seed = static_cast<uint32_t>(std::time(nullptr));
     
@@ -128,14 +127,16 @@ void TriangleEnemyManager::SpawnWave(int enemyCount)
         game->GetNetworkManager().BroadcastMessage(message);
     }
     
-    // Actually generate the enemies using the seed
+    // Set up for gradual spawning rather than all at once
+    isSpawningWave = true;
+    remainingEnemiestoSpawn = enemyCount;
+    spawnTimer = 0.f;
+    
+    // Seed the RNG for the wave
     GenerateEnemiesWithSeed(seed, enemyCount);
 }
-void TriangleEnemyManager::SpawnEnemyBatch(int count)
-{
+void TriangleEnemyManager::SpawnEnemyBatch(int count) {
     // Generate random positions for new enemies
-    std::random_device rd;
-    std::mt19937 gen(rd());
     std::uniform_real_distribution<float> xDist(100.f, 2900.f);
     std::uniform_real_distribution<float> yDist(100.f, 2900.f);
     
@@ -148,12 +149,16 @@ void TriangleEnemyManager::SpawnEnemyBatch(int count)
         isSpawningWave = false;
     }
     
+    // Prepare a batch of enemy data for efficient network transmission
+    std::vector<std::tuple<int, sf::Vector2f, int>> batchData;
+    batchData.reserve(batchCount);
+    
     // Spawn the batch
     for (int i = 0; i < batchCount; i++) {
-        sf::Vector2f position(xDist(gen), yDist(gen));
+        sf::Vector2f position(xDist(seedGenerator), yDist(seedGenerator));
         
         // Create new enemy
-        auto enemy = std::make_unique<TriangleEnemy>(nextEnemyId++, position);
+        auto enemy = std::make_unique<TriangleEnemy>(nextEnemyId, position);
         TriangleEnemy* enemyPtr = enemy.get();
         
         // Add to containers
@@ -169,10 +174,22 @@ void TriangleEnemyManager::SpawnEnemyBatch(int count)
         // Initialize last synced position
         lastSyncedPositions[enemyPtr->GetID()] = position;
         
-        // Send minimal spawn message
-        std::string spawnMsg = MessageHandler::FormatMinimalTriangleSpawnMessage(
-            enemyPtr->GetID(), position);
-        game->GetNetworkManager().BroadcastMessage(spawnMsg);
+        // Add to batch data
+        batchData.emplace_back(nextEnemyId, position, 40); // 40 is default health
+        
+        // Increment ID for next enemy
+        nextEnemyId++;
+    }
+    
+    // Send batch spawn message to clients
+    if (!batchData.empty()) {
+        CSteamID localSteamID = SteamUser()->GetSteamID();
+        CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+        
+        if (localSteamID == hostID) {
+            std::string batchMsg = MessageHandler::FormatTriangleEnemyBatchSpawnMessage(batchData);
+            game->GetNetworkManager().BroadcastMessage(batchMsg);
+        }
     }
 }
 void TriangleEnemyManager::AddEnemy(int id, const sf::Vector2f& position) {
@@ -332,25 +349,51 @@ void TriangleEnemyManager::CheckPlayerCollisions() {
 }
 
 
-void TriangleEnemyManager::SyncEnemyPositions()
-{
+void TriangleEnemyManager::SyncEnemyPositions() {
     // Use delta compression to reduce bandwidth
     auto compressedData = GetDeltaCompressedPositions();
     
     // Send only if there's data to send
     if (!compressedData.empty()) {
-        // Send message with compressed data
-        std::string message = MessageHandler::FormatTriangleEnemyPositionsMessage(compressedData);
-        game->GetNetworkManager().BroadcastMessage(message);
+        // Split into batches if there are too many position updates
+        const size_t BATCH_SIZE = 80; // Maximum position updates per message
         
-        // Update last synced positions
-        for (const auto& tuple : compressedData) {
-            int id = std::get<0>(tuple);
-            sf::Vector2f pos = std::get<1>(tuple);
-            lastSyncedPositions[id] = pos;
+        if (compressedData.size() <= BATCH_SIZE) {
+            // Small enough for a single message
+            std::string message = MessageHandler::FormatTriangleEnemyPositionsMessage(compressedData);
+            game->GetNetworkManager().BroadcastMessage(message);
+            
+            // Update last synced positions
+            for (const auto& tuple : compressedData) {
+                int id = std::get<0>(tuple);
+                sf::Vector2f pos = std::get<1>(tuple);
+                lastSyncedPositions[id] = pos;
+            }
+        } else {
+            // Split into batches
+            for (size_t i = 0; i < compressedData.size(); i += BATCH_SIZE) {
+                std::vector<std::tuple<int, sf::Vector2f, int>> batch;
+                size_t end = std::min(i + BATCH_SIZE, compressedData.size());
+                
+                batch.insert(batch.end(), compressedData.begin() + i, compressedData.begin() + end);
+                
+                std::string message = MessageHandler::FormatTriangleEnemyPositionsMessage(batch);
+                game->GetNetworkManager().BroadcastMessage(message);
+                
+                // Update last synced positions for this batch
+                for (const auto& tuple : batch) {
+                    int id = std::get<0>(tuple);
+                    sf::Vector2f pos = std::get<1>(tuple);
+                    lastSyncedPositions[id] = pos;
+                }
+                
+                // Small delay to prevent network congestion
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            }
         }
     }
 }
+
 
 std::vector<std::tuple<int, sf::Vector2f, int>> TriangleEnemyManager::GetEnemyDataForSync() const
 {
@@ -404,8 +447,7 @@ std::vector<std::tuple<int, sf::Vector2f, int>> TriangleEnemyManager::GetDeltaCo
     return result;
 }
 
-void TriangleEnemyManager::SyncFullEnemyList()
-{
+void TriangleEnemyManager::SyncFullEnemyList() {
     std::vector<int> validIds;
     validIds.reserve(enemies.size());
     
@@ -415,10 +457,30 @@ void TriangleEnemyManager::SyncFullEnemyList()
         }
     }
     
-    // Send full list message
-    std::string message = MessageHandler::FormatTriangleEnemyFullListMessage(validIds);
-    game->GetNetworkManager().BroadcastMessage(message);
+    // Split into batches if there are too many enemies
+    const size_t BATCH_SIZE = 100; // Maximum enemies per message
+    
+    if (validIds.size() <= BATCH_SIZE) {
+        // Small enough for a single message
+        std::string message = MessageHandler::FormatTriangleEnemyFullListMessage(validIds);
+        game->GetNetworkManager().BroadcastMessage(message);
+    } else {
+        // Split into batches
+        for (size_t i = 0; i < validIds.size(); i += BATCH_SIZE) {
+            std::vector<int> batch;
+            size_t end = std::min(i + BATCH_SIZE, validIds.size());
+            
+            batch.insert(batch.end(), validIds.begin() + i, validIds.begin() + end);
+            
+            std::string message = MessageHandler::FormatTriangleEnemyFullListMessage(batch);
+            game->GetNetworkManager().BroadcastMessage(message);
+            
+            // Small delay to prevent network congestion
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+    }
 }
+
 
 void TriangleEnemyManager::ValidateEnemyList(const std::vector<int>& validIds) {
     // Create set of valid IDs for faster lookup - using proper include
@@ -619,12 +681,9 @@ void TriangleEnemyManager::UpdateVisibleEnemies(const sf::FloatRect& viewBounds)
     visibleEnemies = spatialGrid.GetEnemiesInRect(viewBounds);
 }
 
-void TriangleEnemyManager::GenerateEnemiesWithSeed(uint32_t seed, int enemyCount)
-{
+void TriangleEnemyManager::GenerateEnemiesWithSeed(uint32_t seed, int enemyCount) {
     // Use the seed for deterministic generation on both host and client
     std::mt19937 gen(seed);
-    std::uniform_real_distribution<float> xDist(100.f, 2900.f);
-    std::uniform_real_distribution<float> yDist(100.f, 2900.f);
     
     // Clear existing enemies
     enemies.clear();
@@ -638,27 +697,13 @@ void TriangleEnemyManager::GenerateEnemiesWithSeed(uint32_t seed, int enemyCount
     // Reset next enemy ID
     nextEnemyId = 1;
     
-    // Generate all enemies at once - no networking required since both sides use same seed
-    for (int i = 0; i < enemyCount; i++) {
-        sf::Vector2f position(xDist(gen), yDist(gen));
-        
-        // Create new enemy
-        auto enemy = std::make_unique<TriangleEnemy>(nextEnemyId++, position);
-        TriangleEnemy* enemyPtr = enemy.get();
-        
-        // Add to containers
-        enemyMap[enemyPtr->GetID()] = enemyPtr;
-        enemies.push_back(std::move(enemy));
-        
-        // Add to spatial grid
-        spatialGrid.AddEnemy(enemyPtr);
-        
-        // Add to appropriate update group
-        AssignEnemyToUpdateGroup(enemyPtr);
-        
-        // Initialize last synced position
-        lastSyncedPositions[enemyPtr->GetID()] = position;
-    }
+    // Set up for gradual spawning
+    isSpawningWave = true;
+    remainingEnemiestoSpawn = enemyCount;
+    spawnTimer = 0.f;
     
-    std::cout << "Generated " << enemyCount << " triangle enemies with seed " << seed << std::endl;
+    // Store the generator for later use in batched spawning
+    seedGenerator = gen;
+    
+    std::cout << "Prepared to generate " << enemyCount << " triangle enemies with seed " << seed << std::endl;
 }

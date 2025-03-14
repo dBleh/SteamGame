@@ -15,7 +15,6 @@ Player::Player(const sf::Vector2f& startPosition, const sf::Color& color)
     shape.setFillColor(color);
     shape.setPosition(startPosition);
 }
-
 void Player::Update(float dt) {
     sf::Vector2f movement(0.f, 0.f);
     
@@ -26,6 +25,24 @@ void Player::Update(float dt) {
     if (sf::Keyboard::isKeyPressed(sf::Keyboard::A))
         movement.x -= movementSpeed * dt;
     if (sf::Keyboard::isKeyPressed(sf::Keyboard::D))
+        movement.x += movementSpeed * dt;
+    
+    shape.move(movement);
+
+    if (shootCooldown > 0.f) {
+        shootCooldown -= dt;
+    }
+}
+void Player::Update(float dt, const InputManager& inputManager) {
+    sf::Vector2f movement(0.f, 0.f);
+    
+    if (sf::Keyboard::isKeyPressed(inputManager.GetKeyBinding(GameAction::MoveUp)))
+        movement.y -= movementSpeed * dt;
+    if (sf::Keyboard::isKeyPressed(inputManager.GetKeyBinding(GameAction::MoveDown)))
+        movement.y += movementSpeed * dt;
+    if (sf::Keyboard::isKeyPressed(inputManager.GetKeyBinding(GameAction::MoveLeft)))
+        movement.x -= movementSpeed * dt;
+    if (sf::Keyboard::isKeyPressed(inputManager.GetKeyBinding(GameAction::MoveRight)))
         movement.x += movementSpeed * dt;
     
     shape.move(movement);

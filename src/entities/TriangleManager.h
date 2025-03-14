@@ -8,6 +8,8 @@
 #include <tuple>
 #include <memory>
 #include <unordered_set>
+#include <random>
+#include <thread>
 // Forward declarations
 class Game;
 class PlayerManager;
@@ -59,7 +61,7 @@ public:
     int GetNextEnemyId() const;
     // Get current enemy count
     size_t GetEnemyCount() const;
-    
+    std::mt19937 seedGenerator;
     // Get enemy by ID
     TriangleEnemy* GetEnemy(int enemyId);
     void GenerateEnemiesWithSeed(uint32_t seed, int enemyCount);

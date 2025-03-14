@@ -4,6 +4,9 @@
 #include <SFML/Graphics.hpp>
 #include "../hud/Hud.h"
 #include "../network/NetworkManager.h"
+#include "./utils/SettingsManager.h"  
+#include "./utils/InputHandler.h" 
+#include "./utils/InputManager.h"  
 #include "./utils/Config.h"
 #include "GameState.h"
 #include <memory>
@@ -23,6 +26,8 @@ public:
     sf::RenderWindow& GetWindow() { return window; }
     HUD& GetHUD() { return hud; }
     NetworkManager& GetNetworkManager() { return *networkManager; }
+    std::shared_ptr<SettingsManager> GetSettingsManager() const { return settingsManager; }
+    std::shared_ptr<InputHandler> GetInputHandler() const {return inputHandler; }
     std::string& GetLobbyNameInput() { return lobbyNameInput; }
     bool IsSteamInitialized() const { return steamInitialized; }
     bool IsInLobby() const { return inLobby; }
@@ -37,6 +42,7 @@ public:
     sf::Vector2f WindowToUICoordinates(sf::Vector2i windowPos) const; // Convert window to UI coordinates
     State* GetState() { return state.get(); }
     
+    InputManager& GetInputManager() { return inputManager; }
 private:
     void ProcessEvents(sf::Event& event);
     void AdjustViewToWindow();
@@ -48,7 +54,9 @@ private:
     HUD hud;
     std::unique_ptr<State> state;
     std::unique_ptr<NetworkManager> networkManager;
-
+    std::shared_ptr<SettingsManager> settingsManager;
+    std::shared_ptr<InputHandler> inputHandler;   
+    InputManager inputManager;
     GameState currentState{GameState::MainMenu};
     bool steamInitialized{false};
     bool inLobby{false};

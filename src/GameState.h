@@ -6,7 +6,8 @@ enum class GameState {
     LobbyCreation,
     LobbySearch,
     Playing,
-    Lobby
+    Lobby,
+    Settings
 };
 
 #endif // GAME_STATE_H

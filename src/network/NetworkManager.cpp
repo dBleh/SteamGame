@@ -104,6 +104,8 @@ void NetworkManager::SendConnectionMessageOnJoin(CSteamID hostID) {
         m_pendingHostID = hostID;
     }
 }
+// Modify the BroadcastMessage method in NetworkManager.cpp
+
 bool NetworkManager::BroadcastMessage(const std::string& msg) {
     bool success = true;
     CSteamID myID = SteamUser()->GetSteamID();
@@ -112,13 +114,39 @@ bool NetworkManager::BroadcastMessage(const std::string& msg) {
         return false;
     }
 
+    // Check message size and split if necessary
+    if (msg.size() > MAX_PACKET_SIZE) {
+        // Extract message type for chunking
+        std::string messageType = msg.substr(0, msg.find('|'));
+        std::vector<std::string> chunks = MessageHandler::ChunkMessage(msg.substr(msg.find('|') + 1), messageType);
+        
+        std::cout << "[NETWORK] Large message (" << msg.size() << " bytes) split into " 
+                  << chunks.size() << " chunks\n";
+        
+        // Send each chunk
+        int numMembers = SteamMatchmaking()->GetNumLobbyMembers(m_currentLobbyID);
+        for (int i = 0; i < numMembers; ++i) {
+            CSteamID memberID = SteamMatchmaking()->GetLobbyMemberByIndex(m_currentLobbyID, i);
+            if (memberID != myID) { // Don't send to self
+                for (const auto& chunk : chunks) {
+                    if (!SendMessage(memberID, chunk)) {
+                        std::cout << "[NETWORK] Failed to send chunk to " 
+                                  << memberID.ConvertToUint64() << "\n";
+                        success = false;
+                    }
+                }
+            }
+        }
+        return success;
+    }
+    
+    // For small messages, use the original implementation
     int numMembers = SteamMatchmaking()->GetNumLobbyMembers(m_currentLobbyID);
     for (int i = 0; i < numMembers; ++i) {
         CSteamID memberID = SteamMatchmaking()->GetLobbyMemberByIndex(m_currentLobbyID, i);
-        if (memberID != myID) { // Don’t send to self
-            if (SendMessage(memberID, msg)) {
-            } else {
-                std::cout << "[NETWORK] Failed to broadcast to " << memberID.ConvertToUint64() << ": " << msg << "\n";
+        if (memberID != myID) { // Don't send to self
+            if (!SendMessage(memberID, msg)) {
+                std::cout << "[NETWORK] Failed to broadcast to " << memberID.ConvertToUint64() << "\n";
                 success = false;
             }
         }

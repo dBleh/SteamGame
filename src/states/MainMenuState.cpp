@@ -1,5 +1,6 @@
 #include "MainMenuState.h"
 #include <iostream>
+#include "../Game.h"
 #include "../utils/Config.h"
 
 MainMenuState::MainMenuState(Game* game) : State(game) {
@@ -132,17 +133,16 @@ void MainMenuState::Render() {
     game->GetWindow().display();
 }
 
+// Fixed implementation - merged both versions and removed the override keyword
 void MainMenuState::ProcessEvent(const sf::Event& event) {
-    ProcessEvents(event);
-}
-
-void MainMenuState::ProcessEvents(const sf::Event& event) {
     if (event.type == sf::Event::KeyPressed) {
         if (event.key.code == sf::Keyboard::Num1 && game->IsSteamInitialized()) {
             game->SetCurrentState(GameState::LobbyCreation);
             game->GetLobbyNameInput().clear();
         } else if (event.key.code == sf::Keyboard::Num2 && game->IsSteamInitialized()) {
             game->SetCurrentState(GameState::LobbySearch);
+        } else if (event.key.code == sf::Keyboard::Num3) {
+            game->SetCurrentState(GameState::Settings);
         }
     } else if (event.type == sf::Event::MouseButtonPressed && event.mouseButton.button == sf::Mouse::Left) {
         // Get window mouse position
@@ -169,11 +169,16 @@ void MainMenuState::ProcessEvents(const sf::Event& event) {
                         } else if (id == "searchLobby" && game->IsSteamInitialized()) {
                             game->SetCurrentState(GameState::LobbySearch);
                         } else if (id == "settings") {
-                            // Settings option currently does nothing
+                            game->SetCurrentState(GameState::Settings);
                         }
                     }
                 }
             }
         }
     }
+}
+
+// Optional implementation of the addSeparatorLine method if you need it
+void MainMenuState::addSeparatorLine(Game* game, const std::string& id, float yPos, float windowWidth) {
+    // Implementation goes here if needed
 }
