@@ -6,7 +6,7 @@
 
 class Player {
 public:
-    static constexpr float SHOOT_COOLDOWN_DURATION = 0.5f; // seconds between shots
+    static constexpr float SHOOT_COOLDOWN_DURATION = 0.1f; // seconds between shots
     
     struct BulletParams {
         sf::Vector2f position;

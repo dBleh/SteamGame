@@ -12,6 +12,7 @@ public:
 
 private:
     void ProcessEvents(const sf::Event& event);
+    void addSeparatorLine(Game* game, const std::string& id, float yPos, float windowWidth);
 };
 
 #endif // MAIN_MENU_STATE_H

@@ -1,5 +1,6 @@
 #include "PlayingState.h"
 #include "../Game.h"
+#include "../utils/Config.h"
 #include "../entities/PlayerManager.h"
 #include "../network/Host.h"
 #include "../network/Client.h"
@@ -13,64 +14,170 @@ PlayingState::PlayingState(Game* game)
       playerLoaded(false), 
       loadingTimer(0.f), 
       connectionSent(false),
-      grid(50.f, sf::Color(220, 220, 220)), 
       showGrid(true),
       mouseHeld(false),
       shootTimer(0.f),
       showLeaderboard(false),
-      cursorLocked(true) {
+      cursorLocked(true),
+      showEscapeMenu(false) {
     
     std::cout << "[DEBUG] PlayingState constructor start\n";
     
-    // HUD initialization
-    game->GetHUD().addElement("gameHeader", "Game In Progress", 32, sf::Vector2f(SCREEN_WIDTH * 0.5f, 20.f), GameState::Playing, HUD::RenderMode::ScreenSpace, true);
-    game->GetHUD().updateBaseColor("gameHeader", sf::Color::Black);
-    game->GetHUD().addElement("playerLoading", "Loading players...", 24, sf::Vector2f(50.f, SCREEN_HEIGHT - 150.f), GameState::Playing, HUD::RenderMode::ScreenSpace, false);
-    game->GetHUD().addElement("gridToggle", "Press G to toggle grid", 20, 
-        sf::Vector2f(SCREEN_WIDTH - 150.f, SCREEN_HEIGHT - 30.f), 
-        GameState::Playing, HUD::RenderMode::ScreenSpace, true);
-    game->GetHUD().updateBaseColor("gridToggle", sf::Color::Black);
+    // Use fixed dimensions based on BASE_WIDTH and BASE_HEIGHT
+    float centerX = BASE_WIDTH / 2.0f;
     
-    // Stats HUD initialization
+    // Fixed positions instead of percentages
+    float topBarY = 40.0f; // Fixed pixel position
+    float bottomBarY = BASE_HEIGHT - 70.0f; // Fixed position from bottom
+    float lineWidth = 1000.0f; // Fixed line width
+    float lineThickness = 2.0f; // Fixed thickness
+    
+    // Calculate line start X position to center the line
+    float lineStartX = centerX - (lineWidth / 2.0f);
+    
+    // Create a stylish grid with modern colors that match the UI theme
+    grid = Grid(50.f, sf::Color(180, 180, 180, 100)); // Slightly transparent grid lines
+    grid.setMajorLineInterval(5);
+    grid.setMajorLineColor(sf::Color(150, 150, 150, 180)); // Slightly darker for major lines
+    grid.setOriginHighlight(true);
+    grid.setOriginHighlightColor(sf::Color(100, 100, 255, 120)); // Subtle blue for origin
+    grid.setOriginHighlightSize(15.0f);
+    
+    // ===== TOP BAR UI =====
+    // Top separator line
+    game->GetHUD().addGradientLine("topBarLine", 
+                                  lineStartX,
+                                  topBarY, 
+                                  lineWidth, 
+                                  lineThickness,
+                                  sf::Color::Black, 
+                                  GameState::Playing, 
+                                  HUD::RenderMode::ScreenSpace,
+                                  30);
+    
+    // Game header (centered with wave info)
+    game->GetHUD().addElement("gameHeader", "WAVE 1", 32, 
+                             sf::Vector2f(centerX - 60.0f, topBarY - 40.0f), 
+                             GameState::Playing, 
+                             HUD::RenderMode::ScreenSpace, false,
+                             "", "topBarLine");
+    game->GetHUD().updateBaseColor("gameHeader", sf::Color::Black);
+    
+    // Player stats (left aligned)
     game->GetHUD().addElement("playerStats", "HP: 100 | Kills: 0 | Money: 0", 18, 
-        sf::Vector2f(10.f, 10.f), 
-        GameState::Playing, HUD::RenderMode::ScreenSpace, false);
+                             sf::Vector2f(30.0f, topBarY + 15.0f), 
+                             GameState::Playing, 
+                             HUD::RenderMode::ScreenSpace, false);
     game->GetHUD().updateBaseColor("playerStats", sf::Color::Black);
     
-    // Leaderboard initialization (initially hidden)
-    game->GetHUD().addElement("leaderboard", "", 24, 
-        sf::Vector2f(SCREEN_WIDTH * 0.5f, SCREEN_HEIGHT * 0.3f), 
-        GameState::Playing, HUD::RenderMode::ScreenSpace, false);
-    game->GetHUD().updateBaseColor("leaderboard", sf::Color::Black);
+    // Wave info (right aligned)
+    game->GetHUD().addElement("waveInfo", "Enemies: 0", 18, 
+                             sf::Vector2f(BASE_WIDTH - 150.0f, topBarY + 15.0f), 
+                             GameState::Playing, 
+                             HUD::RenderMode::ScreenSpace, false);
+    game->GetHUD().updateBaseColor("waveInfo", sf::Color::Black);
     
-    // Custom cursor setup
-    // Create crosshair shapes
-    float cursorSize = 8.f;  // Reduced size
+    // Loading message (centered, temporary)
+    game->GetHUD().addElement("playerLoading", "Loading game...", 24, 
+                             sf::Vector2f(centerX - 80.0f, BASE_HEIGHT / 2.0f), 
+                             GameState::Playing, 
+                             HUD::RenderMode::ScreenSpace, false);
+    game->GetHUD().updateBaseColor("playerLoading", sf::Color::Black);
     
-    // Outer circle
-    cursorOuterCircle.setRadius(cursorSize);
-    cursorOuterCircle.setFillColor(sf::Color::Transparent);
-    cursorOuterCircle.setOutlineColor(sf::Color::Black);
-    cursorOuterCircle.setOutlineThickness(1.5f);
-    cursorOuterCircle.setOrigin(cursorSize, cursorSize);
+    // ===== BOTTOM BAR UI =====
+    // Bottom separator line
+    game->GetHUD().addGradientLine("bottomBarLine", 
+                                  lineStartX,
+                                  bottomBarY, 
+                                  lineWidth, 
+                                  lineThickness,
+                                  sf::Color::Black, 
+                                  GameState::Playing, 
+                                  HUD::RenderMode::ScreenSpace,
+                                  30);
     
-    // Center dot
-    cursorCenterDot.setRadius(1.5f);
-    cursorCenterDot.setFillColor(sf::Color::Black);
-    cursorCenterDot.setOrigin(1.5f, 1.5f);
+    // Control hints
+    float controlsY = bottomBarY + 20.0f;
+    float spacing = 220.0f;
     
-    // Horizontal line
-    cursorHorizontalLine.setSize(sf::Vector2f(cursorSize*2, 1.5f));
-    cursorHorizontalLine.setFillColor(sf::Color::Black);
-    cursorHorizontalLine.setOrigin(cursorSize, 0.75f);
+    // Tab for leaderboard
+    game->GetHUD().addElement("tabHint", "TAB - Show Leaderboard", 16, 
+                             sf::Vector2f(30.0f, controlsY), 
+                             GameState::Playing, 
+                             HUD::RenderMode::ScreenSpace, false,
+                             "bottomBarLine", "");
+    game->GetHUD().updateBaseColor("tabHint", sf::Color::Black);
     
-    // Vertical line
-    cursorVerticalLine.setSize(sf::Vector2f(1.5f, cursorSize*2));
-    cursorVerticalLine.setFillColor(sf::Color::Black);
-    cursorVerticalLine.setOrigin(0.75f, cursorSize);
+    // Grid toggle
+    game->GetHUD().addElement("gridToggle", "G - Toggle Grid", 16, 
+                             sf::Vector2f(30.0f + spacing, controlsY), 
+                             GameState::Playing, 
+                             HUD::RenderMode::ScreenSpace, true,
+                             "bottomBarLine", "");
+    game->GetHUD().updateBaseColor("gridToggle", sf::Color::Black);
+    
+    // Cursor lock toggle
+    game->GetHUD().addElement("cursorLockHint", "L - Toggle Cursor Lock", 16, 
+                             sf::Vector2f(30.0f + spacing * 2, controlsY), 
+                             GameState::Playing, 
+                             HUD::RenderMode::ScreenSpace, true,
+                             "bottomBarLine", "");
+    game->GetHUD().updateBaseColor("cursorLockHint", sf::Color::Black);
+    
+    // Escape menu hint
+    game->GetHUD().addElement("escHint", "ESC - Menu", 16, 
+                             sf::Vector2f(30.0f + spacing * 3, controlsY), 
+                             GameState::Playing, 
+                             HUD::RenderMode::ScreenSpace, false,
+                             "bottomBarLine", "");
+    game->GetHUD().updateBaseColor("escHint", sf::Color::Black);
+    
+    // ===== LEADERBOARD (initially hidden) =====
+    game->GetHUD().addElement("leaderboard", "", 20, 
+                             sf::Vector2f(centerX - 180.0f, BASE_HEIGHT * 0.25f), 
+                             GameState::Playing, 
+                             HUD::RenderMode::ScreenSpace, false);
+    game->GetHUD().updateBaseColor("leaderboard", sf::Color::White);
+    
+    // ===== ESCAPE MENU SETUP =====
+    // Background panel with modern styling
+    menuBackground.setSize(sf::Vector2f(400.f, 300.f));
+    menuBackground.setFillColor(sf::Color(40, 40, 40, 230)); // Dark, semi-transparent
+    menuBackground.setOutlineColor(sf::Color(100, 100, 255, 150)); // Subtle blue glow
+    menuBackground.setOutlineThickness(2.f);
+
+    // Menu title
+    menuTitle.setFont(game->GetFont());
+    menuTitle.setString("Game Paused");
+    menuTitle.setCharacterSize(28);
+    menuTitle.setFillColor(sf::Color(220, 220, 220));
+    menuTitle.setStyle(sf::Text::Bold);
+
+    // Return button with modern styling
+    returnButton.setSize(sf::Vector2f(220.f, 50.f));
+    returnButton.setFillColor(sf::Color(60, 60, 60, 230));
+    returnButton.setOutlineColor(sf::Color(120, 120, 200));
+    returnButton.setOutlineThickness(1.5f);
+
+    returnButtonText.setFont(game->GetFont());
+    returnButtonText.setString("Return to Main Menu");
+    returnButtonText.setCharacterSize(20);
+    returnButtonText.setFillColor(sf::Color(220, 220, 220));
+
+    // Continue button
+    continueButton.setSize(sf::Vector2f(220.f, 50.f));
+    continueButton.setFillColor(sf::Color(60, 60, 60, 230));
+    continueButton.setOutlineColor(sf::Color(120, 200, 120));
+    continueButton.setOutlineThickness(1.5f);
+
+    continueButtonText.setFont(game->GetFont());
+    continueButtonText.setString("Continue Playing");
+    continueButtonText.setCharacterSize(20);
+    continueButtonText.setFillColor(sf::Color(220, 220, 220));
+    
+    
     
     // Hide system cursor and lock it to window
-    game->GetWindow().setMouseCursorVisible(false);
     game->GetWindow().setMouseCursorGrabbed(true);
     
     // Calculate window center
@@ -82,7 +189,7 @@ PlayingState::PlayingState(Game* game)
     // Center the mouse at start
     sf::Mouse::setPosition(windowCenter, game->GetWindow());
 
-    // PlayerManager setup - Similar to LobbyState
+    // ===== PLAYER MANAGER SETUP =====
     CSteamID myID = SteamUser()->GetSteamID();
     std::string myIDStr = std::to_string(myID.ConvertToUint64());
     playerManager = std::make_unique<PlayerManager>(game, myIDStr);
@@ -94,7 +201,7 @@ PlayingState::PlayingState(Game* game)
     RemotePlayer localPlayer;
     localPlayer.playerID = myIDStr;
     localPlayer.isHost = (myID == hostIDSteam);
-    localPlayer.player = Player(sf::Vector2f(0.f, 0.f), sf::Color::Blue); // Start at 0,0
+    localPlayer.player = Player(sf::Vector2f(0.f, 0.f), sf::Color::Blue);
     localPlayer.nameText.setFont(game->GetFont());
     localPlayer.nameText.setString(myName);
     localPlayer.baseName = myName;
@@ -106,7 +213,7 @@ PlayingState::PlayingState(Game* game)
     localPlayer.money = 0;
     playerManager->AddOrUpdatePlayer(myIDStr, localPlayer);
 
-    // Network setup - Similar to LobbyState
+    // ===== NETWORK SETUP =====
     if (myID == hostIDSteam) {
         hostNetwork = std::make_unique<HostNetwork>(game, playerManager.get());
         game->GetNetworkManager().SetMessageHandler(
@@ -135,25 +242,14 @@ PlayingState::PlayingState(Game* game)
         clientNetwork->SendConnectionMessage();
     }
     
-    // Add a cursor lock toggle hint
-    game->GetHUD().addElement("cursorLockHint", "Press L to toggle cursor lock", 20, 
-        sf::Vector2f(SCREEN_WIDTH - 150.f, SCREEN_HEIGHT - 60.f), 
-        GameState::Playing, HUD::RenderMode::ScreenSpace, true);
-    game->GetHUD().updateBaseColor("cursorLockHint", sf::Color::Black);
-
+    // ===== ENEMY MANAGER SETUP =====
     enemyManager = std::make_unique<EnemyManager>(game, playerManager.get());
-
-// Add enemy wave info HUD
-game->GetHUD().addElement("waveInfo", "Wave: 0 | Enemies: 0", 18, 
-    sf::Vector2f(10.f, 40.f), 
-    GameState::Playing, HUD::RenderMode::ScreenSpace, true);
-game->GetHUD().updateBaseColor("waveInfo", sf::Color::Black);
 }
 
 PlayingState::~PlayingState() {
     // Make sure to release the cursor when leaving this state
     game->GetWindow().setMouseCursorGrabbed(false);
-    game->GetWindow().setMouseCursorVisible(true);
+    
 }
 
 void PlayingState::UpdateWaveInfo() {
@@ -163,13 +259,18 @@ void PlayingState::UpdateWaveInfo() {
     int remainingEnemies = enemyManager->GetRemainingEnemies();
     float waveTimer = enemyManager->GetWaveTimer();
     
+    // Update the wave header
+    std::string headerText = "WAVE " + std::to_string(currentWave);
+    game->GetHUD().updateText("gameHeader", headerText);
+    
+    // Update the wave info
     std::string waveText;
     if (enemyManager->IsWaveComplete()) {
-        waveText = "Wave: " + std::to_string(currentWave) + 
-                  " complete | Next wave in: " + std::to_string(static_cast<int>(waveTimer));
+        waveText = "Next wave in: " + std::to_string(static_cast<int>(waveTimer)) + "s";
+        game->GetHUD().updateBaseColor("waveInfo", sf::Color(76, 175, 80)); // Green for wave complete
     } else {
-        waveText = "Wave: " + std::to_string(currentWave) + 
-                  " | Enemies: " + std::to_string(remainingEnemies);
+        waveText = "Enemies: " + std::to_string(remainingEnemies);
+        game->GetHUD().updateBaseColor("waveInfo", sf::Color::Black);
     }
     
     game->GetHUD().updateText("waveInfo", waveText);
@@ -191,8 +292,10 @@ void PlayingState::StartFirstWave() {
     }
 }
 
-// Update the PlayingState::Update method to include enemy manager and wave info
 void PlayingState::Update(float dt) {
+    // Update HUD animations
+    game->GetHUD().update(game->GetWindow(), GameState::Playing, dt);
+    
     if (!playerLoaded) {
         loadingTimer += dt;
         if (loadingTimer >= 2.0f) {
@@ -245,7 +348,7 @@ void PlayingState::Update(float dt) {
         // Get mouse position in window coordinates
         sf::Vector2i mousePos = sf::Mouse::getPosition(game->GetWindow());
         
-        // If cursor is locked, keep it within window bounds
+        // Handle cursor lock if enabled
         if (cursorLocked) {
             sf::Vector2u windowSize = game->GetWindow().getSize();
             bool needsRepositioning = false;
@@ -273,28 +376,45 @@ void PlayingState::Update(float dt) {
             }
         }
         
-        // Important: Get the current mouse position in screen space (for HUD rendering)
-        sf::Vector2f screenCursorPos = static_cast<sf::Vector2f>(mousePos);
+        // Update button colors based on hover state
+        sf::Vector2f mouseUIPos = game->WindowToUICoordinates(mousePos);
         
-        // Update cursor position for rendering
-        // Convert from screen space to the current view space
-        sf::Vector2f viewCursorPos = game->GetWindow().mapPixelToCoords(mousePos, game->GetWindow().getDefaultView());
-        
-        cursorOuterCircle.setPosition(viewCursorPos);
-        cursorCenterDot.setPosition(viewCursorPos);
-        cursorHorizontalLine.setPosition(viewCursorPos);
-        cursorVerticalLine.setPosition(viewCursorPos);
+        if (mouseUIPos.x >= 0 && mouseUIPos.y >= 0) {
+            const auto& elements = game->GetHUD().getElements();
+            
+            for (const auto& [id, element] : elements) {
+                if (element.hoverable && element.visibleState == GameState::Playing) {
+                    // Create a text copy to check bounds
+                    sf::Text textCopy = element.text;
+                    textCopy.setPosition(element.pos);
+                    sf::FloatRect bounds = textCopy.getGlobalBounds();
+                    
+                    if (bounds.contains(mouseUIPos)) {
+                        // Hovering over element
+                        game->GetHUD().updateBaseColor(id, sf::Color(100, 100, 100)); // Darker when hovered
+                    } else {
+                        // Not hovering - set appropriate color based on state
+                        if (id == "gridToggle") {
+                            game->GetHUD().updateBaseColor(id, showGrid ? sf::Color::Black : sf::Color(150, 150, 150));
+                        } else if (id == "cursorLockHint") {
+                            game->GetHUD().updateBaseColor(id, cursorLocked ? sf::Color::Black : sf::Color(150, 150, 150));
+                        } else {
+                            game->GetHUD().updateBaseColor(id, sf::Color::Black);
+                        }
+                    }
+                }
+            }
+        }
     }
     
-    // Update camera position to follow player
+    // Center camera on local player
     sf::Vector2f localPlayerPos = playerManager->GetLocalPlayer().player.GetPosition();
     game->GetCamera().setCenter(localPlayerPos);
-    
 }
 
-// Update the PlayingState::Render method to render enemies
 void PlayingState::Render() {
-    game->GetWindow().clear(sf::Color(37, 37, 38));    
+    game->GetWindow().clear(MAIN_BACKGROUND_COLOR);
+    
     // Set the game camera view for world rendering
     game->GetWindow().setView(game->GetCamera());
     
@@ -311,32 +431,90 @@ void PlayingState::Render() {
         }
     }
     
-    // Switch to default view for HUD rendering
-    game->GetWindow().setView(game->GetWindow().getDefaultView());
+    // Switch to UI view for HUD rendering
+    game->GetWindow().setView(game->GetUIView());
     
-    // Render HUD elements
-    game->GetHUD().render(game->GetWindow(), game->GetWindow().getDefaultView(), game->GetCurrentState());
+    // Render HUD elements using the UI view
+    game->GetHUD().render(game->GetWindow(), game->GetUIView(), GameState::Playing);
     
-    // Render custom cursor (on top of everything, in default view)
-    if (playerLoaded) {
-        // Get current mouse position for accurate cursor rendering
-        sf::Vector2i mousePos = sf::Mouse::getPosition(game->GetWindow());
-        sf::Vector2f cursorPos = static_cast<sf::Vector2f>(mousePos);
+    // Render escape menu if active
+    // Replace the escape menu rendering code in PlayingState::Render() method:
+
+    // Render escape menu if active
+    if (showEscapeMenu) {
+        // Draw a semi-transparent overlay for the entire screen
+        sf::RectangleShape overlay;
+        overlay.setSize(sf::Vector2f(BASE_WIDTH, BASE_HEIGHT));
+        overlay.setFillColor(sf::Color(0, 0, 0, 150));
+        game->GetWindow().draw(overlay);
         
-        // Update cursor positions before drawing
-        cursorOuterCircle.setPosition(cursorPos);
-        cursorCenterDot.setPosition(cursorPos);
-        cursorHorizontalLine.setPosition(cursorPos);
-        cursorVerticalLine.setPosition(cursorPos);
+        // Position menu elements using fixed coordinates based on BASE_WIDTH and BASE_HEIGHT
+        float centerX = BASE_WIDTH / 2.0f;
+        float centerY = BASE_HEIGHT / 2.0f;
         
-        game->GetWindow().draw(cursorOuterCircle);
-        game->GetWindow().draw(cursorHorizontalLine);
-        game->GetWindow().draw(cursorVerticalLine);
-        game->GetWindow().draw(cursorCenterDot);
+        // Update menu background position
+        menuBackground.setPosition(
+            centerX - menuBackground.getSize().x / 2.0f,
+            centerY - menuBackground.getSize().y / 2.0f
+        );
+        
+        // Position the title at the top of the menu
+        sf::FloatRect titleBounds = menuTitle.getLocalBounds();
+        menuTitle.setOrigin(
+            titleBounds.left + titleBounds.width / 2.0f,
+            titleBounds.top + titleBounds.height / 2.0f
+        );
+        menuTitle.setPosition(
+            centerX,
+            centerY - menuBackground.getSize().y / 2.0f + 40.0f
+        );
+        
+        // Position the continue button
+        continueButton.setPosition(
+            centerX - continueButton.getSize().x / 2.0f,
+            centerY - 40.0f
+        );
+        
+        // Position the continue button text
+        sf::FloatRect continueBounds = continueButtonText.getLocalBounds();
+        continueButtonText.setOrigin(
+            continueBounds.left + continueBounds.width / 2.0f,
+            continueBounds.top + continueBounds.height / 2.0f
+        );
+        continueButtonText.setPosition(
+            centerX,
+            centerY - 40.0f + continueButton.getSize().y / 2.0f - 5.0f
+        );
+        
+        // Position the return button below the continue button
+        returnButton.setPosition(
+            centerX - returnButton.getSize().x / 2.0f,
+            centerY + 30.0f
+        );
+        
+        // Position the return button text
+        sf::FloatRect returnBounds = returnButtonText.getLocalBounds();
+        returnButtonText.setOrigin(
+            returnBounds.left + returnBounds.width / 2.0f,
+            returnBounds.top + returnBounds.height / 2.0f
+        );
+        returnButtonText.setPosition(
+            centerX,
+            centerY + 30.0f + returnButton.getSize().y / 2.0f - 5.0f
+        );
+        
+        // Draw the menu components
+        game->GetWindow().draw(menuBackground);
+        game->GetWindow().draw(menuTitle);
+        game->GetWindow().draw(continueButton);
+        game->GetWindow().draw(continueButtonText);
+        game->GetWindow().draw(returnButton);
+        game->GetWindow().draw(returnButtonText);
     }
     
     game->GetWindow().display();
 }
+
 void PlayingState::ProcessEvents(const sf::Event& event) {
     if (event.type == sf::Event::KeyPressed) {
         if (event.key.code == sf::Keyboard::G) {
@@ -354,11 +532,18 @@ void PlayingState::ProcessEvents(const sf::Event& event) {
             game->GetWindow().setMouseCursorGrabbed(cursorLocked);
         }
         else if (event.key.code == sf::Keyboard::Escape) {
-            // Potential use: release cursor lock with Escape
-            if (cursorLocked) {
+            // Toggle escape menu
+            showEscapeMenu = !showEscapeMenu;
+            
+            if (showEscapeMenu) {
+                // Show menu, release cursor, and make system cursor visible
                 cursorLocked = false;
                 game->GetWindow().setMouseCursorGrabbed(false);
-                std::cout << "Cursor lock disabled with Escape" << std::endl;
+               
+            } else {
+                // Hide menu, restore cursor lock, and hide system cursor
+                cursorLocked = true;
+                game->GetWindow().setMouseCursorGrabbed(true);
             }
         }
     } 
@@ -370,8 +555,83 @@ void PlayingState::ProcessEvents(const sf::Event& event) {
         }
     }
     else if (event.type == sf::Event::MouseButtonPressed && event.mouseButton.button == sf::Mouse::Left) {
-        mouseHeld = true;
-        AttemptShoot(event.mouseButton.x, event.mouseButton.y);
+        // Get mouse position in window coordinates
+        sf::Vector2i mouseWindowPos(event.mouseButton.x, event.mouseButton.y);
+        
+        // Convert to UI coordinates for UI interaction
+        sf::Vector2f mouseUIPos = game->WindowToUICoordinates(mouseWindowPos);
+        
+        // Only process if within UI viewport
+        if (mouseUIPos.x >= 0 && mouseUIPos.y >= 0) {
+            if (showEscapeMenu) {
+                // Position menu elements using fixed coordinates based on BASE_WIDTH and BASE_HEIGHT
+                float centerX = BASE_WIDTH / 2.0f;
+                float centerY = BASE_HEIGHT / 2.0f;
+                
+                // Update button positions for checking bounds
+                continueButton.setPosition(
+                    centerX - continueButton.getSize().x / 2.0f,
+                    centerY - 40.0f
+                );
+                
+                returnButton.setPosition(
+                    centerX - returnButton.getSize().x / 2.0f,
+                    centerY + 30.0f
+                );
+                
+                // Check if continue button was clicked
+                sf::FloatRect continueBounds = continueButton.getGlobalBounds();
+                if (continueBounds.contains(mouseUIPos)) {
+                    // Continue button clicked - close menu and resume game
+                    showEscapeMenu = false;
+                    cursorLocked = true;
+                    game->GetWindow().setMouseCursorGrabbed(true);
+                    return;
+                }
+                
+                // Check if return button was clicked
+                sf::FloatRect returnBounds = returnButton.getGlobalBounds();
+                if (returnBounds.contains(mouseUIPos)) {
+                    // Return to main menu
+                    game->SetCurrentState(GameState::MainMenu);
+                    return;
+                }
+            } else {
+                // Check for UI element clicks
+                bool clickedUI = false;
+                
+                const auto& elements = game->GetHUD().getElements();
+                for (const auto& [id, element] : elements) {
+                    if (element.hoverable && element.visibleState == GameState::Playing) {
+                        sf::Text textCopy = element.text;
+                        textCopy.setPosition(element.pos);
+                        sf::FloatRect bounds = textCopy.getGlobalBounds();
+                        
+                        if (bounds.contains(mouseUIPos)) {
+                            // UI element was clicked
+                            clickedUI = true;
+                            
+                            if (id == "gridToggle") {
+                                showGrid = !showGrid;
+                                break;
+                            }
+                            else if (id == "cursorLockHint") {
+                                cursorLocked = !cursorLocked;
+                                game->GetWindow().setMouseCursorGrabbed(cursorLocked);
+                                break;
+                            }
+                            // Handle other UI elements...
+                        }
+                    }
+                }
+                
+                // If no UI was clicked, process as a game click
+                if (!clickedUI) {
+                    mouseHeld = true;
+                    AttemptShoot(mouseWindowPos.x, mouseWindowPos.y);
+                }
+            }
+        }
     } 
     else if (event.type == sf::Event::MouseButtonReleased && event.mouseButton.button == sf::Mouse::Left) {
         mouseHeld = false;
@@ -418,7 +678,7 @@ void PlayingState::AttemptShoot(int mouseX, int mouseY) {
     Player::BulletParams params = playerManager->GetLocalPlayer().player.Shoot(mouseWorldPos);
     
     // Only create and send bullet if shooting was successful (not on cooldown)
-    if (params.success) {  // Use the success flag instead of checking direction vector
+    if (params.success) {
         float bulletSpeed = 400.f;
         
         // As the local player, we always add our own bullets locally
@@ -444,13 +704,22 @@ void PlayingState::UpdatePlayerStats() {
     int kills = localPlayer.kills;
     int money = localPlayer.money;
     
+    // Format stats with modern UI style
     std::string statsText = "HP: " + std::to_string(health) + 
                            " | Kills: " + std::to_string(kills) + 
                            " | Money: " + std::to_string(money);
     
+    // Change color based on health status
+    if (health < 30) {
+        game->GetHUD().updateBaseColor("playerStats", sf::Color(255, 0, 0)); // Red for low health
+    } else if (health < 70) {
+        game->GetHUD().updateBaseColor("playerStats", sf::Color(255, 165, 0)); // Orange for medium health
+    } else {
+        game->GetHUD().updateBaseColor("playerStats", sf::Color::Black); // Normal color for good health
+    }
+    
     game->GetHUD().updateText("playerStats", statsText);
 }
-
 void PlayingState::UpdateLeaderboard() {
     std::string leaderboardText = "LEADERBOARD\n\n";
     
@@ -463,20 +732,88 @@ void PlayingState::UpdateLeaderboard() {
         return a.second.kills > b.second.kills;
     });
     
-    // Format the leaderboard text
-    for (const auto& [id, player] : players) {
-        leaderboardText += player.baseName + ": " + 
-                          std::to_string(player.kills) + " kills | " +
-                          std::to_string(player.player.GetHealth()) + " HP | " +
-                          std::to_string(player.money) + " money\n";
+    // Format the leaderboard text with modern styling
+    for (size_t i = 0; i < players.size(); i++) {
+        const auto& [id, player] = players[i];
+        
+        // Add rank number and highlight the top player
+        if (i == 0) {
+            leaderboardText += "🏆 ";
+        } else {
+            leaderboardText += std::to_string(i + 1) + ". ";
+        }
+        
+        // Add player info
+        leaderboardText += player.baseName + 
+                          (player.isHost ? " (Host)" : "") + 
+                          "\nKills: " + std::to_string(player.kills) + 
+                          " | HP: " + std::to_string(player.player.GetHealth()) + 
+                          " | Money: " + std::to_string(player.money) + "\n\n";
     }
     
-    // Create a semi-transparent background
-    sf::RectangleShape background;
-    background.setSize(sf::Vector2f(400.f, 300.f));
-    background.setFillColor(sf::Color(0, 0, 0, 180)); // Semi-transparent black
-    background.setPosition(SCREEN_WIDTH * 0.5f - 200.f, SCREEN_HEIGHT * 0.3f - 40.f);
+    if (players.empty()) {
+        leaderboardText += "No players found.";
+    }
     
-    // Update the leaderboard text
+    // Create a semi-transparent background for the leaderboard
+    // Use fixed position based on BASE_WIDTH and BASE_HEIGHT
+    float centerX = BASE_WIDTH / 2.0f;
+    float centerY = BASE_HEIGHT / 2.0f;
+    
+    // Use UI view for drawing the leaderboard background
+    sf::View oldView = game->GetWindow().getView();
+    game->GetWindow().setView(game->GetUIView());
+    
+    // Create a glass-like background
+    sf::RectangleShape leaderboardBg;
+    leaderboardBg.setSize(sf::Vector2f(500.f, 400.f));
+    leaderboardBg.setFillColor(sf::Color(30, 30, 50, 220)); // Dark blue semi-transparent
+    leaderboardBg.setOutlineColor(sf::Color(100, 100, 200, 150)); // Light blue outline
+    leaderboardBg.setOutlineThickness(2.f);
+    leaderboardBg.setPosition(
+        centerX - 250.f,  // Centered horizontally (500/2 = 250)
+        centerY - 200.f   // Centered vertically (400/2 = 200)
+    );
+    
+    // Add a header bar
+    sf::RectangleShape headerBar;
+    headerBar.setSize(sf::Vector2f(500.f, 50.f));
+    headerBar.setFillColor(sf::Color(50, 50, 80, 230)); // Slightly lighter than background
+    headerBar.setPosition(
+        centerX - 250.f,
+        centerY - 200.f
+    );
+    
+    // Create header text
+    sf::Text headerText;
+    headerText.setFont(game->GetFont());
+    headerText.setString("LEADERBOARD");
+    headerText.setCharacterSize(24);
+    headerText.setFillColor(sf::Color(220, 220, 255)); // Light blue-white
+    headerText.setStyle(sf::Text::Bold);
+    
+    // Center the header text on the header bar
+    sf::FloatRect headerBounds = headerText.getLocalBounds();
+    headerText.setOrigin(
+        headerBounds.left + headerBounds.width / 2.0f,
+        headerBounds.top + headerBounds.height / 2.0f
+    );
+    headerText.setPosition(
+        centerX,
+        centerY - 200.f + 25.f // Centered on the header bar
+    );
+    
+    // Display the background and header
+    game->GetWindow().draw(leaderboardBg);
+    game->GetWindow().draw(headerBar);
+    game->GetWindow().draw(headerText);
+    
+    // Update the content area
     game->GetHUD().updateText("leaderboard", leaderboardText);
+    
+    // Position the leaderboard text below the header
+    game->GetHUD().updateElementPosition("leaderboard", sf::Vector2f(centerX - 220.f, centerY - 130.f));
+    
+    // Restore previous view
+    game->GetWindow().setView(oldView);
 }

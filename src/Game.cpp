@@ -7,8 +7,10 @@
 #include <steam/steam_api.h>
 #include <iostream>
 
+
+
 Game::Game() : hud(font) {
-    window.create(sf::VideoMode(1280, 720), "SteamGame");
+    window.create(sf::VideoMode(BASE_WIDTH, BASE_HEIGHT), "SteamGame");
     window.setFramerateLimit(60);
 
     if (!font.loadFromFile("Roboto-Regular.ttf")) {
@@ -29,8 +31,12 @@ Game::Game() : hud(font) {
     state = std::make_unique<MainMenuState>(this);
 
     // Initialize camera for game world
-    camera.setSize(1280.f, 720.f);
-    camera.setCenter(640.f, 360.f);  // Initial center
+    camera.setSize(BASE_WIDTH, BASE_HEIGHT);
+    camera.setCenter(BASE_WIDTH / 2.f, BASE_HEIGHT / 2.f);  // Initial center
+    
+    // Initialize UI view with base resolution
+    uiView.setSize(BASE_WIDTH, BASE_HEIGHT);
+    uiView.setCenter(BASE_WIDTH / 2.f, BASE_HEIGHT / 2.f);
 }
 
 Game::~Game() {
@@ -102,8 +108,7 @@ void Game::Run() {
             std::cout << "[INFO] Switched to state: " << static_cast<int>(currentState) << std::endl;
         }
 
-        // Render game world with camera
-        window.setView(camera);
+        // Let the state handle rendering
         if (state) state->Render();
     }
 }
@@ -119,13 +124,98 @@ void Game::ProcessEvents(sf::Event& event) {
     if (event.type == sf::Event::Resized) {
         AdjustViewToWindow();
     }
+    if (event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::F11) {
+        // Toggle fullscreen with F11
+        static bool isFullscreen = false;
+        isFullscreen = !isFullscreen;
+        
+        if (isFullscreen) {
+            window.create(sf::VideoMode::getDesktopMode(), "SteamGame", sf::Style::Fullscreen);
+        } else {
+            window.create(sf::VideoMode(BASE_WIDTH, BASE_HEIGHT), "SteamGame");
+        }
+        
+        window.setFramerateLimit(60);
+        AdjustViewToWindow();
+    }
     if (event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::R) {
         std::cout << "Triggering ready state" << std::endl;
     }
 }
 
 void Game::AdjustViewToWindow() {
+    sf::Vector2u windowSize = window.getSize();
+    
+    // Game world camera - shows more of the world when window is larger
+    camera.setSize(static_cast<float>(windowSize.x), static_cast<float>(windowSize.y));
+    camera.setCenter(camera.getCenter()); // Preserve current center
+    
+    // UI view - fixed size that doesn't scale
+    uiView.setSize(BASE_WIDTH, BASE_HEIGHT);
+    uiView.setCenter(BASE_WIDTH / 2.0f, BASE_HEIGHT / 2.0f);
+    
+    // Set viewport to match window's aspect ratio while maintaining fixed element sizes
+    float windowRatio = windowSize.x / static_cast<float>(windowSize.y);
+    float baseRatio = BASE_WIDTH / static_cast<float>(BASE_HEIGHT);
+    
+    sf::FloatRect viewport(0.f, 0.f, 1.f, 1.f);
+    
+    if (windowRatio > baseRatio) {
+        // Window is wider than our base ratio - add black bars on the sides
+        viewport.width = baseRatio / windowRatio;
+        viewport.left = (1.f - viewport.width) / 2.f;
+    } else if (windowRatio < baseRatio) {
+        // Window is taller than our base ratio - add black bars on top/bottom
+        viewport.height = windowRatio / baseRatio;
+        viewport.top = (1.f - viewport.height) / 2.f;
+    }
+    
+    uiView.setViewport(viewport);
+}
+
+sf::View& Game::GetUIView() {
+    return uiView;
+}
+
+sf::Vector2f Game::GetUIScale() const {
+    // Get the current window size
     sf::Vector2u winSize = window.getSize();
-    camera.setSize(static_cast<float>(winSize.x), static_cast<float>(winSize.y));
-    // Note: Center is updated in LobbyState, so no need to reset it here
+    
+    // Calculate the scale factors
+    float scaleX = winSize.x / static_cast<float>(BASE_WIDTH);
+    float scaleY = winSize.y / static_cast<float>(BASE_HEIGHT);
+    
+    return sf::Vector2f(scaleX, scaleY);
+}
+
+sf::Vector2f Game::WindowToUICoordinates(sf::Vector2i windowPos) const {
+    // Get the viewport
+    sf::FloatRect viewport = uiView.getViewport();
+    sf::Vector2u winSize = window.getSize();
+    
+    // Calculate viewport in pixels
+    float viewportLeft = viewport.left * winSize.x;
+    float viewportTop = viewport.top * winSize.y;
+    float viewportWidth = viewport.width * winSize.x;
+    float viewportHeight = viewport.height * winSize.y;
+    
+    // Check if point is within viewport
+    if (windowPos.x >= viewportLeft && 
+        windowPos.x <= viewportLeft + viewportWidth &&
+        windowPos.y >= viewportTop && 
+        windowPos.y <= viewportTop + viewportHeight) {
+        
+        // Convert to normalized position within viewport (0-1)
+        float normalizedX = (windowPos.x - viewportLeft) / viewportWidth;
+        float normalizedY = (windowPos.y - viewportTop) / viewportHeight;
+        
+        // Convert to UI coordinates
+        return sf::Vector2f(
+            normalizedX * BASE_WIDTH,
+            normalizedY * BASE_HEIGHT
+        );
+    }
+    
+    // Return (-1,-1) if outside viewport
+    return sf::Vector2f(-1, -1);
 }

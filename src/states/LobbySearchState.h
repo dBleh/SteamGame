@@ -2,8 +2,8 @@
 #define LOBBY_SEARCH_STATE_H
 
 #include "State.h"
+#include <steam/isteammatchmaking.h>
 #include <vector>
-#include <steam/steam_api.h>
 
 class LobbySearchState : public State {
 public:
@@ -13,15 +13,15 @@ public:
     void ProcessEvent(const sf::Event& event) override;
 
 private:
-    void SearchLobbies();
     void ProcessEvents(const sf::Event& event);
+    void SearchLobbies();
     void UpdateLobbyListDisplay();
     void JoinLobby(CSteamID lobby);
     void JoinLobbyByIndex(int index);
-
-    std::vector<std::pair<CSteamID, std::string>> localLobbyList;
+    void InitializeLobbyButtons(Game* game, float centerX, float startY, float spacing);
+    
     std::vector<std::pair<CSteamID, std::string>> lobbyList;
-    bool lobbyListUpdated{false};
+    std::vector<std::pair<CSteamID, std::string>> localLobbyList;
 };
 
 #endif // LOBBY_SEARCH_STATE_H

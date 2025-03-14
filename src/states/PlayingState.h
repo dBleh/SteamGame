@@ -40,7 +40,16 @@ private:
     std::unique_ptr<EnemyManager> enemyManager;
     std::unique_ptr<HostNetwork> hostNetwork;
     std::unique_ptr<ClientNetwork> clientNetwork;
-    
+    sf::Text menuTitle;
+    sf::RectangleShape continueButton;
+    sf::Text continueButtonText;
+
+    // Additional cursor element
+    sf::CircleShape middleCircle;
+
+    // Methods for handling button hovers
+    void updateButtonHoverState(sf::RectangleShape& button, const sf::Vector2f& mousePos, bool& isHovered);
+    bool isPointInRect(const sf::Vector2f& point, const sf::FloatRect& rect);
     Grid grid;
     bool showGrid;
     bool playerLoaded;
@@ -48,6 +57,11 @@ private:
     bool connectionSent;
     bool mouseHeld;
     float shootTimer;
+
+    bool showEscapeMenu;
+    sf::RectangleShape menuBackground;
+    sf::RectangleShape returnButton;
+    sf::Text returnButtonText;
     
     // Custom cursor shapes
     sf::CircleShape cursorOuterCircle;
