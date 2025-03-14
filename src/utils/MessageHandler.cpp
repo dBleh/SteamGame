@@ -58,7 +58,16 @@ std::string MessageHandler::FormatEnemySpawnMessage(int enemyId, const sf::Vecto
     oss << "ES|" << enemyId << "|" << position.x << "," << position.y;
     return oss.str();
 }
-
+std::string MessageHandler::FormatEnemyPositionsMessage(const std::vector<std::pair<int, sf::Vector2f>>& enemyPositions) {
+    std::ostringstream oss;
+    oss << "EP|" << enemyPositions.size();
+    
+    for (const auto& enemy : enemyPositions) {
+        oss << "|" << enemy.first << "," << enemy.second.x << "," << enemy.second.y;
+    }
+    
+    return oss.str();
+}
 std::string MessageHandler::FormatEnemyHitMessage(int enemyId, int damage, bool killed, const std::string& shooterID) {
     std::ostringstream oss;
     oss << "EH|" << enemyId << "|" << damage << "|" << (killed ? "1" : "0") << "|" << shooterID;
@@ -189,6 +198,18 @@ ParsedMessage MessageHandler::ParseMessage(const std::string& msg) {
     } else if (parts[0] == "WC" && parts.size() >= 2) {
         parsed.type = MessageType::WaveComplete;
         parsed.waveNumber = std::stoi(parts[1]);
+    }else if (parts[0] == "EP" && parts.size() >= 2) {
+        parsed.type = MessageType::EnemyPositions;
+        int numEnemies = std::stoi(parts[1]);
+        
+        for (int i = 0; i < numEnemies && i + 2 < parts.size(); ++i) {
+            std::istringstream enemyStream(parts[i + 2]);
+            int id;
+            float x, y;
+            char comma;
+            enemyStream >> id >> comma >> x >> comma >> y;
+            parsed.enemyPositions.emplace_back(id, sf::Vector2f(x, y));
+        }
     }
 
     return parsed;

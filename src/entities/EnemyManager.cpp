@@ -59,7 +59,11 @@ void EnemyManager::Update(float dt) {
             enemy.Update(dt, targetPos);
         }
     }
-    
+    enemySyncTimer -= dt;
+    if (enemySyncTimer <= 0.0f) {
+        SyncEnemyPositions();
+        enemySyncTimer = ENEMY_SYNC_INTERVAL;
+    }
     // Check for collisions with players
     CheckPlayerCollisions();
 }
@@ -262,7 +266,46 @@ void EnemyManager::CheckBulletCollisions(const std::vector<Bullet>& bullets) {
         }
     }
 }
+void EnemyManager::SyncEnemyPositions() {
+    CSteamID localSteamID = SteamUser()->GetSteamID();
+    CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+    
+    // Only host syncs enemy positions
+    if (localSteamID != hostID || enemies.empty()) {
+        return;
+    }
+    
+    std::vector<std::pair<int, sf::Vector2f>> enemyPositions;
+    
+    // Collect all alive enemies' positions
+    for (const auto& enemy : enemies) {
+        if (enemy.IsAlive()) {
+            enemyPositions.emplace_back(enemy.GetID(), enemy.GetPosition());
+        }
+    }
+    
+    // If we have enemy positions to sync, broadcast them
+    if (!enemyPositions.empty()) {
+        std::string msg = MessageHandler::FormatEnemyPositionsMessage(enemyPositions);
+        game->GetNetworkManager().BroadcastMessage(msg);
+    }
+}
 
+void EnemyManager::UpdateEnemyPositions(const std::vector<std::pair<int, sf::Vector2f>>& positions) {
+    for (const auto& enemyPos : positions) {
+        int id = enemyPos.first;
+        sf::Vector2f position = enemyPos.second;
+        
+        // Find enemy with this ID
+        for (auto& enemy : enemies) {
+            if (enemy.GetID() == id && enemy.IsAlive()) {
+                // Update position
+                enemy.GetShape().setPosition(position);
+                break;
+            }
+        }
+    }
+}
 void EnemyManager::CheckPlayerCollisions() {
     auto& players = playerManager->GetPlayers();
     

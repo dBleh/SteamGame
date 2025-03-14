@@ -28,6 +28,7 @@ public:
 
 private:
     // Message handlers
+    void ProcessEnemyPositionsMessage(const ParsedMessage& parsed);
     void ProcessChatMessage(const ParsedMessage& parsed);
     void ProcessConnectionMessage(const ParsedMessage& parsed);
     void ProcessReadyStatusMessage(const ParsedMessage& parsed);

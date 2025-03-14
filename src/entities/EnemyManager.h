@@ -39,7 +39,8 @@ public:
     // Serialization for network
     std::string SerializeEnemies() const;
     void DeserializeEnemies(const std::string& data);
-    
+    void SyncEnemyPositions();
+void UpdateEnemyPositions(const std::vector<std::pair<int, sf::Vector2f>>& positions);
 private:
     Game* game;
     PlayerManager* playerManager;
@@ -50,7 +51,8 @@ private:
     float waveCooldown = 2.0f;  // Seconds between waves
     bool waveActive;
     int nextEnemyId;
-    
+    float enemySyncTimer = 0.0f;
+static constexpr float ENEMY_SYNC_INTERVAL = 0.1f; // 10 times per second
     // Random number generation
     std::mt19937 rng;
     

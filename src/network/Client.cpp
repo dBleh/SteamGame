@@ -36,6 +36,9 @@ void ClientNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
         case MessageType::PlayerRespawn:
             ProcessPlayerRespawnMessage(parsed);
             break;
+        case MessageType::EnemyPositions:
+            ProcessEnemyPositionsMessage(parsed);
+            break;
         case MessageType::StartGame:
             std::cout << "[CLIENT] Received start game message, changing to Playing state" << std::endl;
             if (game->GetCurrentState() != GameState::Playing) {
@@ -305,6 +308,16 @@ void ClientNetwork::ProcessWaveCompleteMessage(const ParsedMessage& parsed) {
                 std::cout << "[CLIENT] Wave " << parsed.waveNumber << " complete\n";
                 // Client-side wave completion logic (if any)
             }
+        }
+    }
+}
+
+void ClientNetwork::ProcessEnemyPositionsMessage(const ParsedMessage& parsed) {
+    PlayingState* playingState = GetPlayingState(game);
+    if (playingState) {
+        EnemyManager* enemyManager = playingState->GetEnemyManager();
+        if (enemyManager) {
+            enemyManager->UpdateEnemyPositions(parsed.enemyPositions);
         }
     }
 }
