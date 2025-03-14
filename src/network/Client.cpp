@@ -42,6 +42,7 @@ void ClientNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
         case MessageType::StartGame:
             std::cout << "[CLIENT] Received start game message, changing to Playing state" << std::endl;
             if (game->GetCurrentState() != GameState::Playing) {
+                std::cout << "Starting client playing state" <<std::endl;
                 game->SetCurrentState(GameState::Playing);
             }
             break;
