@@ -18,7 +18,21 @@ EnemyManager::EnemyManager(Game* game, PlayerManager* playerManager)
 
 EnemyManager::~EnemyManager() {
 }
-
+std::vector<std::tuple<int, sf::Vector2f, int>> EnemyManager::GetEnemyDataForSync() const {
+    std::vector<std::tuple<int, sf::Vector2f, int>> enemyData;
+    
+    for (const auto& enemy : enemies) {
+        if (enemy.IsAlive()) {
+            enemyData.emplace_back(
+                enemy.GetID(),
+                enemy.GetPosition(),
+                enemy.GetHealth()
+            );
+        }
+    }
+    
+    return enemyData;
+}
 void EnemyManager::Update(float dt) {
     if (!waveActive) {
         // If no wave is active, count down to next wave
@@ -285,16 +299,44 @@ void EnemyManager::CheckBulletCollisions(const std::vector<Bullet>& bullets) {
             if (enemy.IsAlive()) {
                 if (enemy.GetShape().getGlobalBounds().intersects(bullet.GetShape().getGlobalBounds())) {
                     // Enemy hit by bullet
-                    bool killed = enemy.TakeDamage(20); // Each bullet does 20 damage
                     
-                    // If we're the host, broadcast this hit
+                    // Check if we're the host
                     CSteamID localSteamID = SteamUser()->GetSteamID();
                     CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+                    bool isHost = (localSteamID == hostID);
                     
-                    if (localSteamID == hostID) {
+                    // If we're the host, actually apply damage and broadcast
+                    bool killed = false;
+                    if (isHost) {
+                        killed = enemy.TakeDamage(20); // Each bullet does 20 damage
+                        
                         std::string msg = MessageHandler::FormatEnemyHitMessage(
                             enemy.GetID(), 20, killed, bullet.GetShooterID());
                         game->GetNetworkManager().BroadcastMessage(msg);
+                    } else {
+                        // If we're a client, only update visuals temporarily until server confirms
+                        // This gives immediate feedback without changing actual health
+                        
+                        // Store current health
+                        int currentHealth = enemy.GetHealth();
+                        
+                        // Apply temporary visual damage (will be overwritten by server update)
+                        int tempHealth = currentHealth - 20;
+                        if (tempHealth < 0) tempHealth = 0;
+                        
+                        // Update enemy's appearance without changing actual health
+                        float healthPercent = static_cast<float>(tempHealth) / 40.0f;
+                        sf::Color newColor(
+                            255,  // Full red
+                            static_cast<sf::Uint8>(255 * healthPercent),
+                            static_cast<sf::Uint8>(255 * healthPercent)
+                        );
+                        enemy.GetShape().setFillColor(newColor);
+                        
+                        // Send hit message to host
+                        std::string msg = MessageHandler::FormatEnemyHitMessage(
+                            enemy.GetID(), 20, false, bullet.GetShooterID());
+                        game->GetNetworkManager().SendMessage(hostID, msg);
                     }
                     
                     // Mark this bullet for removal
@@ -325,18 +367,12 @@ void EnemyManager::SyncEnemyPositions() {
         return;
     }
     
-    std::vector<std::pair<int, sf::Vector2f>> enemyPositions;
-    
-    // Collect all alive enemies' positions
-    for (const auto& enemy : enemies) {
-        if (enemy.IsAlive()) {
-            enemyPositions.emplace_back(enemy.GetID(), enemy.GetPosition());
-        }
-    }
+    // Get enemy data including positions and health
+    auto enemyData = GetEnemyDataForSync();
     
     // If we have enemy positions to sync, broadcast them
-    if (!enemyPositions.empty()) {
-        std::string msg = MessageHandler::FormatEnemyPositionsMessage(enemyPositions);
+    if (!enemyData.empty()) {
+        std::string msg = MessageHandler::FormatEnemyPositionsMessage(enemyData);
         game->GetNetworkManager().BroadcastMessage(msg);
     }
 }
@@ -355,6 +391,32 @@ void EnemyManager::UpdateEnemyPositions(const std::vector<std::pair<int, sf::Vec
             }
         }
     }
+}
+
+void EnemyManager::UpdateEnemyHealth(int id, int health) {
+    for (auto& enemy : enemies) {
+        if (enemy.GetID() == id && enemy.IsAlive()) {
+            // Calculate health percentage for visual feedback
+            float currentHealthPct = static_cast<float>(enemy.GetHealth()) / 40.0f;
+            float newHealthPct = static_cast<float>(health) / 40.0f;
+            
+            // Only update if there's a significant change to avoid constant flickering
+            if (std::abs(currentHealthPct - newHealthPct) > 0.05f) {
+                enemy.SetHealth(health);
+                // Call TakeDamage with 0 to update the color based on current health
+                enemy.UpdateVisuals();
+            }
+        }
+    }
+}
+
+int EnemyManager::GetEnemyHealth(int id) const {
+    for (const auto& enemy : enemies) {
+        if (enemy.GetID() == id) {
+            return enemy.GetHealth();
+        }
+    }
+    return 40; // Default max health if enemy not found
 }
 void EnemyManager::CheckPlayerCollisions() {
     auto& players = playerManager->GetPlayers();
@@ -587,3 +649,4 @@ void EnemyManager::RemoveStaleEnemies(const std::vector<int>& validIds) {
         std::cout << "[SYNC] Removed stale enemy: " << id << std::endl;
     }
 }
+

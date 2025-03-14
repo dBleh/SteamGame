@@ -319,8 +319,20 @@ void ClientNetwork::ProcessEnemyHitMessage(const ParsedMessage& parsed) {
         EnemyManager* enemyManager = playingState->GetEnemyManager();
         if (enemyManager) {
             // Process the enemy hit
-            enemyManager->HandleEnemyHit(parsed.enemyId, parsed.damage, parsed.killed);
-           
+            bool isLocalHit = false;
+            std::string localSteamIDStr = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
+            
+            // Check if this hit was from the local player
+            if (parsed.steamID == localSteamIDStr) {
+                isLocalHit = true;
+                std::cout << "[CLIENT] Received confirmation of local player's hit on enemy " << parsed.enemyId << "\n";
+            }
+            
+            // For hits by the local player, we've already applied damage visually,
+            // so only apply the actual health change if it's a killing blow or from another player
+            if (!isLocalHit || parsed.killed) {
+                enemyManager->HandleEnemyHit(parsed.enemyId, parsed.damage, parsed.killed);
+            }
         }
     }
 }
@@ -397,43 +409,15 @@ void ClientNetwork::ProcessEnemyPositionsMessage(const ParsedMessage& parsed) {
     EnemyManager* enemyManager = playingState->GetEnemyManager();
     if (!enemyManager) return;
     
-    // Extract all enemy IDs from the message
-    std::vector<int> receivedIds;
-    for (const auto& enemyPos : parsed.enemyPositions) {
-        receivedIds.push_back(enemyPos.first);
-    }
-    
-    // Check if we're missing any of these enemies
-    for (const auto& enemyPos : parsed.enemyPositions) {
-        int id = enemyPos.first;
-        if (!enemyManager->HasEnemy(id)) {
-            // We're missing this enemy, create it
-            std::cout << "[CLIENT] Creating missing enemy " << id << " from position update" << std::endl;
-            enemyManager->AddEnemy(id, enemyPos.second);
-        }
-    }
-    
-    // Now update positions
+    // First update positions
     enemyManager->UpdateEnemyPositions(parsed.enemyPositions);
     
-    // Get all enemy IDs we currently have
-    std::vector<int> localIds = enemyManager->GetAllEnemyIds();
-    
-    // Check for enemies we have that weren't in the message
-    for (int localId : localIds) {
-        bool found = false;
-        for (int receivedId : receivedIds) {
-            if (localId == receivedId) {
-                found = true;
-                break;
-            }
-        }
+    // Now update health values
+    for (const auto& healthPair : parsed.enemyHealths) {
+        int id = healthPair.first;
+        int health = healthPair.second;
         
-        // If we have an enemy that wasn't in the update, it might be a ghost
-        if (!found) {
-            std::cout << "[CLIENT] Potential ghost enemy " << localId << " not in position update" << std::endl;
-            // We'll keep it for now - it will be removed in the next validation
-        }
+        enemyManager->UpdateEnemyHealth(id, health);
     }
 }
 void ClientNetwork::ProcessEnemyValidationMessage(const ParsedMessage& parsed) {

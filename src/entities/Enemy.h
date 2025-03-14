@@ -18,11 +18,12 @@ public:
     sf::Vector2f GetPosition() const;
     bool IsAlive() const;
     int GetID() const;
-    
+    void SetHealth(int newHealth) { health = newHealth; }
+    void UpdateVisuals();
     // Serialization for network
     std::string Serialize() const;
     static Enemy Deserialize(const std::string& data);
-    
+    int GetHealth() const { return health; }
 private:
     int id;                     // Unique ID for this enemy
     sf::RectangleShape shape;   // Visual representation

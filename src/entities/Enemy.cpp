@@ -37,14 +37,8 @@ void Enemy::Update(float dt, const sf::Vector2f& targetPosition) {
 bool Enemy::TakeDamage(int amount) {
     health -= amount;
     
-    // Update color based on health percentage
-    float healthPercent = static_cast<float>(health) / 40.f; // Based on initial health
-    sf::Color newColor(
-        255,  // Full red
-        static_cast<sf::Uint8>(255 * healthPercent),  // Less green as damage increases
-        static_cast<sf::Uint8>(255 * healthPercent)   // Less blue as damage increases
-    );
-    shape.setFillColor(newColor);
+    // Update visuals
+    UpdateVisuals();
     
     if (health <= 0) {
         isDead = true;
@@ -103,4 +97,17 @@ Enemy Enemy::Deserialize(const std::string& data) {
     }
     
     return enemy;
+}
+
+
+
+void Enemy::UpdateVisuals() {
+    // Update color based on health percentage
+    float healthPercent = static_cast<float>(health) / 40.0f; // Based on initial health
+    sf::Color newColor(
+        255,  // Full red
+        static_cast<sf::Uint8>(255 * healthPercent),  // Less green as damage increases
+        static_cast<sf::Uint8>(255 * healthPercent)   // Less blue as damage increases
+    );
+    shape.setFillColor(newColor);
 }

@@ -1,7 +1,9 @@
 #include "MessageHandler.h"
 #include <sstream>
 #include <vector>
-
+#include "../Game.h"
+#include "../states/PlayingState.h"
+#include "../entities/EnemyManager.h"
 std::string MessageHandler::FormatConnectionMessage(const std::string& steamID, const std::string& steamName, const sf::Color& color, bool isReady, bool isHost) {
     std::ostringstream oss;
     oss << "C|" << steamID << "|" << steamName << "|" << static_cast<int>(color.r) << "," 
@@ -81,8 +83,28 @@ std::string MessageHandler::FormatEnemyPositionsMessage(const std::vector<std::p
     std::ostringstream oss;
     oss << "EP|" << enemyPositions.size();
     
+    // Use default health value since health info wasn't provided
     for (const auto& enemy : enemyPositions) {
-        oss << "|" << enemy.first << "," << enemy.second.x << "," << enemy.second.y;
+        int id = enemy.first;
+        sf::Vector2f pos = enemy.second;
+        int defaultHealth = 40; // Default max health
+        
+        oss << "|" << id << "," << pos.x << "," << pos.y << "," << defaultHealth;
+    }
+    
+    return oss.str();
+}
+
+std::string MessageHandler::FormatEnemyPositionsMessage(const std::vector<std::tuple<int, sf::Vector2f, int>>& enemyData) {
+    std::ostringstream oss;
+    oss << "EP|" << enemyData.size();
+    
+    for (const auto& data : enemyData) {
+        int id = std::get<0>(data);
+        sf::Vector2f pos = std::get<1>(data);
+        int health = std::get<2>(data);
+        
+        oss << "|" << id << "," << pos.x << "," << pos.y << "," << health;
     }
     
     return oss.str();
@@ -225,13 +247,36 @@ ParsedMessage MessageHandler::ParseMessage(const std::string& msg) {
         parsed.type = MessageType::EnemyPositions;
         int numEnemies = std::stoi(parts[1]);
         
+        parsed.enemyPositions.clear();
+        parsed.enemyHealths.clear();
+        
         for (int i = 0; i < numEnemies && i + 2 < parts.size(); ++i) {
-            std::istringstream enemyStream(parts[i + 2]);
-            int id;
-            float x, y;
-            char comma;
-            enemyStream >> id >> comma >> x >> comma >> y;
-            parsed.enemyPositions.emplace_back(id, sf::Vector2f(x, y));
+            // Get the raw data for this enemy
+            std::string enemyData = parts[i + 2];
+            
+            // Split the data by commas
+            std::vector<std::string> values;
+            std::stringstream ss(enemyData);
+            std::string value;
+            
+            while (std::getline(ss, value, ',')) {
+                values.push_back(value);
+            }
+            
+            // Check if we have enough values
+            if (values.size() >= 4) {
+                try {
+                    int id = std::stoi(values[0]);
+                    float x = std::stof(values[1]);
+                    float y = std::stof(values[2]);
+                    int health = std::stoi(values[3]);
+                    
+                    parsed.enemyPositions.emplace_back(id, sf::Vector2f(x, y));
+                    parsed.enemyHealths.emplace_back(id, health);
+                } catch (const std::exception& e) {
+                    std::cout << "[ERROR] Failed to parse enemy position data: " << e.what() << std::endl;
+                }
+            }
         }
     }else if (parts[0] == "EV" && parts.size() >= 2) {
         parsed.type = MessageType::EnemyValidation;

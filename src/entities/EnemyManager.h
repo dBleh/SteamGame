@@ -18,7 +18,8 @@ public:
     
     void Update(float dt);
     void Render(sf::RenderWindow& window);
-    
+    std::vector<std::tuple<int, sf::Vector2f, int>> GetEnemyDataForSync() const;
+
     // Wave management
     void StartNextWave();
     int GetCurrentWave() const;
@@ -45,7 +46,9 @@ public:
     std::string SerializeEnemies() const;
     void DeserializeEnemies(const std::string& data);
     void SyncEnemyPositions();
-void UpdateEnemyPositions(const std::vector<std::pair<int, sf::Vector2f>>& positions);
+    void UpdateEnemyPositions(const std::vector<std::pair<int, sf::Vector2f>>& positions);
+    int GetEnemyHealth(int id) const;
+    void UpdateEnemyHealth(int id, int health);
 private:
     Game* game;
     PlayerManager* playerManager;
