@@ -111,7 +111,10 @@ public:
     static ParsedMessage ParseTriangleEnemyPositionsMessage(const std::string& message);
     static ParsedMessage ParseTriangleEnemyBatchSpawnMessage(const std::string& message);
     static ParsedMessage ParseTriangleEnemyFullListMessage(const std::string& message);
-    
+    static std::string FormatMinimalTriangleSpawnMessage(int enemyId, const sf::Vector2f& position);
+
+// Parsing function for minimal triangle spawn message
+static ParsedMessage ParseMinimalTriangleSpawnMessage(const std::string& message);
 
 
     static ParsedMessage ParseMessage(const std::string& msg);

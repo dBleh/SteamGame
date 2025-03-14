@@ -167,8 +167,8 @@ void TriangleEnemyManager::SpawnEnemyBatch(int count)
         // Initialize last synced position
         lastSyncedPositions[enemyPtr->GetID()] = position;
         
-        // Send individual spawn message
-        std::string spawnMsg = MessageHandler::FormatTriangleEnemySpawnMessage(
+        // Send minimal spawn message
+        std::string spawnMsg = MessageHandler::FormatMinimalTriangleSpawnMessage(
             enemyPtr->GetID(), position);
         game->GetNetworkManager().BroadcastMessage(spawnMsg);
     }

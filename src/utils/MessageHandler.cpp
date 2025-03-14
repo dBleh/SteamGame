@@ -486,6 +486,51 @@ ParsedMessage MessageHandler::ParseTriangleEnemyFullListMessage(const std::strin
     
     return result;
 }
+ParsedMessage MessageHandler::ParseMinimalTriangleSpawnMessage(const std::string& message) {
+    ParsedMessage result;
+    result.type = MessageType::TriangleEnemySpawn;
+    
+    std::istringstream ss(message);
+    std::string token;
+    
+    // Skip "TS" token
+    std::getline(ss, token, '|');
+    
+    // Parse enemy ID
+    std::getline(ss, token, '|');
+    try {
+        result.enemyId = std::stoi(token);
+    } catch (...) {
+        result.enemyId = 0;
+    }
+    
+    // Parse position x
+    std::getline(ss, token, '|');
+    float x = 0.f;
+    try {
+        x = static_cast<float>(std::stoi(token));
+    } catch (...) {}
+    
+    // Parse position y
+    std::getline(ss, token, '|');
+    float y = 0.f;
+    try {
+        y = static_cast<float>(std::stoi(token));
+    } catch (...) {}
+    
+    result.position = sf::Vector2f(x, y);
+    
+    return result;
+}
+std::string MessageHandler::FormatMinimalTriangleSpawnMessage(int enemyId, const sf::Vector2f& position) {
+    // Use shorter format code and compact number formatting
+    std::ostringstream oss;
+    oss << "TS|" << enemyId << "|" 
+        << static_cast<int>(position.x) << "|" 
+        << static_cast<int>(position.y);
+    return oss.str();
+}
+
 ParsedMessage MessageHandler::ParseMessage(const std::string& msg) {
     ParsedMessage parsed{};
     std::vector<std::string> parts;
@@ -648,6 +693,8 @@ ParsedMessage MessageHandler::ParseMessage(const std::string& msg) {
     }
     else if (parts[0] == "TRIANGLE_FULL_LIST") {
         return ParseTriangleEnemyFullListMessage(msg);
+    }else if (parts[0] == "TS") {
+        return ParseMinimalTriangleSpawnMessage(msg);
     }
 
     return parsed;
