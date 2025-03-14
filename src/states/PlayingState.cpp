@@ -6,6 +6,7 @@
 #include "../network/Client.h"
 #include "../entities/EnemyManager.h"
 #include "../render/PlayerRenderer.h"
+#include "../entities/TriangleManager.h"
 #include <Steam/steam_api.h>
 #include <iostream>
 
@@ -244,6 +245,8 @@ PlayingState::PlayingState(Game* game)
     
     // ===== ENEMY MANAGER SETUP =====
     enemyManager = std::make_unique<EnemyManager>(game, playerManager.get());
+    triangleEnemyManager = std::make_unique<TriangleEnemyManager>(game, playerManager.get());
+
 }
 
 PlayingState::~PlayingState() {
@@ -281,14 +284,25 @@ void PlayingState::StartFirstWave() {
     CSteamID myID = SteamUser()->GetSteamID();
     CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
     
-    if (myID == hostID && enemyManager) {
-        // Start the first wave
-        enemyManager->StartNextWave();
+    if (myID == hostID) {
+        // Start the regular enemy wave
+        if (enemyManager) {
+            enemyManager->StartNextWave();
+            
+            // Broadcast the wave start to all clients
+            std::string waveMsg = MessageHandler::FormatWaveStartMessage(
+                enemyManager->GetCurrentWave());
+            game->GetNetworkManager().BroadcastMessage(waveMsg);
+        }
         
-        // Broadcast the wave start to all clients
-        std::string waveMsg = MessageHandler::FormatWaveStartMessage(
-            enemyManager->GetCurrentWave());
-        game->GetNetworkManager().BroadcastMessage(waveMsg);
+        // Also spawn triangle enemies
+        if (triangleEnemyManager) {
+            // Spawn 100 triangle enemies
+            triangleEnemyManager->SpawnWave(1000);
+            
+            // Synchronize with clients
+            triangleEnemyManager->SyncFullEnemyList();
+        }
     }
 }
 
@@ -324,6 +338,13 @@ void PlayingState::Update(float dt) {
             
             // Update wave info in HUD
             UpdateWaveInfo();
+        }
+
+        if (triangleEnemyManager) {
+            triangleEnemyManager->Update(dt);
+            
+            // Check bullet collisions with triangle enemies
+            triangleEnemyManager->CheckBulletCollisions(playerManager->GetAllBullets());
         }
         
         // Handle continuous shooting if mouse button is held down
@@ -428,6 +449,9 @@ void PlayingState::Render() {
         // Render enemies
         if (enemyManager) {
             enemyManager->Render(game->GetWindow());
+        }
+        if (triangleEnemyManager) {
+            triangleEnemyManager->Render(game->GetWindow());
         }
     }
     

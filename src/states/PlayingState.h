@@ -9,6 +9,7 @@
 
 class Game;
 class PlayerManager;
+class TriangleEnemyManager;
 class PlayerRenderer;
 class EnemyManager;
 class HostNetwork;
@@ -26,6 +27,7 @@ public:
     
     // Getter for EnemyManager
     EnemyManager* GetEnemyManager() { return enemyManager.get(); }
+    TriangleEnemyManager* GetTriangleEnemyManager() { return triangleEnemyManager.get(); }
 
 private:
     void AttemptShoot(int mouseX, int mouseY);
@@ -35,6 +37,7 @@ private:
     void UpdateWaveInfo();
     void StartFirstWave();
     
+    std::unique_ptr<TriangleEnemyManager> triangleEnemyManager;
     std::unique_ptr<PlayerManager> playerManager;
     std::unique_ptr<PlayerRenderer> playerRenderer;
     std::unique_ptr<EnemyManager> enemyManager;

@@ -3,6 +3,7 @@
 
 #include <string>
 #include <SFML/Graphics.hpp>
+#include "MessageHandler_TriangleEnemies.h"
 #include "../utils/SteamHelpers.h"
 class Game;
 class EnemyManager;
@@ -26,7 +27,13 @@ enum class MessageType {
     WaveComplete,
     EnemyPositions,
     EnemyValidation,
-    EnemyValidationRequest 
+    EnemyValidationRequest,
+    TriangleEnemySpawn,
+    TriangleEnemyHit,
+    TriangleEnemyPositions,
+    TriangleEnemyDeath,
+    TriangleEnemyBatchSpawn,
+    TriangleEnemyFullList
 };
 
 struct ParsedMessage {
@@ -50,6 +57,9 @@ struct ParsedMessage {
     bool rewardKill;         // Should killer be rewarded
     std::vector<std::pair<int, sf::Vector2f>> enemyPositions; // For enemy position updates (id, position)
     std::vector<std::pair<int, int>> enemyHealths;
+    std::vector<std::tuple<int, sf::Vector2f, int>> triangleEnemyPositions;
+    std::vector<std::pair<int, int>> triangleEnemyHealths;
+    std::vector<int> triangleValidEnemyIds;
 };
 
 class MessageHandler {
@@ -74,6 +84,35 @@ public:
     static std::string FormatWaveCompleteMessage(int waveNumber);
     static std::string FormatEnemyValidationMessage(const std::vector<int>& enemyIds);
     static std::string FormatEnemyValidationRequestMessage();
+
+    
+    static std::string FormatTriangleEnemySpawnMessage(int enemyId, const sf::Vector2f& position);
+
+    // Efficient serialization of multiple enemy positions
+    // Uses delta compression and quantization to minimize bandwidth
+    static std::string FormatTriangleEnemyPositionsMessage(const std::vector<std::tuple<int, sf::Vector2f, int>>& enemyData);
+    
+    // Message for when a triangle enemy takes damage
+    static std::string FormatTriangleEnemyHitMessage(int enemyId, int damage, bool killed, const std::string& shooterID);
+    
+    // Message for when a triangle enemy dies
+    static std::string FormatTriangleEnemyDeathMessage(int enemyId, const std::string& killerID, bool rewardKill);
+    
+    // Batch spawn message to efficiently communicate multiple spawns at once
+    static std::string FormatTriangleEnemyBatchSpawnMessage(const std::vector<std::tuple<int, sf::Vector2f, int>>& spawnData);
+    
+    // Full enemy list message for synchronization
+    static std::string FormatTriangleEnemyFullListMessage(const std::vector<int>& validIds);
+    
+    // Parsing functions declarations - need to be static
+    static ParsedMessage ParseTriangleEnemySpawnMessage(const std::string& message);
+    static ParsedMessage ParseTriangleEnemyHitMessage(const std::string& message);
+    static ParsedMessage ParseTriangleEnemyDeathMessage(const std::string& message);
+    static ParsedMessage ParseTriangleEnemyPositionsMessage(const std::string& message);
+    static ParsedMessage ParseTriangleEnemyBatchSpawnMessage(const std::string& message);
+    static ParsedMessage ParseTriangleEnemyFullListMessage(const std::string& message);
+    
+
 
     static ParsedMessage ParseMessage(const std::string& msg);
 };

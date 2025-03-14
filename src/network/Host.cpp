@@ -3,6 +3,7 @@
 #include "../network/NetworkManager.h"
 #include "../utils/MessageHandler.h"
 #include "../states/PlayingState.h"
+#include "../entities/TriangleManager.h"
 #include <iostream>
 
 HostNetwork::HostNetwork(Game* game, PlayerManager* manager)
@@ -60,6 +61,15 @@ void HostNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
             break;
         case MessageType::EnemyValidationRequest:
             ProcessEnemyValidationRequestMessage(parsed);
+            break;
+        case MessageType::TriangleEnemySpawn:  
+            ProcessTriangleEnemySpawnMessage(parsed);
+            break;
+        case MessageType::TriangleEnemyHit:
+            ProcessTriangleEnemyHitMessage(parsed);
+            break;
+        case MessageType::TriangleEnemyPositions:
+            ProcessTriangleEnemyPositionsMessage(parsed);
             break;
         case MessageType::StartGame:
             std::cout << "[HOST] Received start game message, changing to Playing state" << std::endl;
@@ -445,4 +455,166 @@ void HostNetwork::ProcessEnemyValidationRequestMessage(const ParsedMessage& pars
             }
         }
     }
+}
+
+
+// Add these new implementations to Host.cpp
+
+void HostNetwork::ProcessTriangleEnemySpawnMessage(const ParsedMessage& parsed) {
+    // Only process if this is a valid message from a client
+    // The host generally spawns enemies itself and broadcasts them
+    
+    PlayingState* playingState = GetPlayingState(game);
+    if (!playingState) return;
+    
+    TriangleEnemyManager* triangleManager = playingState->GetTriangleEnemyManager();
+    if (!triangleManager) return;
+    
+    // Verify the enemy doesn't already exist
+    TriangleEnemy* existingEnemy = triangleManager->GetEnemy(parsed.enemyId);
+    if (!existingEnemy) {
+        // Add the enemy using the correct method
+        triangleManager->AddEnemy(parsed.enemyId, parsed.position);
+        
+        // Broadcast to all clients to ensure consistency
+        std::string msg = MessageHandler::FormatTriangleEnemySpawnMessage(
+            parsed.enemyId, parsed.position);
+        game->GetNetworkManager().BroadcastMessage(msg);
+    }
+}
+
+void HostNetwork::ProcessTriangleEnemyHitMessage(const ParsedMessage& parsed) {
+    PlayingState* playingState = GetPlayingState(game);
+    if (!playingState) return;
+    
+    TriangleEnemyManager* triangleManager = playingState->GetTriangleEnemyManager();
+    if (!triangleManager) return;
+    
+    // Get the enemy
+    TriangleEnemy* enemy = triangleManager->GetEnemy(parsed.enemyId);
+    if (!enemy || !enemy->IsAlive()) {
+        std::cout << "[HOST] Received hit for non-existent/dead triangle enemy " 
+                  << parsed.enemyId << "\n";
+        return;
+    }
+    
+    // Store health before damage for verification
+    int healthBefore = enemy->GetHealth();
+    
+    // Apply damage if this hit is from a client
+    std::string localSteamIDStr = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
+    
+    if (parsed.steamID != localSteamIDStr) {
+        // Process hit from client
+        triangleManager->HandleEnemyHit(parsed.enemyId, parsed.damage, parsed.killed);
+        bool killed = !enemy->IsAlive(); // Check if enemy is dead after applying damage        
+        // Get health after damage
+        int healthAfter = enemy->IsAlive() ? enemy->GetHealth() : 0;
+        
+        std::cout << "[HOST] Triangle enemy " << parsed.enemyId 
+                  << " health changed from " << healthBefore 
+                  << " to " << healthAfter 
+                  << " after hit from client " << parsed.steamID << "\n";
+        
+        // Broadcast hit confirmation to all clients
+        std::string hitMsg = MessageHandler::FormatTriangleEnemyHitMessage(
+            parsed.enemyId, parsed.damage, killed, parsed.steamID);
+        game->GetNetworkManager().BroadcastMessage(hitMsg);
+        
+        // Handle kill rewards if enemy died
+        if (killed) {
+            // Find the player that shot the enemy
+            auto& players = playerManager->GetPlayers();
+            auto it = players.find(parsed.steamID);
+            if (it != players.end()) {
+                // Award kill and money
+                playerManager->IncrementPlayerKills(parsed.steamID);
+                it->second.money += 15; // Award money for triangle kill
+                
+                // Broadcast enemy death message
+                std::string deathMsg = MessageHandler::FormatTriangleEnemyDeathMessage(
+                    parsed.enemyId, parsed.steamID, true);
+                game->GetNetworkManager().BroadcastMessage(deathMsg);
+            }
+        }
+    } else {
+        // For host's own hits, we've already applied damage in CheckBulletCollisions
+        std::cout << "[HOST] Ignoring redundant triangle hit message for own bullet\n";
+    }
+}
+
+void HostNetwork::ProcessTriangleEnemyDeathMessage(const ParsedMessage& parsed) {
+    PlayingState* playingState = GetPlayingState(game);
+    if (!playingState) return;
+    
+    TriangleEnemyManager* triangleManager = playingState->GetTriangleEnemyManager();
+    if (!triangleManager) return;
+    
+    // Get the enemy
+    TriangleEnemy* enemy = triangleManager->GetEnemy(parsed.enemyId);
+    if (enemy && enemy->IsAlive()) {
+        // Handle enemy death
+        enemy->TakeDamage(enemy->GetHealth()); // Ensure it's dead
+        
+        std::cout << "[HOST] Triangle enemy " << parsed.enemyId 
+                  << " death processed" << std::endl;
+        
+        // If this was a rewarded kill, increment player stats
+        if (parsed.rewardKill && !parsed.killerID.empty()) {
+            auto& players = playerManager->GetPlayers();
+            auto it = players.find(parsed.killerID);
+            if (it != players.end()) {
+                playerManager->IncrementPlayerKills(parsed.killerID);
+                it->second.money += 15; // Award money for triangle kill
+            }
+        }
+        
+        // Broadcast to ensure all clients know
+        std::string deathMsg = MessageHandler::FormatTriangleEnemyDeathMessage(
+            parsed.enemyId, parsed.killerID, parsed.rewardKill);
+        
+        // Send twice for redundancy
+        game->GetNetworkManager().BroadcastMessage(deathMsg);
+        game->GetNetworkManager().BroadcastMessage(deathMsg);
+    }
+}
+
+void HostNetwork::ProcessTriangleEnemyPositionsMessage(const ParsedMessage& parsed) {
+    // Usually the host doesn't need to process position messages from clients
+    // as the host is authoritative for enemy positions
+    // This function might be needed if implementing client-side prediction/reconciliation
+}
+
+void HostNetwork::ProcessTriangleEnemyFullListMessage(const ParsedMessage& parsed) {
+    // Host typically generates the full list, not processes it
+    // This is primarily for client validation
+}
+
+void HostNetwork::ProcessTriangleEnemyBatchSpawnMessage(const ParsedMessage& parsed) {
+    // Similar to single spawn but for batches
+    // Host typically initiates batches, not processes them from clients
+    PlayingState* playingState = GetPlayingState(game);
+    if (!playingState) return;
+    
+    TriangleEnemyManager* triangleManager = playingState->GetTriangleEnemyManager();
+    if (!triangleManager) return;
+    
+    // Process each enemy in the batch
+    for (const auto& enemyData : parsed.triangleEnemyPositions) {
+        int id = std::get<0>(enemyData);
+        sf::Vector2f pos = std::get<1>(enemyData);
+        int health = std::get<2>(enemyData);
+        
+        // Verify this enemy doesn't already exist
+        TriangleEnemy* existingEnemy = triangleManager->GetEnemy(id);
+        if (!existingEnemy) {
+            // Add the enemy with health
+            triangleManager->AddEnemy(id, pos, health);
+        }
+    }
+    
+    // After processing, broadcast to ensure all clients are in sync
+    std::string batchMsg = MessageHandler::FormatTriangleEnemyBatchSpawnMessage(
+        parsed.triangleEnemyPositions);
+    game->GetNetworkManager().BroadcastMessage(batchMsg);
 }

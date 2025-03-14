@@ -12,7 +12,7 @@
 class Game;
 class EnemyManager;
 class PlayingState;
-
+class TriangleEnemyManager;
 class HostNetwork {
 public:
     explicit HostNetwork(Game* game, PlayerManager* manager);
@@ -39,6 +39,13 @@ private:
     void ProcessWaveStartMessage(const ParsedMessage& parsed);
     void ProcessWaveCompleteMessage(const ParsedMessage& parsed);
     void ProcessEnemyValidationRequestMessage(const ParsedMessage& parsed);
+
+    void ProcessTriangleEnemySpawnMessage(const ParsedMessage& parsed);
+void ProcessTriangleEnemyHitMessage(const ParsedMessage& parsed);
+void ProcessTriangleEnemyDeathMessage(const ParsedMessage& parsed);
+void ProcessTriangleEnemyPositionsMessage(const ParsedMessage& parsed);
+void ProcessTriangleEnemyFullListMessage(const ParsedMessage& parsed);
+void ProcessTriangleEnemyBatchSpawnMessage(const ParsedMessage& parsed);
 
     Game* game;
     PlayerManager* playerManager;
