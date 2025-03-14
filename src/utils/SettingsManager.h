@@ -19,6 +19,7 @@ struct GameSettings {
     sf::Keyboard::Key showMenu = sf::Keyboard::Escape;
     sf::Keyboard::Key toggleGrid = sf::Keyboard::G;
     sf::Keyboard::Key toggleCursorLock = sf::Keyboard::L;
+    sf::Keyboard::Key toggleReady = sf::Keyboard::R;
     
     // Other settings can be added here in the future
     bool showFPS = true;

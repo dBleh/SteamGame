@@ -22,7 +22,12 @@ void InputHandler::UpdateKeyBindings() {
     keyState[currentSettings->moveDown] = false;
     keyState[currentSettings->moveLeft] = false;
     keyState[currentSettings->moveRight] = false;
-    keyState[currentSettings->shoot] = false;
+    
+    // Only add the shoot key if it's a keyboard key
+    if (currentSettings->shoot != sf::Keyboard::Unknown) {
+        keyState[currentSettings->shoot] = false;
+    }
+    
     keyState[currentSettings->showLeaderboard] = false;
     keyState[currentSettings->showMenu] = false;
     keyState[currentSettings->toggleGrid] = false;
@@ -82,23 +87,25 @@ void InputHandler::Update() {
 }
 
 bool InputHandler::IsActionActive(InputAction action) const {
-    // Special case for shoot, which can be a key or mouse button
+    // Special case for shoot, which can be a key OR mouse button, but not both
     if (action == InputAction::Shoot) {
-        // If shoot is bound to a key
+        // First, check if shoot is bound to a keyboard key
         if (currentSettings->shoot != sf::Keyboard::Unknown) {
             auto it = keyState.find(currentSettings->shoot);
-            if (it != keyState.end() && it->second) {
-                return true;
+            if (it != keyState.end()) {
+                return it->second;
             }
+            return false; // Key not found in state map
         }
         
-        // Default to mouse left button if no key is bound
-        auto it = mouseState.find(sf::Mouse::Left);
-        if (it != mouseState.end() && it->second) {
-            return true;
+        // If no keyboard key is bound, default to mouse left button
+        else {
+            auto it = mouseState.find(sf::Mouse::Left);
+            if (it != mouseState.end()) {
+                return it->second;
+            }
+            return false; // Mouse button not found in state map
         }
-        
-        return false;
     }
     
     // Regular key-based actions
@@ -111,10 +118,11 @@ bool InputHandler::IsActionActive(InputAction action) const {
     return false;
 }
 
+
 bool InputHandler::IsActionTriggered(InputAction action) const {
     // An action is triggered if it's active now but wasn't in the previous frame
     
-    // Special case for shoot, which can be a key or mouse button
+    // Special case for shoot, which can be a key OR mouse button, but not both
     if (action == InputAction::Shoot) {
         // If shoot is bound to a key
         if (currentSettings->shoot != sf::Keyboard::Unknown) {
@@ -124,17 +132,19 @@ bool InputHandler::IsActionTriggered(InputAction action) const {
             if (currIt != keyState.end() && prevIt != previousKeyState.end()) {
                 return currIt->second && !prevIt->second;
             }
+            return false;
         }
         
-        // Default to mouse left button if no key is bound
-        auto currIt = mouseState.find(sf::Mouse::Left);
-        auto prevIt = previousMouseState.find(sf::Mouse::Left);
-        
-        if (currIt != mouseState.end() && prevIt != previousMouseState.end()) {
-            return currIt->second && !prevIt->second;
+        // Only use mouse left button if no key is bound
+        else {
+            auto currIt = mouseState.find(sf::Mouse::Left);
+            auto prevIt = previousMouseState.find(sf::Mouse::Left);
+            
+            if (currIt != mouseState.end() && prevIt != previousMouseState.end()) {
+                return currIt->second && !prevIt->second;
+            }
+            return false;
         }
-        
-        return false;
     }
     
     // Regular key-based actions

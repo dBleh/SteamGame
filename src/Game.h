@@ -41,12 +41,12 @@ public:
     sf::Vector2f GetUIScale() const; // Get UI scaling factors
     sf::Vector2f WindowToUICoordinates(sf::Vector2i windowPos) const; // Convert window to UI coordinates
     State* GetState() { return state.get(); }
-    
-    InputManager& GetInputManager() { return inputManager; }
+    float GetDeltaTime() const { return deltaTime; }
+        InputManager& GetInputManager() { return inputManager; }
 private:
     void ProcessEvents(sf::Event& event);
     void AdjustViewToWindow();
-
+    float deltaTime = 0.f;
     sf::RenderWindow window;
     sf::Font font;
     sf::View camera;  // Camera for game world

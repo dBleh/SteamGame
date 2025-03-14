@@ -1,5 +1,6 @@
 #include "SettingsState.h"
 #include "../Game.h"
+#include "../utils/InputManager.h"
 
 SettingsState::SettingsState(Game* game)
     : State(game) {
@@ -144,6 +145,10 @@ void SettingsState::InitializeSettings() {
                  [this]() { return currentSettings.toggleCursorLock; },
                  [this](sf::Keyboard::Key key) { currentSettings.toggleCursorLock = key; });
     
+    AddKeySetting("toggleReady", "Toggle Ready Status", 
+                 [this]() { return currentSettings.toggleReady; },
+                 [this](sf::Keyboard::Key key) { currentSettings.toggleReady = key; });
+    
     // Other Settings
     AddToggleSetting("showFPS", "Show FPS", 
                     [this]() { return currentSettings.showFPS; },
@@ -237,7 +242,7 @@ void SettingsState::Update(float dt) {
         auto& setting = settings[i];
         
         // Add space for category header
-        if (i == 9) { // Index where Other settings start
+        if (i == 10) { // Index where Other settings start (after toggleReady)
             yPos += 60.0f; // Add space for category header
         }
         
@@ -356,7 +361,7 @@ void SettingsState::DrawSettings() {
         const auto& setting = settings[i];
         
         // Draw category headers
-        if (i == 9) { // Index where Other settings start
+        if (i == 10) { // Index where Other settings start (after toggleReady)
             yPos += 20.0f; // Add some space
             categoryText.setString("Other Settings");
             categoryText.setPosition(centerX - 350.0f, yPos);
@@ -598,6 +603,17 @@ void SettingsState::ProcessEvent(const sf::Event& event) {
                     settings[selectedIndex].setValue(std::to_string(value));
                 }
                 break;
+                
+            case sf::Keyboard::S:  // Shortcut for Save
+                if (sf::Keyboard::isKeyPressed(sf::Keyboard::LControl) ||
+                    sf::Keyboard::isKeyPressed(sf::Keyboard::RControl)) {
+                    SaveAndExit();
+                }
+                break;
+                
+            case sf::Keyboard::Escape:  // Shortcut for Cancel
+                CancelAndExit();
+                break;
         }
     }
 }
@@ -607,12 +623,40 @@ void SettingsState::SaveAndExit() {
     *const_cast<GameSettings*>(&settingsManager->GetSettings()) = currentSettings;
     settingsManager->SaveSettings();
     
+    // Update the input handler with new settings
+    game->GetInputHandler()->UpdateKeyBindings();
+    
+    // Synchronize InputManager with the new settings
+    InputManager& inputManager = game->GetInputManager();
+    const GameSettings& settings = settingsManager->GetSettings();
+    
+    // Update each key binding in the InputManager
+    inputManager.SetKeyBinding(GameAction::MoveUp, settings.moveUp);
+    inputManager.SetKeyBinding(GameAction::MoveDown, settings.moveDown);
+    inputManager.SetKeyBinding(GameAction::MoveLeft, settings.moveLeft);
+    inputManager.SetKeyBinding(GameAction::MoveRight, settings.moveRight);
+    inputManager.SetKeyBinding(GameAction::Shoot, settings.shoot);
+    inputManager.SetKeyBinding(GameAction::ShowLeaderboard, settings.showLeaderboard);
+    inputManager.SetKeyBinding(GameAction::OpenMenu, settings.showMenu);
+    inputManager.SetKeyBinding(GameAction::ToggleGrid, settings.toggleGrid);
+    inputManager.SetKeyBinding(GameAction::ToggleCursorLock, settings.toggleCursorLock);
+    inputManager.SetKeyBinding(GameAction::ToggleReady, settings.toggleReady);
+    
+    // Print debug info about updated settings
+    std::cout << "[SETTINGS] Settings saved. Key bindings updated:" << std::endl;
+    std::cout << "  MoveUp: " << SettingsManager::KeyToString(settings.moveUp) << std::endl;
+    std::cout << "  MoveDown: " << SettingsManager::KeyToString(settings.moveDown) << std::endl;
+    std::cout << "  MoveLeft: " << SettingsManager::KeyToString(settings.moveLeft) << std::endl;
+    std::cout << "  MoveRight: " << SettingsManager::KeyToString(settings.moveRight) << std::endl;
+    std::cout << "  Shoot: " << SettingsManager::KeyToString(settings.shoot) << std::endl;
+    
     // Return to the main menu
     game->SetCurrentState(GameState::MainMenu);
 }
 
 void SettingsState::CancelAndExit() {
     // Discard changes and return to the main menu
+    std::cout << "[SETTINGS] Settings changes cancelled" << std::endl;
     game->SetCurrentState(GameState::MainMenu);
 }
 
@@ -624,4 +668,6 @@ void SettingsState::ResetToDefaults() {
     for (auto& setting : settings) {
         setting.currentValue = setting.getValue();
     }
+    
+    std::cout << "[SETTINGS] Settings reset to defaults" << std::endl;
 }

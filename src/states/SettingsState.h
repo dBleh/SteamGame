@@ -3,20 +3,17 @@
 
 #include "State.h"
 #include "../utils/Config.h"
-#include "../utils/SettingsManager.h" // Make sure this is included
+#include "../utils/SettingsManager.h"
 #include <SFML/Graphics.hpp>
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <functional>
 
-
-
 // Forward declarations
 class Game;
 class SettingsManager;
 struct GameSettings;
-
 
 enum class SettingType {
     KeyBinding,

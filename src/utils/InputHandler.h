@@ -49,7 +49,10 @@ public:
     bool IsActionBoundToMouseButton(InputAction action, sf::Mouse::Button button) const;
     // Update key bindings from settings
     void UpdateKeyBindings();
+    sf::Keyboard::Key GetKeyForAction(InputAction action) const;
     
+    // Helper to convert InputAction to string for error messages
+    std::string ActionToString(InputAction action) const;
 private:
     std::shared_ptr<SettingsManager> settingsManager;
     const GameSettings* currentSettings;
@@ -66,10 +69,7 @@ private:
     std::unordered_map<InputAction, std::function<void()>> actionCallbacks;
     
     // Function to get the key bound to a specific action
-    sf::Keyboard::Key GetKeyForAction(InputAction action) const;
     
-    // Helper to convert InputAction to string for error messages
-    std::string ActionToString(InputAction action) const;
 };
 
 #endif // INPUT_HANDLER_H

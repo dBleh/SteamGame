@@ -15,10 +15,10 @@ public:
     bool IsExpired() const { return lifetime <= 0.f; }
     std::string GetShooterID() const { return shooterID; }bool CheckCollision(const sf::RectangleShape& playerShape, const std::string& playerID) const;
     bool BelongsToPlayer(const std::string& playerID) const;
+    float lifetime;  
+    sf::Vector2f velocity;  
 private:
     sf::RectangleShape shape;  // Visual representation (small rectangle)
-    sf::Vector2f velocity;     // Direction * speed
-    float lifetime;            // Seconds until expiration (5s)
     std::string shooterID;     // ID of the player who shot this bullet
 };
 

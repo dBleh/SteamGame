@@ -176,31 +176,9 @@ PlayingState::PlayingState(Game* game)
     continueButtonText.setCharacterSize(20);
     continueButtonText.setFillColor(sf::Color(220, 220, 220));
     
-    // Setup custom cursor elements
-    // Outer circle
-    cursorOuterCircle.setRadius(8.f);
-    cursorOuterCircle.setFillColor(sf::Color::Transparent);
-    cursorOuterCircle.setOutlineColor(sf::Color(200, 200, 255, 180));
-    cursorOuterCircle.setOutlineThickness(1.f);
-    cursorOuterCircle.setOrigin(8.f, 8.f);
-    
-    // Center dot
-    cursorCenterDot.setRadius(1.5f);
-    cursorCenterDot.setFillColor(sf::Color(200, 200, 255));
-    cursorCenterDot.setOrigin(1.5f, 1.5f);
-    
-    // Crosshair lines
-    cursorHorizontalLine.setSize(sf::Vector2f(12.f, 1.f));
-    cursorHorizontalLine.setFillColor(sf::Color(200, 200, 255, 180));
-    cursorHorizontalLine.setOrigin(6.f, 0.5f);
-    
-    cursorVerticalLine.setSize(sf::Vector2f(1.f, 12.f));
-    cursorVerticalLine.setFillColor(sf::Color(200, 200, 255, 180));
-    cursorVerticalLine.setOrigin(0.5f, 6.f);
     
     // Hide system cursor and lock it to window
     game->GetWindow().setMouseCursorGrabbed(true);
-    game->GetWindow().setMouseCursorVisible(false);
     
     // Calculate window center
     windowCenter = sf::Vector2i(
@@ -289,7 +267,7 @@ PlayingState::PlayingState(Game* game)
 PlayingState::~PlayingState() {
     // Make sure to release the cursor when leaving this state
     game->GetWindow().setMouseCursorGrabbed(false);
-    game->GetWindow().setMouseCursorVisible(true);
+    
     
   
     
@@ -545,10 +523,7 @@ void PlayingState::Update(float dt) {
     sf::Vector2i mousePos = sf::Mouse::getPosition(game->GetWindow());
     sf::Vector2f mousePosView = game->GetWindow().mapPixelToCoords(mousePos, game->GetUIView());
     
-    cursorOuterCircle.setPosition(mousePosView);
-    cursorCenterDot.setPosition(mousePosView);
-    cursorHorizontalLine.setPosition(mousePosView);
-    cursorVerticalLine.setPosition(mousePosView);
+   
 }
 
 void PlayingState::Render() {
@@ -655,13 +630,9 @@ void PlayingState::Render() {
             game->GetWindow().draw(returnButtonText);
         }
         
-        // Render custom cursor if not in escape menu
-        if (!showEscapeMenu) {
-            game->GetWindow().draw(cursorOuterCircle);
-            game->GetWindow().draw(cursorCenterDot);
-            game->GetWindow().draw(cursorHorizontalLine);
-            game->GetWindow().draw(cursorVerticalLine);
-        }
+       
+        
+        
         
         game->GetWindow().display();
     } catch (const std::exception& e) {
@@ -694,7 +665,6 @@ void PlayingState::ProcessEvents(const sf::Event& event) {
                 // Show menu, release cursor, and make system cursor visible
                 cursorLocked = false;
                 game->GetWindow().setMouseCursorGrabbed(false);
-               
             } else {
                 // Hide menu, restore cursor lock, and hide system cursor
                 cursorLocked = true;
@@ -780,10 +750,15 @@ void PlayingState::ProcessEvents(const sf::Event& event) {
                     }
                 }
                 
-                // If no UI was clicked, process as a game click
+                // If no UI was clicked, check if this is the shoot action
                 if (!clickedUI) {
-                    mouseHeld = true;
-                    AttemptShoot(mouseWindowPos.x, mouseWindowPos.y);
+                    // Only treat left mouse as shooting if no keyboard key is bound
+                    bool isLeftMouseShoot = game->GetInputHandler()->GetKeyForAction(InputAction::Shoot) == sf::Keyboard::Unknown;
+                    
+                    if (isLeftMouseShoot) {
+                        mouseHeld = true;
+                        AttemptShoot(mouseWindowPos.x, mouseWindowPos.y);
+                    }
                 }
             }
         }
@@ -808,6 +783,7 @@ void PlayingState::ProcessEvents(const sf::Event& event) {
 void PlayingState::ProcessEvent(const sf::Event& event) {
     ProcessEvents(event);
 }
+
 
 bool PlayingState::IsFullyLoaded() {
     return (

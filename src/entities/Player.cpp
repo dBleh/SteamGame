@@ -15,7 +15,12 @@ Player::Player(const sf::Vector2f& startPosition, const sf::Color& color)
     shape.setFillColor(color);
     shape.setPosition(startPosition);
 }
+// In src/entities/Player.cpp, replace the Update() method with this version
+// that properly uses InputManager instead of hardcoded keys
+
 void Player::Update(float dt) {
+    // This method should be removed or updated to use the input manager
+    // Currently it uses hardcoded WASD keys which bypass your input system
     sf::Vector2f movement(0.f, 0.f);
     
     if (sf::Keyboard::isKeyPressed(sf::Keyboard::W))
@@ -33,9 +38,11 @@ void Player::Update(float dt) {
         shootCooldown -= dt;
     }
 }
+
 void Player::Update(float dt, const InputManager& inputManager) {
     sf::Vector2f movement(0.f, 0.f);
     
+    // Use the input manager to check for key presses using the configured bindings
     if (sf::Keyboard::isKeyPressed(inputManager.GetKeyBinding(GameAction::MoveUp)))
         movement.y -= movementSpeed * dt;
     if (sf::Keyboard::isKeyPressed(inputManager.GetKeyBinding(GameAction::MoveDown)))

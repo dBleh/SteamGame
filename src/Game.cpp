@@ -60,15 +60,16 @@ void Game::Run() {
 
         networkManager->ReceiveMessages();
 
-        float dt = clock.restart().asSeconds();
+        deltaTime = clock.restart().asSeconds();
        
         sf::Event event;
         while (window.pollEvent(event)) {
+            inputHandler->ProcessEvent(event);
             ProcessEvents(event);
             if (state) state->ProcessEvent(event);
         }
 
-        if (state) state->Update(dt);
+        if (state) state->Update(deltaTime);
 
         // Only create a new state if we don't have that state already
         bool stateChanged = false;

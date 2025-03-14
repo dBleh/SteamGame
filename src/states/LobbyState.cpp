@@ -215,9 +215,11 @@ void LobbyState::Render() {
 }
 
 void LobbyState::ProcessEvents(const sf::Event& event) {
+    InputManager& inputManager = game->GetInputManager();
+    
     if (event.type == sf::Event::KeyPressed) {
-        // Check if the ready toggle key was pressed
-        if (event.key.code == game->GetInputManager().GetKeyBinding(GameAction::ToggleReady)) {
+        // Check if the ready toggle key was pressed using InputManager
+        if (event.key.code == inputManager.GetKeyBinding(GameAction::ToggleReady)) {
             // Toggle ready status
             std::string myID = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
             bool currentReady = playerManager->GetLocalPlayer().isReady;
@@ -231,7 +233,7 @@ void LobbyState::ProcessEvents(const sf::Event& event) {
                 clientNetwork->SendReadyStatus(newReady);
             }
         }
-        else if (event.key.code == game->GetInputManager().GetKeyBinding(GameAction::ToggleGrid)) {
+        else if (event.key.code == inputManager.GetKeyBinding(GameAction::ToggleGrid)) {
             // Toggle grid visibility
             showGrid = !showGrid;
         }
@@ -239,7 +241,17 @@ void LobbyState::ProcessEvents(const sf::Event& event) {
             // Return to main menu
             game->SetCurrentState(GameState::MainMenu);
         }
-    } else if (event.type == sf::Event::MouseButtonPressed && event.mouseButton.button == sf::Mouse::Left) {
+    } 
+    else if (event.type == sf::Event::MouseButtonPressed && event.mouseButton.button == sf::Mouse::Left) {
+        // Check if this should trigger the shoot action based on input settings
+        bool shouldShoot = false;
+        
+        // If the shoot action is bound to a mouse button
+        if (event.mouseButton.button == sf::Mouse::Left && 
+            inputManager.GetKeyBinding(GameAction::Shoot) == sf::Keyboard::Unknown) {
+            shouldShoot = true;
+        }
+        
         // Get mouse position
         sf::Vector2i mousePos(event.mouseButton.x, event.mouseButton.y);
         
@@ -257,6 +269,7 @@ void LobbyState::ProcessEvents(const sf::Event& event) {
                     sf::FloatRect bounds = textCopy.getGlobalBounds();
                     
                     if (bounds.contains(mouseUIPos)) {
+                        // Handle UI element clicks
                         if (id == "startGame") {
                             // Check if we're the host
                             CSteamID myID = SteamUser()->GetSteamID();
@@ -304,7 +317,29 @@ void LobbyState::ProcessEvents(const sf::Event& event) {
             }
         }
         
-        // If we got here, no UI element was clicked, so process as a game click
+        // If we got here and should shoot, no UI element was clicked, so process as a game click
+        if (shouldShoot) {
+            std::string myIDStr = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
+            
+            // Don't shoot if player is dead
+            if (playerManager->GetLocalPlayer().player.IsDead()) {
+                return;
+            }
+            
+            mouseHeld = true;
+            AttemptShoot(mousePos.x, mousePos.y);
+        }
+    }
+    else if (event.type == sf::Event::MouseButtonReleased && event.mouseButton.button == sf::Mouse::Left) {
+        mouseHeld = false;
+    }
+    // Handle keyboard-based shooting
+    else if (event.type == sf::Event::KeyPressed && 
+             event.key.code == inputManager.GetKeyBinding(GameAction::Shoot) && 
+             event.key.code != sf::Keyboard::Unknown) {
+        // Shooting with keyboard
+        sf::Vector2i mousePos = sf::Mouse::getPosition(game->GetWindow());
+        
         std::string myIDStr = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
         
         // Don't shoot if player is dead
@@ -315,10 +350,13 @@ void LobbyState::ProcessEvents(const sf::Event& event) {
         mouseHeld = true;
         AttemptShoot(mousePos.x, mousePos.y);
     }
-    else if (event.type == sf::Event::MouseButtonReleased && event.mouseButton.button == sf::Mouse::Left) {
+    else if (event.type == sf::Event::KeyReleased && 
+             event.key.code == inputManager.GetKeyBinding(GameAction::Shoot) && 
+             event.key.code != sf::Keyboard::Unknown) {
         mouseHeld = false;
     }
 }
+
 void LobbyState::Update(float dt) {
     // Update HUD animations
     game->GetHUD().update(game->GetWindow(), GameState::Lobby, dt);
@@ -341,7 +379,7 @@ void LobbyState::Update(float dt) {
         }
     } else {
         // Update PlayerManager (includes local player movement)
-        // Use the new Update method that takes Game pointer
+        // Ensure we're passing the Game pointer for InputManager access
         playerManager->Update(game);
         
         if (clientNetwork) clientNetwork->Update();
@@ -351,6 +389,7 @@ void LobbyState::Update(float dt) {
         UpdateRemotePlayers();
     }
     
+    // Handle continuous shooting if mouse/key is held down
     if (mouseHeld) {
         shootTimer -= dt;
         if (shootTimer <= 0.f) {
