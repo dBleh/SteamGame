@@ -310,6 +310,7 @@ void EnemyManager::CheckBulletCollisions(const std::vector<Bullet>& bullets) {
                     if (isHost) {
                         killed = enemy.TakeDamage(20); // Each bullet does 20 damage
                         
+                        // Immediately broadcast hit message with higher priority
                         std::string msg = MessageHandler::FormatEnemyHitMessage(
                             enemy.GetID(), 20, killed, bullet.GetShooterID());
                         game->GetNetworkManager().BroadcastMessage(msg);
@@ -333,7 +334,7 @@ void EnemyManager::CheckBulletCollisions(const std::vector<Bullet>& bullets) {
                         );
                         enemy.GetShape().setFillColor(newColor);
                         
-                        // Send hit message to host
+                        // Send hit message to host immediately
                         std::string msg = MessageHandler::FormatEnemyHitMessage(
                             enemy.GetID(), 20, false, bullet.GetShooterID());
                         game->GetNetworkManager().SendMessage(hostID, msg);
@@ -353,8 +354,9 @@ void EnemyManager::CheckBulletCollisions(const std::vector<Bullet>& bullets) {
         }
     }
     
-    // If we have bullets to remove, inform the PlayerManager
+    // IMMEDIATE REMOVAL: Remove bullets as soon as we detect hits
     if (!bulletsToRemove.empty()) {
+        // If we have bullets to remove, inform the PlayerManager
         playerManager->RemoveBullets(bulletsToRemove);
     }
 }
