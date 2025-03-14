@@ -142,21 +142,41 @@ void ClientNetwork::ProcessBulletMessage(const ParsedMessage& parsed) {
     // Get local player ID
     std::string localSteamIDStr = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
     
+    // Normalize IDs
+    std::string normalizedShooterID;
+    std::string normalizedLocalID;
+    
+    try {
+        uint64_t shooterNum = std::stoull(parsed.steamID);
+        normalizedShooterID = std::to_string(shooterNum);
+        
+        uint64_t localNum = std::stoull(localSteamIDStr);
+        normalizedLocalID = std::to_string(localNum);
+    } catch (const std::exception& e) {
+        std::cout << "[CLIENT] Error normalizing IDs: " << e.what() << "\n";
+        normalizedShooterID = parsed.steamID;
+        normalizedLocalID = localSteamIDStr;
+    }
+    
+    // Compare normalized IDs
+    std::cout << "[CLIENT] Bullet ownership check - Message ID: '" << normalizedShooterID 
+              << "', Local ID: '" << normalizedLocalID 
+              << "', Same? " << (normalizedShooterID == normalizedLocalID ? "YES" : "NO") << "\n";
+    
     // We need to check if this bullet was already processed locally
     // If the shooter is the local player and we already created this bullet locally,
     // we don't need to create it again
-    if (parsed.steamID == localSteamIDStr) {
-        // This is our own bullet that we've already added locally when we shot
+    if (normalizedShooterID == normalizedLocalID) {
+        std::cout << "[CLIENT] Ignoring own bullet that was bounced back from server\n";
         return;
     }
     
     // For bullets from other players, add them to our game
     // Make sure the bullet has valid data (non-zero direction)
     if (parsed.direction.x != 0.f || parsed.direction.y != 0.f) {
-        playerManager->AddBullet(parsed.steamID, parsed.position, parsed.direction, parsed.velocity);
-        std::cout << "[CLIENT] Added bullet from " << parsed.steamID 
-                  << " at pos (" << parsed.position.x << "," << parsed.position.y 
-                  << ") with dir (" << parsed.direction.x << "," << parsed.direction.y << ")\n";
+        playerManager->AddBullet(normalizedShooterID, parsed.position, parsed.direction, parsed.velocity);
+        std::cout << "[CLIENT] Added bullet from " << normalizedShooterID 
+                  << " at pos (" << parsed.position.x << "," << parsed.position.y << ")\n";
     } else {
         std::cout << "[CLIENT] Received bullet with invalid direction\n";
     }

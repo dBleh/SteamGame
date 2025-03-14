@@ -136,6 +136,22 @@ void HostNetwork::ProcessBulletMessage(const ParsedMessage& parsed) {
     // Get local player ID (host's ID)
     std::string localSteamIDStr = std::to_string(game->GetLocalSteamID().ConvertToUint64());
     
+    // Normalize IDs for consistent comparison
+    std::string normalizedShooterID;
+    std::string normalizedLocalID;
+    
+    try {
+        uint64_t shooterNum = std::stoull(parsed.steamID);
+        normalizedShooterID = std::to_string(shooterNum);
+        
+        uint64_t localNum = std::stoull(localSteamIDStr);
+        normalizedLocalID = std::to_string(localNum);
+    } catch (const std::exception& e) {
+        std::cout << "[HOST] Error normalizing IDs: " << e.what() << "\n";
+        normalizedShooterID = parsed.steamID;
+        normalizedLocalID = localSteamIDStr;
+    }
+    
     // Validate the bullet data before broadcasting
     if (parsed.direction.x == 0.f && parsed.direction.y == 0.f) {
         std::cout << "[HOST] Received invalid bullet direction, ignoring\n";
@@ -145,23 +161,24 @@ void HostNetwork::ProcessBulletMessage(const ParsedMessage& parsed) {
     // Broadcast this bullet to all clients (including the one who sent it)
     // This ensures all clients see all bullets
     std::string broadcastMsg = MessageHandler::FormatBulletMessage(
-        parsed.steamID, parsed.position, parsed.direction, parsed.velocity);
+        normalizedShooterID, parsed.position, parsed.direction, parsed.velocity);
     
     bool sent = game->GetNetworkManager().BroadcastMessage(broadcastMsg);
     if (sent) {
-        std::cout << "[HOST] Broadcast bullet from " << parsed.steamID << "\n";
+        std::cout << "[HOST] Broadcast bullet from " << normalizedShooterID << "\n";
     } else {
         std::cout << "[HOST] Failed to broadcast bullet message\n";
     }
     
     // Skip adding bullets that were fired by the host (local player)
     // since they've already been added when the host shot
-    if (parsed.steamID == localSteamIDStr) {
+    if (normalizedShooterID == normalizedLocalID) {
+        std::cout << "[HOST] Ignoring own bullet that was received as a message\n";
         return;
     }
     
     // For bullets from other players, add them to the host's game
-    playerManager->AddBullet(parsed.steamID, parsed.position, parsed.direction, parsed.velocity);
+    playerManager->AddBullet(normalizedShooterID, parsed.position, parsed.direction, parsed.velocity);
 }
 
 void HostNetwork::ProcessChatMessage(const std::string& message, CSteamID sender) {

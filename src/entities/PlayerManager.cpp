@@ -49,26 +49,79 @@ void PlayerManager::Update() {
         
         rp.nameText.setPosition(pos.x, pos.y - 20.f);
     }
-
+    static float diagnosticTimer = 0.0f;
+    diagnosticTimer += dt;
+    if (diagnosticTimer >= 5.0f) {  // Every 5 seconds
+        std::cout << "[PM] Current bullet count: " << bullets.size() << "\n";
+        
+        // Log details about bullets for debugging
+        if (!bullets.empty()) {
+            std::cout << "[PM] Active bullets:\n";
+            for (size_t i = 0; i < std::min(bullets.size(), size_t(10)); ++i) {  // Show up to 10 bullets
+                std::cout << "  [" << i << "] Owner: " << bullets[i].GetShooterID() 
+                          << ", Pos: (" << bullets[i].GetPosition().x << "," << bullets[i].GetPosition().y << ")"
+                          << ", Expired: " << (bullets[i].IsExpired() ? "Yes" : "No") << "\n";
+            }
+            
+            // If too many bullets (potential memory issue), force cleanup
+            if (bullets.size() > 1000) {  // Arbitrary threshold
+                std::cout << "[PM] WARNING: Too many bullets (" << bullets.size() << "), forcing cleanup\n";
+                // Keep only recent bullets
+                bullets.erase(bullets.begin(), bullets.begin() + bullets.size() - 100);
+            }
+        }
+        
+        diagnosticTimer = 0.0f;
+    }
     std::vector<size_t> bulletsToRemove;
     
     for (size_t i = 0; i < bullets.size(); i++) {
         bullets[i].Update(dt);
+        
+        // Mark expired bullets or those far away from all players
         if (bullets[i].IsExpired()) {
             bulletsToRemove.push_back(i);
+        } else {
+            // Also remove bullets that are far away from any player
+            bool tooFarFromAllPlayers = true;
+            sf::Vector2f bulletPos = bullets[i].GetPosition();
+            
+            for (const auto& pair : players) {
+                if (pair.second.player.IsDead()) continue;
+                
+                sf::Vector2f playerPos = pair.second.player.GetPosition();
+                float distSquared = (bulletPos.x - playerPos.x) * (bulletPos.x - playerPos.x) +
+                                    (bulletPos.y - playerPos.y) * (bulletPos.y - playerPos.y);
+                
+                // If bullet is within reasonable distance of any player, keep it
+                if (distSquared < 1000*1000) {  // 1000 pixels
+                    tooFarFromAllPlayers = false;
+                    break;
+                }
+            }
+            
+            if (tooFarFromAllPlayers) {
+                bulletsToRemove.push_back(i);
+            }
         }
     }
     
     // Remove expired bullets safely (from back to front)
-    for (int i = bulletsToRemove.size() - 1; i >= 0; i--) {
-        size_t idx = bulletsToRemove[i];
-        if (idx < bullets.size()) {
-            bullets.erase(bullets.begin() + idx);
+    if (!bulletsToRemove.empty()) {
+        std::cout << "[PM] Removing " << bulletsToRemove.size() << " expired/distant bullets\n";
+        
+        // Sort indices in descending order for safe removal
+        std::sort(bulletsToRemove.begin(), bulletsToRemove.end(), std::greater<size_t>());
+        
+        for (size_t idx : bulletsToRemove) {
+            if (idx < bullets.size()) {
+                bullets.erase(bullets.begin() + idx);
+            }
         }
     }
+    
     CheckBulletCollisions();
 }
-
 void PlayerManager::AddOrUpdatePlayer(const std::string& id, const RemotePlayer& player) {
     if (id.empty()) {
         std::cout << "[ERROR] Attempted to add player with empty ID!\n";
@@ -130,8 +183,37 @@ void PlayerManager::SetReadyStatus(const std::string& id, bool ready) {
 }
 
 void PlayerManager::AddBullet(const std::string& shooterID, const sf::Vector2f& position, const sf::Vector2f& direction, float velocity) {
-    bullets.emplace_back(position, direction, velocity, shooterID);
-    std::cout << "[PM] Added bullet from " << shooterID << " at " << position.x << "," << position.y << "\n";
+    // Validate input parameters
+    if (direction.x == 0.f && direction.y == 0.f) {
+        std::cout << "[PM] Attempted to add bullet with zero direction, ignoring\n";
+        return;
+    }
+    
+    if (shooterID.empty()) {
+        std::cout << "[PM] Attempted to add bullet with empty shooter ID, ignoring\n";
+        return;
+    }
+    
+    // For debugging: print the ID being added and local ID for comparison
+    std::string localSteamIDStr = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
+    std::cout << "[PM] Bullet ID check - ShooterID: '" << shooterID 
+              << "', LocalID: '" << localSteamIDStr 
+              << "', Same? " << (shooterID == localSteamIDStr ? "YES" : "NO") << "\n";
+    
+    // Ensure we use the exact same string format for IDs
+    std::string normalizedID = shooterID;
+    try {
+        // Convert to uint64, then back to string to normalize format
+        uint64_t idNum = std::stoull(shooterID);
+        normalizedID = std::to_string(idNum);
+    } catch (const std::exception& e) {
+        std::cout << "[PM] Error normalizing shooter ID: " << e.what() << "\n";
+    }
+    
+    // Add the bullet with the normalized ID
+    bullets.emplace_back(position, direction, velocity, normalizedID);
+    std::cout << "[PM] Added bullet from " << normalizedID 
+              << " at (" << position.x << "," << position.y << ")\n";
 }
 
 RemotePlayer& PlayerManager::GetLocalPlayer() {

@@ -29,11 +29,21 @@ std::string MessageHandler::FormatReadyStatusMessage(const std::string& steamID,
 }
 
 std::string MessageHandler::FormatBulletMessage(const std::string& shooterID, const sf::Vector2f& position, const sf::Vector2f& direction, float velocity) {
+    // Normalize the shooter ID to ensure consistent format
+    std::string normalizedID = shooterID;
+    try {
+        uint64_t idNum = std::stoull(shooterID);
+        normalizedID = std::to_string(idNum);
+    } catch (const std::exception& e) {
+        // Keep original if conversion fails
+    }
+
     std::ostringstream oss;
-    oss << "B|" << shooterID << "|" << position.x << "," << position.y << "|" 
+    oss << "B|" << normalizedID << "|" << position.x << "," << position.y << "|" 
         << direction.x << "," << direction.y << "|" << velocity;
     return oss.str();
 }
+
 
 std::string MessageHandler::FormatPlayerDeathMessage(const std::string& playerID, const std::string& killerID) {
     std::ostringstream oss;
