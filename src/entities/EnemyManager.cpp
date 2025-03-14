@@ -308,12 +308,10 @@ void EnemyManager::CheckBulletCollisions(const std::vector<Bullet>& bullets) {
                     // If we're the host, actually apply damage and broadcast
                     bool killed = false;
                     if (isHost) {
-                        // Apply damage with bullet ID tracking
-                        enemy.ProcessHit(20, bullet.GetBulletID());
-                        killed = enemy.GetIsDead();
+                        killed = enemy.TakeDamage(20); // Each bullet does 20 damage
                         
                         std::string msg = MessageHandler::FormatEnemyHitMessage(
-                            enemy.GetID(), 20, killed, bullet.GetShooterID(), bullet.GetBulletID());
+                            enemy.GetID(), 20, killed, bullet.GetShooterID());
                         game->GetNetworkManager().BroadcastMessage(msg);
                     } else {
                         // If we're a client, only update visuals temporarily until server confirms
@@ -337,7 +335,7 @@ void EnemyManager::CheckBulletCollisions(const std::vector<Bullet>& bullets) {
                         
                         // Send hit message to host
                         std::string msg = MessageHandler::FormatEnemyHitMessage(
-                            enemy.GetID(), 20, false, bullet.GetShooterID(), bullet.GetBulletID());
+                            enemy.GetID(), 20, false, bullet.GetShooterID());
                         game->GetNetworkManager().SendMessage(hostID, msg);
                     }
                     
@@ -469,45 +467,8 @@ void EnemyManager::CheckPlayerCollisions() {
         }
     }
 }
-bool EnemyManager::HasRecentlyProcessedHit(int enemyId, const std::string& shooterId) {
-    auto now = std::chrono::steady_clock::now();
-    
-    // Check if we've recently processed a hit with the same enemy ID and shooter ID
-    for (const auto& hit : recentHits) {
-        if (hit.enemyId == enemyId && hit.shooterId == shooterId) {
-            // If this hit was processed recently (within 0.5 seconds), consider it a duplicate
-            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - hit.timestamp).count();
-            if (elapsed < 500) { // 500ms debounce time
-                return true;
-            }
-        }
-    }
-    
-    // Clean up old entries
-    auto it = recentHits.begin();
-    while (it != recentHits.end()) {
-        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - it->timestamp).count();
-        if (elapsed > 1000) { // Remove entries older than 1 second
-            it = recentHits.erase(it);
-        } else {
-            ++it;
-        }
-    }
-    
-    // Add this hit to the recent hits list
-    recentHits.push_back({enemyId, shooterId, now});
-    
-    return false;
-}
-void EnemyManager::HandleEnemyHit(int enemyId, int damage, bool killed, const std::string& shooterId) {
-    // Check if this is a duplicate hit message
-    if (HasRecentlyProcessedHit(enemyId, shooterId)) {
-        std::cout << "[EM] Ignoring duplicate hit for enemy " << enemyId << " from shooter " << shooterId << std::endl;
-        return;
-    }
-    
-    std::cout << "[EM] Processing hit for enemy " << enemyId << " from shooter " << shooterId << std::endl;
-    
+
+void EnemyManager::HandleEnemyHit(int enemyId, int damage, bool killed) {
     for (auto& enemy : enemies) {
         if (enemy.GetID() == enemyId) {
             // Apply damage to sync state

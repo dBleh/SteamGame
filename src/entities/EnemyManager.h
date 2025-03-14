@@ -15,15 +15,11 @@ class EnemyManager {
 public:
     EnemyManager(Game* game, PlayerManager* playerManager);
     ~EnemyManager();
-    struct RecentHit {
-        int enemyId;
-        std::string shooterId;
-        std::chrono::steady_clock::time_point timestamp;
-    };
+    
     void Update(float dt);
     void Render(sf::RenderWindow& window);
     std::vector<std::tuple<int, sf::Vector2f, int>> GetEnemyDataForSync() const;
-    
+
     // Wave management
     void StartNextWave();
     int GetCurrentWave() const;
@@ -37,9 +33,8 @@ public:
     void AddEnemy(int id, const sf::Vector2f& position);
     void RemoveEnemy(int id);
     void SyncEnemyState(int id, const sf::Vector2f& position, int health, bool isDead);
-    void HandleEnemyHit(int enemyId, int damage, bool killed, const std::string& shooterId);
-    bool HasRecentlyProcessedHit(int enemyId, const std::string& shooterId);
-
+    void HandleEnemyHit(int enemyId, int damage, bool killed);
+    
     // Collision checking
     void CheckBulletCollisions(const std::vector<Bullet>& bullets);
     void CheckPlayerCollisions();
@@ -58,7 +53,7 @@ private:
     Game* game;
     PlayerManager* playerManager;
     std::vector<Enemy> enemies;
-    std::vector<RecentHit> recentHits;
+    
     int currentWave;
     float waveTimer;            // Timer between waves
     float waveCooldown = 2.0f;  // Seconds between waves

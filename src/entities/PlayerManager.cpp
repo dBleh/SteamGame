@@ -195,12 +195,23 @@ void PlayerManager::AddBullet(const std::string& shooterID, const sf::Vector2f& 
         return;
     }
     
-    // Generate a unique bullet ID
-    static int bulletCounter = 0;
-    std::string bulletID = shooterID + "_" + std::to_string(bulletCounter++);
+    // For debugging: print the ID being added and local ID for comparison
+    std::string localSteamIDStr = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
+
     
-    // Add the bullet with the normalized ID and unique bullet ID
-    bullets.emplace_back(position, direction, velocity, shooterID, bulletID);
+    // Ensure we use the exact same string format for IDs
+    std::string normalizedID = shooterID;
+    try {
+        // Convert to uint64, then back to string to normalize format
+        uint64_t idNum = std::stoull(shooterID);
+        normalizedID = std::to_string(idNum);
+    } catch (const std::exception& e) {
+        std::cout << "[PM] Error normalizing shooter ID: " << e.what() << "\n";
+    }
+    
+    // Add the bullet with the normalized ID
+    bullets.emplace_back(position, direction, velocity, normalizedID);
+
 }
 
 RemotePlayer& PlayerManager::GetLocalPlayer() {

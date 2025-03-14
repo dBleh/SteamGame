@@ -283,11 +283,11 @@ void HostNetwork::ProcessEnemyHitMessage(const ParsedMessage& parsed) {
         EnemyManager* enemyManager = playingState->GetEnemyManager();
         if (enemyManager) {
             // Process the enemy hit
-            enemyManager->HandleEnemyHit(parsed.enemyId, parsed.damage, parsed.killed,parsed.steamID);
+            enemyManager->HandleEnemyHit(parsed.enemyId, parsed.damage, parsed.killed);
             
             // Broadcast the hit to all clients
             std::string hitMsg = MessageHandler::FormatEnemyHitMessage(
-                parsed.enemyId, parsed.damage, parsed.killed, parsed.steamID, parsed.steamID);
+                parsed.enemyId, parsed.damage, parsed.killed, parsed.steamID);
             game->GetNetworkManager().BroadcastMessage(hitMsg);
             
             // If enemy was killed, handle rewards
