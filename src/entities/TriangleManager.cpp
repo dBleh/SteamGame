@@ -111,6 +111,10 @@ void TriangleEnemyManager::SpawnWave(int enemyCount)
     std::uniform_real_distribution<float> xDist(100.f, 2900.f);
     std::uniform_real_distribution<float> yDist(100.f, 2900.f);
     
+    // Track newly created enemies for batch spawn message
+    std::vector<std::tuple<int, sf::Vector2f, int>> spawnData;
+    spawnData.reserve(enemyCount);
+    
     // Create enemies in batches for better performance
     constexpr int BATCH_SIZE = 100;
     for (int i = 0; i < enemyCount; i += BATCH_SIZE) {
@@ -135,11 +139,30 @@ void TriangleEnemyManager::SpawnWave(int enemyCount)
             
             // Initialize last synced position
             lastSyncedPositions[enemyPtr->GetID()] = position;
+            
+            // Add to spawn data for network message
+            spawnData.emplace_back(
+                enemyPtr->GetID(),
+                position,
+                enemyPtr->GetHealth()
+            );
         }
+    }
+    
+    // Only send network messages if we're the host
+    CSteamID localSteamID = SteamUser()->GetSteamID();
+    CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+    
+    if (localSteamID == hostID && !spawnData.empty()) {
+        // Send batch spawn message to all clients
+        std::string batchMsg = MessageHandler::FormatTriangleEnemyBatchSpawnMessage(spawnData);
+        game->GetNetworkManager().BroadcastMessage(batchMsg);
         
-        // Broadcast enemy spawn message for this batch
-        // (Batching network messages to reduce overhead)
+        // Also do a full sync to ensure all clients are updated
         SyncFullEnemyList();
+        
+        std::cout << "[HOST] Spawned and broadcast " << enemyCount 
+                  << " triangle enemies" << std::endl;
     }
 }
 void TriangleEnemyManager::AddEnemy(int id, const sf::Vector2f& position) {
@@ -307,9 +330,8 @@ void TriangleEnemyManager::SyncEnemyPositions()
     // Send only if there's data to send
     if (!compressedData.empty()) {
         // Send message with compressed data
-        // game->GetNetworkManager().SendMessage(
-        //     MessageHandler::FormatEnemyPositionsMessage(compressedData)
-        // );
+        std::string message = MessageHandler::FormatTriangleEnemyPositionsMessage(compressedData);
+        game->GetNetworkManager().BroadcastMessage(message);
         
         // Update last synced positions
         for (const auto& tuple : compressedData) {
@@ -384,9 +406,8 @@ void TriangleEnemyManager::SyncFullEnemyList()
     }
     
     // Send full list message
-    // game->GetNetworkManager().SendMessage(
-    //     MessageHandler::FormatEnemyFullListMessage(validIds)
-    // );
+    std::string message = MessageHandler::FormatTriangleEnemyFullListMessage(validIds);
+    game->GetNetworkManager().BroadcastMessage(message);
 }
 
 void TriangleEnemyManager::ValidateEnemyList(const std::vector<int>& validIds) {
