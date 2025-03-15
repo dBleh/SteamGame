@@ -111,7 +111,22 @@ public:
     std::vector<std::tuple<int, sf::Vector2f, int>> GetRegularEnemyDataForSync() const;
     std::vector<std::tuple<int, sf::Vector2f, int>> GetTriangleEnemyDataForSync() const;
     std::vector<std::tuple<int, sf::Vector2f, int, int>> GetEnemyDataForSync() const;
-
+    sf::Vector2f GetEnemyPosition(int id) const {
+        auto it = enemyIdToIndex.find(id);
+        if (it != enemyIdToIndex.end() && it->second < enemies.size() && enemies[it->second].enemy) {
+            return enemies[it->second].GetPosition();
+        }
+        return sf::Vector2f(0.f, 0.f);
+    }
+    
+    sf::Vector2f GetTriangleEnemyPosition(int id) const {
+        for (const auto& enemy : triangleEnemies) {
+            if (enemy.GetID() == id) {
+                return enemy.GetPosition();
+            }
+        }
+        return sf::Vector2f(0.f, 0.f);
+    }
 private:
     Game* game;
     PlayerManager* playerManager;
