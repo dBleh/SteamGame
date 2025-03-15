@@ -20,7 +20,9 @@ PlayingState::PlayingState(Game* game)
       shootTimer(0.f),
       showLeaderboard(false),
       cursorLocked(true),
-      showEscapeMenu(false) {
+      showEscapeMenu(false),
+      clientNeedsInitialValidation(false),
+      initialValidationTimer(0.0f) {
     
     std::cout << "[DEBUG] PlayingState constructor start\n";
     
@@ -224,6 +226,19 @@ PlayingState::PlayingState(Game* game)
     // ===== ENEMY MANAGER SETUP =====
     // Create the Enemy Manager after Player Manager (handles all enemy types)
     enemyManager = std::make_unique<EnemyManager>(game, playerManager.get());
+    
+    // Check if we're the client
+    bool isClient = (myID != hostIDSteam);
+    
+    if (isClient) {
+        // Client-specific initialization to prevent ghost enemies
+        std::cout << "[CLIENT] Initializing PlayingState as client, cleaning any potential ghost enemies\n";
+        
+        // Set a flag to request enemy validation after a short delay
+        // This will be checked in the Update method
+        clientNeedsInitialValidation = true;
+        initialValidationTimer = 1.0f; // 1 second delay
+    }
 
     // ===== NETWORK SETUP =====
     // Create networking components last, so they can use the other managers
@@ -363,6 +378,32 @@ void PlayingState::updateButtonHoverState(sf::RectangleShape& button, const sf::
 void PlayingState::Update(float dt) {
     // Update HUD animations
     game->GetHUD().update(game->GetWindow(), GameState::Playing, dt);
+    
+    // Handle initial validation request for clients
+    if (clientNeedsInitialValidation) {
+        initialValidationTimer -= dt;
+        if (initialValidationTimer <= 0.0f) {
+            // Reset the flag
+            clientNeedsInitialValidation = false;
+            
+            // Identify if we're a client
+            CSteamID myID = SteamUser()->GetSteamID();
+            CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+            
+            if (myID != hostID && clientNetwork) {
+                std::cout << "[CLIENT] Requesting initial enemy validation\n";
+                
+                // Request validation from host
+                std::string validationMsg = MessageHandler::FormatEnemyValidationRequestMessage();
+                game->GetNetworkManager().SendMessage(hostID, validationMsg);
+                
+                // Force-remove any enemies at origin
+                if (enemyManager) {
+                    enemyManager->ClearAllEnemies();
+                }
+            }
+        }
+    }
     
     if (!playerLoaded) {
         loadingTimer += dt;

@@ -61,7 +61,8 @@ private:
     sf::RectangleShape menuBackground;
     sf::RectangleShape returnButton;
     sf::Text returnButtonText;
-    
+    bool clientNeedsInitialValidation;
+float initialValidationTimer;
     // Cursor locking
     bool cursorLocked;
     sf::Vector2i windowCenter;

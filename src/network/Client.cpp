@@ -9,6 +9,22 @@
 ClientNetwork::ClientNetwork(Game* game, PlayerManager* manager)
     : game(game), playerManager(manager), lastSendTime(std::chrono::steady_clock::now()) {
     hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+    
+    // Initialize validation-related variables
+    m_lastValidationTime = std::chrono::steady_clock::now();
+    m_validationRequestTimer = 0.5f; // Schedule validation soon after connection
+    m_periodicValidationTimer = 30.0f;
+    
+    // Immediately remove any potential ghost enemies at origin
+    PlayingState* playingState = GetPlayingState(game);
+    if (playingState) {
+        EnemyManager* enemyManager = playingState->GetEnemyManager();
+        if (enemyManager) {
+            // Ensure no enemies exist at start of game for client
+            std::cout << "[CLIENT] Initializing Client Network, ensuring clean enemy state\n";
+            enemyManager->ClearAllEnemies();
+        }
+    }
 }
 
 ClientNetwork::~ClientNetwork() {}
@@ -324,68 +340,70 @@ void ClientNetwork::Update() {
             std::cout << "[CLIENT] Skipped periodic validation - too soon after previous\n";
         }
     }
-    static float ghostCheckTimer = 0.0f;
-ghostCheckTimer -= elapsed;
-
-if (ghostCheckTimer <= 0.0f) {
-    // Reset timer - check every 5 seconds
-    ghostCheckTimer = 5.0f;
     
-    if (game->GetCurrentState() == GameState::Playing) {
-        PlayingState* playingState = GetPlayingState(game);
-        if (playingState) {
-            EnemyManager* enemyManager = playingState->GetEnemyManager();
-            if (enemyManager) {
-                // Check for enemies near the origin or top-left corner
-                bool foundGhosts = false;
-                std::vector<int> enemyIdsToRemove;
-                for (int id : enemyManager->GetAllEnemyIds()) {
-                    if (enemyManager->HasEnemy(id)) {
-                        sf::Vector2f pos = enemyManager->GetEnemyPosition(id);
-                        if ((std::abs(pos.x) < 10.0f && std::abs(pos.y) < 10.0f) || // Near origin
-                            (pos.x < 10.0f && pos.y < 10.0f)) {                      // Top-left corner
-                            enemyIdsToRemove.push_back(id);
-                            foundGhosts = true;
+    // Add periodic check for ghost enemies near origin
+    static float ghostCheckTimer = 0.0f;
+    ghostCheckTimer -= elapsed;
+
+    if (ghostCheckTimer <= 0.0f) {
+        // Reset timer - check every 5 seconds
+        ghostCheckTimer = 5.0f;
+        
+        if (game->GetCurrentState() == GameState::Playing) {
+            PlayingState* playingState = GetPlayingState(game);
+            if (playingState) {
+                EnemyManager* enemyManager = playingState->GetEnemyManager();
+                if (enemyManager) {
+                    // Check for enemies near the origin or top-left corner
+                    bool foundGhosts = false;
+                    std::vector<int> enemyIdsToRemove;
+                    for (int id : enemyManager->GetAllEnemyIds()) {
+                        if (enemyManager->HasEnemy(id)) {
+                            sf::Vector2f pos = enemyManager->GetEnemyPosition(id);
+                            if ((std::abs(pos.x) < 10.0f && std::abs(pos.y) < 10.0f) || // Near origin
+                                (pos.x < 10.0f && pos.y < 10.0f)) {                      // Top-left corner
+                                enemyIdsToRemove.push_back(id);
+                                foundGhosts = true;
+                            }
                         }
                     }
-                }
-                
-                // Remove any ghost enemies
-                for (int id : enemyIdsToRemove) {
-                    std::cout << "[CLIENT] Periodic check: Removing ghost enemy at origin, ID: " << id << "\n";
-                    enemyManager->RemoveEnemy(id);
-                }
-                
-                // Also check triangle enemies
-                std::vector<int> triangleIdsToRemove;
-                for (int id : enemyManager->GetAllTriangleEnemyIds()) {
-                    if (enemyManager->HasTriangleEnemy(id)) {
-                        sf::Vector2f pos = enemyManager->GetTriangleEnemyPosition(id);
-                        if ((std::abs(pos.x) < 10.0f && std::abs(pos.y) < 10.0f) || // Near origin
-                            (pos.x < 10.0f && pos.y < 10.0f)) {                      // Top-left corner
-                            triangleIdsToRemove.push_back(id);
-                            foundGhosts = true;
+                    
+                    // Remove any ghost enemies
+                    for (int id : enemyIdsToRemove) {
+                        std::cout << "[CLIENT] Periodic check: Removing ghost enemy at origin, ID: " << id << "\n";
+                        enemyManager->RemoveEnemy(id);
+                    }
+                    
+                    // Also check triangle enemies
+                    std::vector<int> triangleIdsToRemove;
+                    for (int id : enemyManager->GetAllTriangleEnemyIds()) {
+                        if (enemyManager->HasTriangleEnemy(id)) {
+                            sf::Vector2f pos = enemyManager->GetTriangleEnemyPosition(id);
+                            if ((std::abs(pos.x) < 10.0f && std::abs(pos.y) < 10.0f) || // Near origin
+                                (pos.x < 10.0f && pos.y < 10.0f)) {                      // Top-left corner
+                                triangleIdsToRemove.push_back(id);
+                                foundGhosts = true;
+                            }
                         }
                     }
-                }
-                
-                // Remove any ghost triangle enemies
-                for (int id : triangleIdsToRemove) {
-                    std::cout << "[CLIENT] Periodic check: Removing ghost triangle enemy at origin, ID: " << id << "\n";
-                    enemyManager->HandleTriangleEnemyHit(id, 1000, true, "");
-                }
-                
-                // If we found ghosts, request a validation
-                if (foundGhosts) {
-                    // Request validation data from host
-                    std::string validationRequest = MessageHandler::FormatEnemyValidationRequestMessage();
-                    game->GetNetworkManager().SendMessage(hostID, validationRequest);
-                    m_lastValidationTime = std::chrono::steady_clock::now();
+                    
+                    // Remove any ghost triangle enemies
+                    for (int id : triangleIdsToRemove) {
+                        std::cout << "[CLIENT] Periodic check: Removing ghost triangle enemy at origin, ID: " << id << "\n";
+                        enemyManager->HandleTriangleEnemyHit(id, 1000, true, "");
+                    }
+                    
+                    // If we found ghosts, request a validation
+                    if (foundGhosts) {
+                        // Request validation data from host
+                        std::string validationRequest = MessageHandler::FormatEnemyValidationRequestMessage();
+                        game->GetNetworkManager().SendMessage(hostID, validationRequest);
+                        m_lastValidationTime = std::chrono::steady_clock::now();
+                    }
                 }
             }
         }
     }
-}
 }
 
 void ClientNetwork::ProcessPlayerDeathMessage(const ParsedMessage& parsed) {

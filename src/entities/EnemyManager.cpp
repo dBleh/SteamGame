@@ -426,6 +426,18 @@ void EnemyManager::SpawnEnemyBatch(int count) {
 }
 
 void EnemyManager::AddEnemy(int id, const sf::Vector2f& position, EnemyType type, int health) {
+    // Check if this is a client and the enemy is at origin
+    CSteamID localSteamID = SteamUser()->GetSteamID();
+    CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+    bool isClient = (localSteamID != hostID);
+    
+    if (isClient && position.x == 0.0f && position.y == 0.0f) {
+        // This is likely a ghost enemy for a client at game start
+        // Log but don't add it
+        std::cout << "[CLIENT] Prevented ghost enemy creation at origin: ID " << id << "\n";
+        return;
+    }
+    
     // If health is not specified, use the appropriate default health value
     int actualHealth = (health <= 0) ? 
         ((type == EnemyType::Triangle) ? TRIANGLE_HEALTH : ENEMY_HEALTH) : 
