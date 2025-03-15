@@ -94,7 +94,7 @@ public:
     int GetEnemyHealth(int id) const;
     int GetTriangleEnemyHealth(int id) const;
     EnemyType GetEnemyType(int id) const;
-    
+    void ClearAllEnemies();
     // Health management
     void UpdateEnemyHealth(int id, int health);
     void UpdateTriangleEnemyHealth(int id, int health);

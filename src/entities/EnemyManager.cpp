@@ -154,6 +154,7 @@ void EnemyManager::StartNextWave() {
     if (!enemies.empty()) {
         std::cout << "[EM] Clearing " << enemies.size() << " regular enemies before starting new wave" << std::endl;
         enemies.clear();
+        enemyIdToIndex.clear(); // Also clear the ID to index map
     }
     
     if (!triangleEnemies.empty()) {
@@ -165,12 +166,23 @@ void EnemyManager::StartNextWave() {
     std::cout << "Starting wave " << currentWave << std::endl;
     waveActive = true;
     
-    // Spawn both enemy types
-    SpawnRegularWave();
-    SpawnTriangleWave();
+    // Add a short delay before spawning to ensure everything is reset
+    waveCooldown = 0.5f;
     
-    // Reset the full sync timer to trigger a sync soon after wave start
-    fullSyncTimer = 1.0f;  // Sync after 1 second
+    // Reset the full sync timer to trigger a sync very soon after wave start
+    fullSyncTimer = 0.3f;  // Sync after 0.3 seconds
+    
+    // Check if we're the host
+    CSteamID localSteamID = SteamUser()->GetSteamID();
+    CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+    bool isHost = (localSteamID == hostID);
+    
+    if (isHost) {
+        // Only host spawns enemies immediately
+        SpawnRegularWave();
+        SpawnTriangleWave();
+    }
+    // Clients will receive spawn messages from the host
 }
 
 void EnemyManager::SpawnRegularWave() {
@@ -1059,8 +1071,7 @@ void EnemyManager::SyncFullEnemyList() {
         return;
     }
     
-    // Instead of just sending IDs, send positions and health values too using batch message format
-    
+    // For regular enemies, use EBATCH format for more reliable sync
     // Get regular enemy data with position and health
     std::vector<std::tuple<int, sf::Vector2f, int>> regularEnemyData;
     for (const auto& entry : enemies) {
@@ -1077,7 +1088,13 @@ void EnemyManager::SyncFullEnemyList() {
     if (!regularEnemyData.empty()) {
         std::string regularMsg = MessageHandler::FormatEnemyBatchSpawnMessage(
             regularEnemyData, ParsedMessage::EnemyType::Regular);
+            
+        // Send multiple times for reliability
         game->GetNetworkManager().BroadcastMessage(regularMsg);
+        
+        std::cout << "[HOST] Synced " << regularEnemyData.size() << " regular enemies in full list sync" << std::endl;
+    } else {
+        std::cout << "[HOST] No regular enemies to sync in full list" << std::endl;
     }
     
     // Get triangle enemy data with position and health
@@ -1097,6 +1114,8 @@ void EnemyManager::SyncFullEnemyList() {
         std::string triangleMsg = MessageHandler::FormatEnemyBatchSpawnMessage(
             triangleEnemyData, ParsedMessage::EnemyType::Triangle);
         game->GetNetworkManager().BroadcastMessage(triangleMsg);
+        
+        std::cout << "[HOST] Synced " << triangleEnemyData.size() << " triangle enemies in full list sync" << std::endl;
     }
 }
 
@@ -1294,6 +1313,18 @@ std::string EnemyManager::SerializeEnemies() const {
     }
     
     return ss.str();
+}
+void EnemyManager::ClearAllEnemies() {
+    if (!enemies.empty()) {
+        std::cout << "[EM] Clearing " << enemies.size() << " regular enemies" << std::endl;
+        enemies.clear();
+        enemyIdToIndex.clear();
+    }
+    
+    if (!triangleEnemies.empty()) {
+        std::cout << "[EM] Clearing " << triangleEnemies.size() << " triangle enemies" << std::endl;
+        triangleEnemies.clear();
+    }
 }
 
 void EnemyManager::DeserializeEnemies(const std::string& data) {

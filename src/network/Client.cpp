@@ -470,11 +470,15 @@ void ClientNetwork::ProcessWaveStartMessage(const ParsedMessage& parsed) {
     EnemyManager* enemyManager = playingState->GetEnemyManager();
     if (!enemyManager) return;
     
-    std::cout << "[CLIENT] Starting wave " << parsed.waveNumber << "\n";
+    std::cout << "[CLIENT] Received wave start for wave " << parsed.waveNumber << "\n";
     
-    // As a client, we mostly wait for the host to spawn enemies
-    // But we can update our wave number for UI purposes
-    // This would need an accessor method in EnemyManager
+    // Clear any remaining enemies as a precaution
+    enemyManager->ClearAllEnemies();
+    
+    // Request a full enemy validation/sync from the host
+    std::string validationRequest = MessageHandler::FormatEnemyValidationRequestMessage();
+    game->GetNetworkManager().SendMessage(hostID, validationRequest);
+    std::cout << "[CLIENT] Requested full enemy sync after wave start\n";
 }
 
 void ClientNetwork::ProcessWaveCompleteMessage(const ParsedMessage& parsed) {

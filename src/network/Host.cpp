@@ -451,6 +451,12 @@ void HostNetwork::ProcessEnemyValidationRequestMessage(const ParsedMessage& pars
     if (!enemyManager) return;
     
     std::cout << "[HOST] Received enemy validation request, sending full list" << std::endl;
+    
+    // Send with slight delay to ensure it goes after other messages
+    // This is a simple way to improve the timing without complex task scheduling
+    sf::sleep(sf::milliseconds(50));
+    
+    // Force a full sync
     enemyManager->SyncFullEnemyList();
 }
 
