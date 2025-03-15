@@ -125,11 +125,23 @@ void Game::Run() {
 }
 
 void Game::SetCurrentState(GameState newState) {
-    // Clean up resources when leaving a lobby state
+    // Don't do anything if we're already in the requested state
+    if (currentState == newState) {
+        std::cout << "[GAME] Already in state " << static_cast<int>(newState) << ", ignoring transition request.\n";
+        return;
+    }
+    
+    // If we're leaving a lobby state to go to the main menu
     if ((currentState == GameState::Lobby || currentState == GameState::Playing) && 
         newState == GameState::MainMenu && inLobby) {
-        // Leave the Steam lobby
-        SteamMatchmaking()->LeaveLobby(currentLobby);
+        
+        // Leave the Steam lobby first
+        if (SteamMatchmaking() && currentLobby != k_steamIDNil) {
+            std::cout << "[GAME] Leaving Steam lobby: " << currentLobby.ConvertToUint64() << std::endl;
+            SteamMatchmaking()->LeaveLobby(currentLobby);
+        } else {
+            std::cout << "[GAME] No valid lobby to leave" << std::endl;
+        }
         
         // Reset lobby state
         inLobby = false;
@@ -141,8 +153,19 @@ void Game::SetCurrentState(GameState newState) {
         std::cout << "[GAME] Left lobby and reset lobby state" << std::endl;
     }
     
+    // Handle exiting the current state if needed
+    if (state && currentState != newState) {
+        // Call Exit() method if it exists on the current state
+        if (auto exitableState = dynamic_cast<LobbyCreationState*>(state.get())) {
+            exitableState->Exit();
+        } else if (auto lobbyState = dynamic_cast<LobbyState*>(state.get())) {
+            // Do any LobbyState cleanup
+        }
+    }
+    
     // Set the new state
     currentState = newState;
+    std::cout << "[GAME] Switched to state: " << static_cast<int>(currentState) << std::endl;
 }
 
 void Game::ProcessEvents(sf::Event& event) {

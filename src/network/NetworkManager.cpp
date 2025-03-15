@@ -188,44 +188,103 @@ void NetworkManager::JoinLobbyFromNetwork(CSteamID lobby) {
     }
 }
 
+
+
+
+// In NetworkManager.cpp - Modify the OnLobbyCreated method
+
 void NetworkManager::OnLobbyCreated(LobbyCreated_t* pParam) {
     if (pParam->m_eResult != k_EResultOK) {
         std::cerr << "[LOBBY] Failed to create lobby. EResult=" << pParam->m_eResult << "\n";
         game->SetCurrentState(GameState::MainMenu);
         return;
     }
+    
+    // Store the newly created lobby ID
     m_currentLobbyID = CSteamID(pParam->m_ulSteamIDLobby);
-    game->SetCurrentState(GameState::Lobby);
+    
+    // Set lobby data
     SteamMatchmaking()->SetLobbyData(m_currentLobbyID, "name", game->GetLobbyNameInput().c_str());
     SteamMatchmaking()->SetLobbyData(m_currentLobbyID, "game_id", GAME_ID);
     CSteamID myID = SteamUser()->GetSteamID();
     std::string hostStr = std::to_string(myID.ConvertToUint64());
     SteamMatchmaking()->SetLobbyData(m_currentLobbyID, "host_steam_id", hostStr.c_str());
+    SteamMatchmaking()->SetLobbyJoinable(m_currentLobbyID, true);
+    
+    // Set that we're in a lobby in the Game class
+    game->SetInLobby(true);
+    
+    // Add ourselves to connected clients
     m_connectedClients[myID] = true;
+    
     std::cout << "[LOBBY] Created lobby " << m_currentLobbyID.ConvertToUint64() << std::endl;
     std::cout << "[LOBBY] Metadata - Name: " << SteamMatchmaking()->GetLobbyData(m_currentLobbyID, "name")
               << ", GameID: " << SteamMatchmaking()->GetLobbyData(m_currentLobbyID, "game_id")
               << ", Host: " << SteamMatchmaking()->GetLobbyData(m_currentLobbyID, "host_steam_id") << "\n";
+              
+    // CRUCIAL FIX: Directly change to Lobby state here instead of calling back to LobbyCreationState
+    game->SetCurrentState(GameState::Lobby);
 }
-
+// Improve the ResetLobbyState method in NetworkManager.cpp
+void NetworkManager::ResetLobbyState() {
+    std::cout << "[NETWORK] Beginning lobby state reset..." << std::endl;
+    
+    // Print current state before reset
+    std::cout << "[NETWORK] Current lobby ID before reset: " 
+              << (m_currentLobbyID == k_steamIDNil ? "None" : std::to_string(m_currentLobbyID.ConvertToUint64())) 
+              << std::endl;
+    
+    // Get number of connected clients before reset
+    std::cout << "[NETWORK] Connected clients before reset: " << m_connectedClients.size() << std::endl;
+    
+    // Reset all state variables
+    m_currentLobbyID = k_steamIDNil;
+    m_connectedClients.clear();
+    isConnectedToHost = false;
+    m_pendingConnectionMessage = false;
+    m_pendingHostID = k_steamIDNil;
+    m_connectionMessage = "";
+    lobbyListUpdated = false;
+    
+    // Clear any pending Steam callbacks related to lobbies
+    // This is critical to avoid stale callbacks being processed
+    for (int i = 0; i < 10; i++) {  // Process multiple times to flush all pending callbacks
+        SteamAPI_RunCallbacks();
+    }
+    
+    std::cout << "[NETWORK] Lobby state reset complete" << std::endl;
+}
 void NetworkManager::OnLobbyEnter(LobbyEnter_t* pParam) {
+    std::cout << "[NETWORK] OnLobbyEnter callback received - response: " 
+              << pParam->m_EChatRoomEnterResponse << std::endl;
+    
     if (pParam->m_EChatRoomEnterResponse != k_EChatRoomEnterResponseSuccess) {
         std::cerr << "[ERROR] Failed to enter lobby: " << pParam->m_EChatRoomEnterResponse << std::endl;
         game->SetCurrentState(GameState::MainMenu);
         return;
     }
+    
     m_currentLobbyID = CSteamID(pParam->m_ulSteamIDLobby);
     std::cout << "Joined lobby " << m_currentLobbyID.ConvertToUint64() << std::endl;
-    game->SetCurrentState(GameState::Lobby);
-
+    
+    // Set that we're in a lobby
+    game->SetInLobby(true);
+    
     CSteamID myID = SteamUser()->GetSteamID();
     CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(m_currentLobbyID);
     
+    // IMPORTANT: Check current state before transitioning
+    // If we're already in Lobby state, don't try to transition again
+    if (game->GetCurrentState() != GameState::Lobby) {
+        std::cout << "[NETWORK] Transitioning to Lobby state" << std::endl;
+        game->SetCurrentState(GameState::Lobby);
+    } else {
+        std::cout << "[NETWORK] Already in Lobby state - not transitioning" << std::endl;
+    }
+    
+    // Send connection message if we're not the host
     if (myID != hostID) {
         SendConnectionMessageOnJoin(hostID); // Client case
-    } else {
-        std::string lobbyName = SteamMatchmaking()->GetLobbyData(m_currentLobbyID, "name");
-        SendChatMessage(myID, "Welcome to " + lobbyName); // Now uses FormatChatMessage
     }
 }
 

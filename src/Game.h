@@ -30,7 +30,6 @@ public:
     std::shared_ptr<InputHandler> GetInputHandler() const {return inputHandler; }
     std::string& GetLobbyNameInput() { return lobbyNameInput; }
     bool IsSteamInitialized() const { return steamInitialized; }
-    bool IsInLobby() const { return inLobby; }
     
     void SetLocalSteamID(const CSteamID& id) { localSteamID = id; }
     CSteamID GetLocalSteamID() const { return localSteamID; }
@@ -42,7 +41,15 @@ public:
     sf::Vector2f WindowToUICoordinates(sf::Vector2i windowPos) const; // Convert window to UI coordinates
     State* GetState() { return state.get(); }
     float GetDeltaTime() const { return deltaTime; }
-        InputManager& GetInputManager() { return inputManager; }
+        
+    InputManager& GetInputManager() { return inputManager; }
+    bool IsInLobby() const { return inLobby; }
+    void SetInLobby(bool status) { 
+        inLobby = status; 
+        if (status) {
+            currentLobby = networkManager->GetCurrentLobbyID();
+        }
+    }
 private:
     void ProcessEvents(sf::Event& event);
     void AdjustViewToWindow();

@@ -220,18 +220,17 @@ void LobbyCreationState::Enter() {
     game->GetHUD().updateText("inputField", "> " + game->GetLobbyNameInput());
 }
 
-void LobbyCreationState::Exit() {
-    // Clean up any pending operations when leaving this state
-    // The m_creationInProgress flag prevents race conditions with callbacks
-    if (m_creationInProgress) {
-        std::cout << "[LOBBY] Exiting LobbyCreationState while creation was in progress.\n";
-    }
-}
 
 void LobbyCreationState::CreateLobby(const std::string& lobbyName) {
     // Prevent multiple creation attempts
     if (m_creationInProgress) {
         std::cout << "[LOBBY] Lobby creation already in progress, ignoring request.\n";
+        return;
+    }
+    
+    // Make sure we're not already in a lobby
+    if (game->IsInLobby()) {
+        std::cout << "[LOBBY] Already in a lobby, ignoring request.\n";
         return;
     }
     
@@ -251,16 +250,44 @@ void LobbyCreationState::CreateLobby(const std::string& lobbyName) {
         game->SetCurrentState(GameState::MainMenu);
     } else {
         std::cout << "[LOBBY] Lobby creation requested.\n";
-        // Note: onLobbyEnter will be called from the OnLobbyCreated callback
+        // The NetworkManager will handle the rest via its OnLobbyCreated callback
     }
 }
+
+void LobbyCreationState::Exit() {
+    // Clean up any pending operations when leaving this state
+    if (m_creationInProgress) {
+        std::cout << "[LOBBY] Exiting LobbyCreationState while creation was in progress.\n";
+        m_creationInProgress = false; // Reset the flag
+    }
+}
+
+// Remove or comment out onLobbyEnter method entirely!
+// We no longer need it as NetworkManager handles everything
+
+/*
+void LobbyCreationState::onLobbyEnter(CSteamID lobbyID) {
+    // This method should be removed
+}
+*/
+
+
+
+// Remove or comment out the onLobbyEnter method in LobbyCreationState - we won't use it anymore
+// The NetworkManager's OnLobbyEnter will handle everything
 
 //---------------------------------------------------------
 // onLobbyEnter: Handle actions when entering a newly created lobby
 //---------------------------------------------------------
-void LobbyCreationState::onLobbyEnter(CSteamID lobbyID) {
+/*void LobbyCreationState::onLobbyEnter(CSteamID lobbyID) {
     // Reset the creation flag
     m_creationInProgress = false;
+    
+    // Make sure we're still in LobbyCreation state
+    if (game->GetCurrentState() != GameState::LobbyCreation) {
+        std::cout << "[LOBBY] State changed during lobby creation, aborting lobby entry.\n";
+        return;
+    }
     
     if (!SteamMatchmaking()) {
         std::cerr << "[ERROR] SteamMatchmaking interface not available!" << std::endl;
@@ -286,7 +313,7 @@ void LobbyCreationState::onLobbyEnter(CSteamID lobbyID) {
     // Log entry for debugging
     std::cout << "[LOBBY] Created and entered lobby " << lobbyID.ConvertToUint64() 
               << " as host" << std::endl;
-}
+}*/
 
 // Handle failure of lobby creation
 void LobbyCreationState::onLobbyCreationFailed() {

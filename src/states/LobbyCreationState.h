@@ -19,7 +19,7 @@ public:
     void Exit();
 
     // Function to handle lobby entry logic after creation, without player references
-    void onLobbyEnter(CSteamID lobbyID);
+    //void onLobbyEnter(CSteamID lobbyID);
     
     // Added callback for when lobby creation fails
     void onLobbyCreationFailed();

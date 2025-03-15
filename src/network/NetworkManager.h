@@ -37,16 +37,8 @@ public:
     CSteamID GetCurrentLobbyID() const { return m_currentLobbyID; } // Add getter
     // Getter for current lobby ID
     void SendConnectionMessageOnJoin(CSteamID hostID); // New method for retry logic
-
-    void ResetLobbyState() {
-        m_currentLobbyID = k_steamIDNil;
-        m_connectedClients.clear();
-        isConnectedToHost = false;
-        m_pendingConnectionMessage = false;
-        lobbyListUpdated = false;
-        
-        std::cout << "[NETWORK] Reset lobby state and cleared client connections" << std::endl;
-    }
+    void ResetLobbyState();
+    
 private:
     // Callback handlers
     void ProcessNetworkMessages(const std::string& msg, CSteamID sender);
