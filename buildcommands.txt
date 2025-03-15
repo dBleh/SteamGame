@@ -70,10 +70,14 @@ add_executable(CubeShooter
     src/states/LobbyState.cpp          # Not listed but assumed in src/states/
     src/states/PlayingState.cpp       # Matches src/states/PlayingState.h (assuming renamed)
     #src/states/GameOverState.cpp       # Matches src/states/GameOverState.h
+    src/states/SettingsState.cpp       # Matches src/states/SettingsState.h
     src/states/LobbyCreationState.cpp  # Not listed but assumed in src/states/
     src/states/LobbySearchState.cpp    # Not listed but assumed in src/states/
     src/utils/MessageHandler.cpp
     src/utils/SteamHelpers.cpp
+    src/utils/SettingsManager.cpp
+    src/utils/InputHandler.cpp
     src/render/PlayerRenderer.cpp
     src/entities/PlayerManager.cpp
+    src/utils/InputManager.cpp
 )
