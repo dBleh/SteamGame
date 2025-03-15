@@ -119,7 +119,75 @@ void ClientNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
 void ClientNetwork::ProcessChatMessage(const ParsedMessage& parsed) {
     // Placeholder for future chat functionality
 }
-
+// Replace the ProcessEnemyPositionsMessage method in Client.cpp
+void ClientNetwork::ProcessEnemyPositionsMessage(const ParsedMessage& parsed) {
+    // Get the PlayingState and its unified EnemyManager
+    PlayingState* playingState = GetPlayingState(game);
+    if (!playingState) return;
+    
+    EnemyManager* enemyManager = playingState->GetEnemyManager();
+    if (!enemyManager) return;
+    
+    // Create a more structured approach to matching enemy IDs with their health
+    std::unordered_map<int, int> healthMap;
+    for (const auto& healthPair : parsed.enemyHealths) {
+        healthMap[healthPair.first] = healthPair.second;
+    }
+    
+    // Convert from vector<pair> to vector<tuple> with proper error handling
+    std::vector<std::tuple<int, sf::Vector2f, int>> positionData;
+    positionData.reserve(parsed.enemyPositions.size());
+    
+    // NEW: Track if this is a triangle enemy batch
+    bool hasTriangleEnemies = false;
+    
+    // Process each enemy position and find its corresponding health
+    for (size_t i = 0; i < parsed.enemyPositions.size(); ++i) {
+        int id = parsed.enemyPositions[i].first;
+        sf::Vector2f position = parsed.enemyPositions[i].second;
+        
+        // Check if this is a triangle enemy
+        if (id >= 10000) {
+            hasTriangleEnemies = true;
+        }
+        
+        // Perform ghost enemy detection at origin
+        // Ignore enemies that appear at exact origin (0,0)
+        if (position.x == 0.0f && position.y == 0.0f) {
+            std::cout << "[CLIENT] Ignoring potential ghost enemy at origin, ID: " << id << "\n";
+            continue;
+        }
+        
+        // Find the health for this enemy id using our map
+        int health = 0;
+        auto healthIt = healthMap.find(id);
+        if (healthIt != healthMap.end()) {
+            health = healthIt->second;
+        } else {
+            // If no health is found, use default values based on enemy type
+            health = (id >= 10000) ? TRIANGLE_HEALTH : ENEMY_HEALTH;
+        }
+        
+        // Add to the tuple vector if it has valid health
+        if (health > 0) {
+            positionData.emplace_back(id, position, health);
+        }
+    }
+    
+    // NEW: Use different update methods based on enemy type
+    // This avoids potential issues with mixing enemy types in position updates
+    if (hasTriangleEnemies) {
+        // If this batch contains triangle enemies, use the triangle-specific update method
+        if (!positionData.empty()) {
+            enemyManager->UpdateTriangleEnemyPositions(positionData);
+        }
+    } else {
+        // For regular enemies, use the standard update method
+        if (!positionData.empty()) {
+            enemyManager->UpdateEnemyPositions(positionData);
+        }
+    }
+}
 void ClientNetwork::ProcessConnectionMessage(const ParsedMessage& parsed) {
     RemotePlayer rp;
     rp.playerID = parsed.steamID;
@@ -745,57 +813,7 @@ void ClientNetwork::ProcessWaveCompleteMessage(const ParsedMessage& parsed) {
     // This might be informing the EnemyManager for UI updates
 }
 
-void ClientNetwork::ProcessEnemyPositionsMessage(const ParsedMessage& parsed) {
-    // Get the PlayingState and its unified EnemyManager
-    PlayingState* playingState = GetPlayingState(game);
-    if (!playingState) return;
-    
-    EnemyManager* enemyManager = playingState->GetEnemyManager();
-    if (!enemyManager) return;
-    
-    // Create a more structured approach to matching enemy IDs with their health
-    std::unordered_map<int, int> healthMap;
-    for (const auto& healthPair : parsed.enemyHealths) {
-        healthMap[healthPair.first] = healthPair.second;
-    }
-    
-    // Convert from vector<pair> to vector<tuple> with proper error handling
-    std::vector<std::tuple<int, sf::Vector2f, int>> positionData;
-    positionData.reserve(parsed.enemyPositions.size());
-    
-    // Process each enemy position and find its corresponding health
-    for (size_t i = 0; i < parsed.enemyPositions.size(); ++i) {
-        int id = parsed.enemyPositions[i].first;
-        sf::Vector2f position = parsed.enemyPositions[i].second;
-        
-        // Perform ghost enemy detection at origin
-        // Ignore enemies that appear at exact origin (0,0)
-        if (position.x == 0.0f && position.y == 0.0f) {
-            std::cout << "[CLIENT] Ignoring potential ghost enemy at origin, ID: " << id << "\n";
-            continue;
-        }
-        
-        // Find the health for this enemy id using our map
-        int health = 0;
-        auto healthIt = healthMap.find(id);
-        if (healthIt != healthMap.end()) {
-            health = healthIt->second;
-        } else {
-            // If no health is found, use default values based on enemy type
-            health = (id >= 10000) ? TRIANGLE_HEALTH : ENEMY_HEALTH;
-        }
-        
-        // Add to the tuple vector if it has valid health
-        if (health > 0) {
-            positionData.emplace_back(id, position, health);
-        }
-    }
-    
-    // Update enemy positions
-    if (!positionData.empty()) {
-        enemyManager->UpdateEnemyPositions(positionData);
-    }
-}
+
 
 void ClientNetwork::ProcessEnemyValidationMessage(const ParsedMessage& parsed) {
     // Get the PlayingState and its unified EnemyManager

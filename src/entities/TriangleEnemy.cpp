@@ -26,6 +26,7 @@ void TriangleEnemy::InitializeShape(const sf::Vector2f& position)
     UpdateVisuals();
 }
 
+// Replace the existing Update method in TriangleEnemy.cpp
 void TriangleEnemy::Update(float dt, const sf::Vector2f& targetPosition)
 {
     if (isDead) return;
@@ -35,23 +36,55 @@ void TriangleEnemy::Update(float dt, const sf::Vector2f& targetPosition)
     
     // Calculate direction vector to target
     sf::Vector2f currentPos = shape.getPosition();
-    direction = targetPosition - currentPos;
     
-    // Normalize direction vector
+    // NEW: Check if the target is very far away (which can happen when a player dies)
+    // and smoothly transition to the new target
+    float distanceToTarget = std::sqrt(
+        std::pow(targetPosition.x - currentPos.x, 2) + 
+        std::pow(targetPosition.y - currentPos.y, 2)
+    );
+    
+    // Calculate new direction with dampening to smooth sudden direction changes
+    sf::Vector2f newDirection = targetPosition - currentPos;
+    
+    // Normalize new direction vector
+    float newLength = std::sqrt(newDirection.x * newDirection.x + newDirection.y * newDirection.y);
+    if (newLength > 0) {
+        newDirection /= newLength;
+    }
+    
+    // Smooth direction transition (SLERP-like for directions)
+    // Use a slower transition factor when target changes significantly
+    float transitionFactor = 0.1f;
+    
+    // If we have a large change in direction (like when a player dies and we retarget),
+    // make the transition even smoother to avoid visual jitter
+    float directionDot = (direction.x * newDirection.x + direction.y * newDirection.y);
+    if (directionDot < 0.7f) { // Less than ~45 degrees means significant direction change
+        transitionFactor = 0.05f; // Slower transition for large direction changes
+    }
+    
+    // Calculate interpolated direction
+    direction.x = direction.x + (newDirection.x - direction.x) * transitionFactor;
+    direction.y = direction.y + (newDirection.y - direction.y) * transitionFactor;
+    
+    // Re-normalize the interpolated direction
     float length = std::sqrt(direction.x * direction.x + direction.y * direction.y);
     if (length > 0) {
         direction /= length;
     }
     
-    // Move toward target
+    // Move toward target using the smoothed direction
     sf::Vector2f movement = direction * movementSpeed * dt;
     shape.move(movement);
+    
+    // Update interpolation for smoother movement
     UpdateInterpolation(dt);
+    
     // Update the base class position
     position = shape.getPosition();
     
     // Update rotation to face direction of movement with smoother transitions
-    // Store the last rotation angle (add this as a class member variable)
     float targetAngle = std::atan2(direction.y, direction.x) * 180 / 3.14159f + 90.f;
     
     // Smoothly interpolate rotation (prevents jittery rotation)
@@ -62,8 +95,11 @@ void TriangleEnemy::Update(float dt, const sf::Vector2f& targetPosition)
     while (angleDiff > 180.0f) angleDiff -= 360.0f;
     while (angleDiff < -180.0f) angleDiff += 360.0f;
     
+    // Use a slower rotation speed for more smoothness during target transitions
+    float rotationSpeed = 0.08f; // Reduced from 0.1f for smoother turns
+    
     // Interpolate the rotation
-    float newAngle = currentAngle + angleDiff * 0.1f;
+    float newAngle = currentAngle + angleDiff * rotationSpeed;
     shape.setRotation(newAngle);
 }
 // In TriangleEnemy.cpp
@@ -210,24 +246,43 @@ void TriangleEnemy::UpdatePosition(const sf::Vector2f& newPosition, bool interpo
     if (interpolate) {
         // Smoothly interpolate to the new position (for client-side)
         sf::Vector2f currentPos = shape.getPosition();
-        sf::Vector2f targetPos = newPosition;
         
-        // Use a smoother interpolation factor (0.15 instead of 0.25)
-        // This makes movement appear less jerky
-        sf::Vector2f interpolatedPos = currentPos + (targetPos - currentPos) * 0.15f;
+        // Calculate distance to new position
+        float distSquared = 
+            (newPosition.x - currentPos.x) * (newPosition.x - currentPos.x) +
+            (newPosition.y - currentPos.y) * (newPosition.y - currentPos.y);
         
-        // Add a small damping factor to prevent micro-oscillations
-        // which can cause the visual "blinking" effect
-        const float DAMPING_THRESHOLD = 1.0f;
-        float distance = std::sqrt(
-            std::pow(targetPos.x - currentPos.x, 2) + 
-            std::pow(targetPos.y - currentPos.y, 2)
-        );
+        // NEW: Adaptive interpolation factor based on distance
+        float interpFactor;
         
-        if (distance < DAMPING_THRESHOLD) {
-            // If we're very close to the target, just snap to it
-            // This prevents oscillation around the target position
-            shape.setPosition(targetPos);
+        if (distSquared > 10000.0f) { // More than 100 units away
+            // For very large changes (like when retargeting after player death),
+            // use SetTargetPosition which provides smoother animation over time
+            SetTargetPosition(newPosition);
+            return;
+        }
+        else if (distSquared > 2500.0f) { // 50 units distance
+            // For larger distances use a smaller factor to move more quickly
+            interpFactor = 0.2f;
+        }
+        else if (distSquared > 400.0f) { // 20 units distance
+            // Medium distance
+            interpFactor = 0.15f;
+        }
+        else {
+            // Small distances use slowest factor for smoothest movement
+            interpFactor = 0.1f;
+        }
+        
+        // Apply the interpolation factor
+        sf::Vector2f interpolatedPos = currentPos + (newPosition - currentPos) * interpFactor;
+        
+        // Damping threshold to prevent micro-oscillations
+        const float DAMPING_THRESHOLD = 0.5f; // Reduced from 1.0f
+        
+        // If we're very close to the target, just snap to it
+        if (distSquared < DAMPING_THRESHOLD * DAMPING_THRESHOLD) {
+            shape.setPosition(newPosition);
         } else {
             // Otherwise use the interpolated position
             shape.setPosition(interpolatedPos);
@@ -241,3 +296,4 @@ void TriangleEnemy::UpdatePosition(const sf::Vector2f& newPosition, bool interpo
     // Update the base class position
     position = shape.getPosition();
 }
+

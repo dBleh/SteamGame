@@ -23,6 +23,7 @@ EnemyManager::~EnemyManager() {
     // Vectors will auto-clean their contents
 }
 
+// Modify the Update method in EnemyManager.cpp to improve target switching
 void EnemyManager::Update(float dt) {
     // Static variable to track the last time the spatial grid was updated
     static float timeSinceLastGridUpdate = 0.0f;
@@ -99,9 +100,22 @@ void EnemyManager::Update(float dt) {
         fullSyncTimer = FULL_SYNC_INTERVAL;
     }
     
-    // Collect nearest player positions for each enemy in advance
-    // to avoid recalculating for each enemy
-    std::unordered_map<EnemyBase*, sf::Vector2f> enemyTargetPositions;
+    // NEW: Check if any live players exist to avoid excessive retargeting
+    auto& players = playerManager->GetPlayers();
+    bool anyPlayersAlive = std::any_of(players.begin(), players.end(), 
+        [](const auto& pair) { return !pair.second.player.IsDead(); });
+    
+    // If no players are alive, pause enemy movement to avoid visual jitter
+    if (!anyPlayersAlive) {
+        return;
+    }
+    
+    // Build a target position cache to avoid recalculating for each enemy
+    // This significantly reduces CPU usage during retargeting events
+    std::unordered_map<int, sf::Vector2f> targetPositionCache;
+    
+    // Get player center for general targeting
+    sf::Vector2f playerCenter = GetPlayerCenterPosition();
     
     // Process in batches for better cache locality and to allow frame splitting
     const size_t BATCH_SIZE = 50; // Process up to 50 enemies per frame to avoid stutter
@@ -113,27 +127,29 @@ void EnemyManager::Update(float dt) {
     for (size_t i = lastProcessedRegular; i < endIndex; i++) {
         auto& entry = enemies[i];
         if (entry.enemy && entry.enemy->IsAlive()) {
-            // Find or calculate target position
-            sf::Vector2f targetPos;
-            auto it = enemyTargetPositions.find(entry.enemy.get());
-            if (it != enemyTargetPositions.end()) {
-                targetPos = it->second;
-            } else {
-                targetPos = FindClosestPlayerPosition(entry.GetPosition());
-                enemyTargetPositions[entry.enemy.get()] = targetPos;
-            }
-            
-            // Store old position for spatial grid update
+            // Generate a unique key for this enemy's position
+            int enemyId = entry.GetID();
             sf::Vector2f oldPos = entry.GetPosition();
             
-            // Update the enemy
+            // Find or calculate target position
+            sf::Vector2f targetPos;
+            auto it = targetPositionCache.find(enemyId);
+            if (it != targetPositionCache.end()) {
+                targetPos = it->second;
+            } else {
+                targetPos = FindClosestPlayerPosition(oldPos);
+                targetPositionCache[enemyId] = targetPos;
+            }
+            
+            // Update the enemy with gradual interpolation to smooth movement
+            // This helps reduce visual jittering when many enemies change targets
             entry.enemy->Update(dt, targetPos);
             
             // Get new position
             sf::Vector2f newPos = entry.GetPosition();
             
-            // Always update the spatial grid if the enemy moved at all
-            if (oldPos != newPos) {
+            // Always update the spatial grid if the enemy moved significantly
+            if (std::abs(oldPos.x - newPos.x) > 0.5f || std::abs(oldPos.y - newPos.y) > 0.5f) {
                 spatialGrid.UpdateEnemyPosition(entry.enemy.get(), oldPos);
             }
         }
@@ -150,31 +166,33 @@ void EnemyManager::Update(float dt) {
     for (size_t i = lastProcessedTriangle; i < endIndex; i++) {
         auto& enemy = triangleEnemies[i];
         if (enemy.IsAlive()) {
-            // Find or calculate target position
-            sf::Vector2f targetPos;
-            auto it = enemyTargetPositions.find(&enemy);
-            if (it != enemyTargetPositions.end()) {
-                targetPos = it->second;
-            } else {
-                targetPos = FindClosestPlayerPosition(enemy.GetPosition());
-                enemyTargetPositions[&enemy] = targetPos;
-            }
-            
-            // Store old position for spatial grid update
+            // Generate a unique key for this enemy's position
+            int enemyId = enemy.GetID();
             sf::Vector2f oldPos = enemy.GetPosition();
             
-            // Update the enemy
+            // Find or calculate target position
+            sf::Vector2f targetPos;
+            auto it = targetPositionCache.find(enemyId);
+            if (it != targetPositionCache.end()) {
+                targetPos = it->second;
+            } else {
+                targetPos = FindClosestPlayerPosition(oldPos);
+                targetPositionCache[enemyId] = targetPos;
+            }
+            
+            // Update the enemy with gradual interpolation to smooth movement
             enemy.Update(dt, targetPos);
             
             // Get new position
             sf::Vector2f newPos = enemy.GetPosition();
             
-            // Always update spatial grid if the enemy moved at all
-            if (oldPos != newPos) {
+            // Always update spatial grid if the enemy moved significantly
+            if (std::abs(oldPos.x - newPos.x) > 0.5f || std::abs(oldPos.y - newPos.y) > 0.5f) {
                 spatialGrid.UpdateEnemyPosition(&enemy, oldPos);
             }
         }
     }
+    
     // Update lastProcessedTriangle for next frame
     lastProcessedTriangle = endIndex;
     if (lastProcessedTriangle >= triangleEnemies.size()) {
@@ -924,10 +942,15 @@ void EnemyManager::HandleEnemyHit(int enemyId, int damage, bool killed, const st
     }
 }
 
+// Replace the existing FindClosestPlayerPosition method in EnemyManager.cpp
 sf::Vector2f EnemyManager::FindClosestPlayerPosition(const sf::Vector2f& enemyPos) {
     sf::Vector2f closestPos = enemyPos; // Default: don't move if no players
     float closestDist = std::numeric_limits<float>::max();
     
+    // Track if we've found any alive players
+    bool foundAlivePlayer = false;
+    
+    // First pass: try to find the closest alive player
     auto& players = playerManager->GetPlayers();
     for (const auto& pair : players) {
         // Skip dead players
@@ -941,7 +964,14 @@ sf::Vector2f EnemyManager::FindClosestPlayerPosition(const sf::Vector2f& enemyPo
         if (dist < closestDist) {
             closestDist = dist;
             closestPos = playerPos;
+            foundAlivePlayer = true;
         }
+    }
+    
+    // If no alive players found, return current position to prevent all enemies 
+    // from suddenly moving to the origin or another default location
+    if (!foundAlivePlayer) {
+        return enemyPos; // Stay in place until a player respawns
     }
     
     return closestPos;
@@ -996,6 +1026,7 @@ void EnemyManager::UpdateSpatialGrid() {
     }
 }
 
+// Replace the SyncEnemyPositions method in EnemyManager.cpp
 void EnemyManager::SyncEnemyPositions() {
     CSteamID localSteamID = SteamUser()->GetSteamID();
     CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
@@ -1007,6 +1038,16 @@ void EnemyManager::SyncEnemyPositions() {
     
     // Calculate center of all players
     sf::Vector2f playerCenter = GetPlayerCenterPosition();
+    
+    // NEW: Check if any players are alive to avoid unnecessary syncs
+    auto& players = playerManager->GetPlayers();
+    bool anyPlayersAlive = std::any_of(players.begin(), players.end(), 
+        [](const auto& pair) { return !pair.second.player.IsDead(); });
+        
+    if (!anyPlayersAlive) {
+        // Don't sync positions if there are no alive players to avoid jitter
+        return;
+    }
     
     // Create a single combined list of enemy data with priority info
     std::vector<EnemySyncPriority> allEnemiesWithPriority;
@@ -1024,14 +1065,15 @@ void EnemyManager::SyncEnemyPositions() {
                 std::pow(currentPos.y - playerCenter.y, 2)
             );
             
-            // New priority calculation:
-            // 1. Movement matters more (x6)
-            // 2. Being close to players matters more (1500 instead of 1000)
-            // 3. Lower threshold for update (0.3 instead of 0.5)
-            float priority = (moveDist * 6.0f) + (1500.0f / (distToPlayers + 50.0f));
+            // NEW: More sophisticated priority calculation that reduces network traffic
+            // 1. Movement still matters (x3 instead of x6)
+            // 2. Being close to players still matters (1000 instead of 1500)
+            // 3. Higher threshold for update (1.0 instead of 0.3) to reduce network traffic
+            float priority = (moveDist * 3.0f) + (1000.0f / (distToPlayers + 100.0f));
             
-            // Only prioritize if moved enough or close to players
-            if (priority > 0.3f || moveDist > 3.0f || distToPlayers < 300.0f) {
+            // Only prioritize if moved significantly or very close to players
+            // The higher threshold significantly reduces network traffic during mass retargeting
+            if (priority > 1.0f || moveDist > 5.0f || distToPlayers < 200.0f) {
                 allEnemiesWithPriority.emplace_back(
                     entry.GetID(),
                     currentPos,
@@ -1060,11 +1102,11 @@ void EnemyManager::SyncEnemyPositions() {
                 std::pow(currentPos.y - playerCenter.y, 2)
             );
             
-            // Same improved priority calculation
-            float priority = (moveDist * 6.0f) + (1500.0f / (distToPlayers + 50.0f));
+            // Same improved priority calculation with higher thresholds
+            float priority = (moveDist * 3.0f) + (1000.0f / (distToPlayers + 100.0f));
             
-            // Only prioritize if moved enough or close to players
-            if (priority > 0.3f || moveDist > 3.0f || distToPlayers < 300.0f) {
+            // Only prioritize if moved significantly or very close to players
+            if (priority > 1.0f || moveDist > 5.0f || distToPlayers < 200.0f) {
                 allEnemiesWithPriority.emplace_back(
                     enemy.GetID(),
                     currentPos,
@@ -1086,8 +1128,18 @@ void EnemyManager::SyncEnemyPositions() {
         }
     );
     
-    // Increase the batch size for smoother updates
-    const int MAX_ENEMIES_PER_SYNC = 12; // Increased from 8
+    // NEW: Reduced batch size when all players respawn to avoid network flood
+    // This handles the retargeting scenario when a player dies and respawns
+    bool isRespawnPhase = false;
+    for (auto& pair : players) {
+        if (pair.second.respawnTimer > 0 && pair.second.respawnTimer < 1.0f) {
+            isRespawnPhase = true;
+            break;
+        }
+    }
+    
+    // Adjust max enemies per sync based on game state
+    const int MAX_ENEMIES_PER_SYNC = isRespawnPhase ? 8 : 12;
     
     // Limit number of enemies to send
     if (allEnemiesWithPriority.size() > MAX_ENEMIES_PER_SYNC) {

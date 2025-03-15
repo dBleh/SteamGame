@@ -69,19 +69,56 @@ void Enemy::UpdateInterpolation(float dt) {
         position = m_currentPosition + (m_targetPosition - m_currentPosition) * m_interpolationFactor;
     }
 }
+// Replace the existing Update method in Enemy.cpp
 void Enemy::Update(float dt, const sf::Vector2f& targetPosition) {
     if (isDead) return;
     
     // Calculate direction vector to target
     sf::Vector2f currentPos = shape.getPosition();
-    sf::Vector2f direction = targetPosition - currentPos;
     
-    // Normalize direction vector
+    // NEW: Track the previous target direction for smooth transitions
+    static sf::Vector2f prevDirection(0.f, 0.f);
+    
+    // Calculate new direction vector
+    sf::Vector2f newDirection = targetPosition - currentPos;
+    
+    // Normalize new direction vector
+    float newLength = std::sqrt(newDirection.x * newDirection.x + newDirection.y * newDirection.y);
+    if (newLength > 0) {
+        newDirection /= newLength;
+    }
+    
+    // Initialize prevDirection if it's the first update
+    if (prevDirection.x == 0.f && prevDirection.y == 0.f) {
+        prevDirection = newDirection;
+    }
+    
+    // Determine transition speed based on how much the direction has changed
+    float directionDot = (prevDirection.x * newDirection.x + prevDirection.y * newDirection.y);
+    float transitionFactor = 0.1f; // Default smooth transition
+    
+    // Slower transition for large direction changes (when retargeting after player death)
+    if (directionDot < 0.7f) { // ~45 degrees or more change in direction
+        transitionFactor = 0.05f; // Slower transition for large direction changes
+    }
+    
+    // Smoothly interpolate between previous and new direction
+    sf::Vector2f direction;
+    direction.x = prevDirection.x + (newDirection.x - prevDirection.x) * transitionFactor;
+    direction.y = prevDirection.y + (newDirection.y - prevDirection.y) * transitionFactor;
+    
+    // Normalize the interpolated direction
     float length = std::sqrt(direction.x * direction.x + direction.y * direction.y);
     if (length > 0) {
         direction /= length;
     }
+    
+    // Save current direction for next frame
+    prevDirection = direction;
+    
+    // Handle interpolation for smooth client-side movement
     UpdateInterpolation(dt);
+    
     // Move towards target
     shape.move(direction * movementSpeed * dt);
     
@@ -139,24 +176,43 @@ void Enemy::UpdatePosition(const sf::Vector2f& newPosition, bool interpolate) {
     if (interpolate) {
         // Smoothly interpolate to the new position (for client-side)
         sf::Vector2f currentPos = shape.getPosition();
-        sf::Vector2f targetPos = newPosition;
         
-        // Use a smoother interpolation factor (0.15 instead of 0.25)
-        // This makes movement appear less jerky
-        sf::Vector2f interpolatedPos = currentPos + (targetPos - currentPos) * 0.15f;
+        // Calculate distance to new position
+        float distSquared = 
+            (newPosition.x - currentPos.x) * (newPosition.x - currentPos.x) +
+            (newPosition.y - currentPos.y) * (newPosition.y - currentPos.y);
         
-        // Add a small damping factor to prevent micro-oscillations
-        // which can cause the visual "blinking" effect
-        const float DAMPING_THRESHOLD = 1.0f;
-        float distance = std::sqrt(
-            std::pow(targetPos.x - currentPos.x, 2) + 
-            std::pow(targetPos.y - currentPos.y, 2)
-        );
+        // NEW: Adaptive interpolation factor based on distance
+        float interpFactor;
         
-        if (distance < DAMPING_THRESHOLD) {
-            // If we're very close to the target, just snap to it
-            // This prevents oscillation around the target position
-            shape.setPosition(targetPos);
+        if (distSquared > 10000.0f) { // More than 100 units away
+            // For very large changes (like when retargeting after player death),
+            // use SetTargetPosition which provides smoother animation over time
+            SetTargetPosition(newPosition);
+            return;
+        }
+        else if (distSquared > 2500.0f) { // 50 units distance
+            // For larger distances use a smaller factor to move more quickly
+            interpFactor = 0.2f;
+        }
+        else if (distSquared > 400.0f) { // 20 units distance
+            // Medium distance
+            interpFactor = 0.15f;
+        }
+        else {
+            // Small distances use slowest factor for smoothest movement
+            interpFactor = 0.1f;
+        }
+        
+        // Apply the interpolation factor
+        sf::Vector2f interpolatedPos = currentPos + (newPosition - currentPos) * interpFactor;
+        
+        // Damping threshold to prevent micro-oscillations
+        const float DAMPING_THRESHOLD = 0.5f; // Reduced from 1.0f
+        
+        // If we're very close to the target, just snap to it
+        if (distSquared < DAMPING_THRESHOLD * DAMPING_THRESHOLD) {
+            shape.setPosition(newPosition);
         } else {
             // Otherwise use the interpolated position
             shape.setPosition(interpolatedPos);
