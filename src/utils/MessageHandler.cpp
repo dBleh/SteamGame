@@ -188,21 +188,23 @@ std::string MessageHandler::FormatEnemySpawnMessage(int enemyId, const sf::Vecto
 }
 
 std::string MessageHandler::FormatEnemyBatchSpawnMessage(
-    const std::vector<std::tuple<int, sf::Vector2f, int>>& batchData,
+    const std::vector<std::tuple<int, sf::Vector2f, int>>& batchData, 
     ParsedMessage::EnemyType enemyType) {
     
-    std::ostringstream oss;
-    oss << "EBS|" << static_cast<int>(enemyType) << "|" << batchData.size();
+    std::stringstream ss;
+    ss << "EBATCH|" << static_cast<int>(enemyType) << "|";
     
-    for (const auto& enemy : batchData) {
-        int id = std::get<0>(enemy);
-        sf::Vector2f pos = std::get<1>(enemy);
-        int health = std::get<2>(enemy);
+    // Format: enemyId,posX,posY,health;enemyId,posX,posY,health;...
+    for (const auto& data : batchData) {
+        int id = std::get<0>(data);
+        sf::Vector2f pos = std::get<1>(data);
+        int health = std::get<2>(data);
         
-        oss << "|" << id << "," << pos.x << "," << pos.y << "," << health;
+        // Always include health in the message
+        ss << id << "," << pos.x << "," << pos.y << "," << health << ";";
     }
     
-    return oss.str();
+    return ss.str();
 }
 
 std::string MessageHandler::FormatEnemyPositionsMessage(const std::vector<std::tuple<int, sf::Vector2f, int>>& enemyData) {
@@ -486,7 +488,52 @@ ParsedMessage MessageHandler::ParseMessage(const std::string& msg) {
         for (int i = 0; i < numEnemies && i + 3 < parts.size(); ++i) {
             parsed.validEnemyIds.push_back(std::stoi(parts[i + 3]));
         }
+    } else if (parts[0] == "EBATCH" && parts.size() >= 3) {
+        // Update to match FormatEnemyBatchSpawnMessage format
+        parsed.type = MessageType::EnemyBatchSpawn;
+        parsed.enemyType = static_cast<ParsedMessage::EnemyType>(std::stoi(parts[1]));
+        
+        parsed.enemyPositions.clear();
+        parsed.enemyHealths.clear();
+        
+        // Format from FormatEnemyBatchSpawnMessage: enemyId,posX,posY,health;enemyId,posX,posY,health;...
+        // Split by semicolon to get each enemy data
+        std::vector<std::string> enemyDataList;
+        std::stringstream ss(parts[2]);
+        std::string enemyData;
+        
+        while (std::getline(ss, enemyData, ';')) {
+            if (!enemyData.empty()) {
+                enemyDataList.push_back(enemyData);
+            }
+        }
+        
+        // Process each enemy entry
+        for (const auto& data : enemyDataList) {
+            std::vector<std::string> values;
+            std::stringstream valueStream(data);
+            std::string value;
+            
+            while (std::getline(valueStream, value, ',')) {
+                values.push_back(value);
+            }
+            
+            if (values.size() >= 4) {
+                try {
+                    int id = std::stoi(values[0]);
+                    float x = std::stof(values[1]);
+                    float y = std::stof(values[2]);
+                    int health = std::stoi(values[3]);
+                    
+                    parsed.enemyPositions.emplace_back(id, sf::Vector2f(x, y));
+                    parsed.enemyHealths.emplace_back(id, health);
+                } catch (const std::exception& e) {
+                    std::cout << "[ERROR] Failed to parse enemy batch spawn data: " << e.what() << std::endl;
+                }
+            }
+        }
     } else if (parts[0] == "EBS" && parts.size() >= 3) {
+        // Keep the old format for backward compatibility
         parsed.type = MessageType::EnemyBatchSpawn;
         parsed.enemyType = static_cast<ParsedMessage::EnemyType>(std::stoi(parts[1]));
         int count = std::stoi(parts[2]);

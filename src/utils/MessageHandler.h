@@ -90,7 +90,7 @@ public:
     
     // Enemy-related message formatting
     static std::string FormatEnemySpawnMessage(int enemyId, const sf::Vector2f& position, ParsedMessage::EnemyType enemyType = ParsedMessage::EnemyType::Regular);
-    static std::string FormatEnemyBatchSpawnMessage(const std::vector<std::tuple<int, sf::Vector2f, int>>& batchData, ParsedMessage::EnemyType enemyType = ParsedMessage::EnemyType::Regular);
+    static std::string FormatEnemyBatchSpawnMessage( const std::vector<std::tuple<int, sf::Vector2f, int>>& batchData, ParsedMessage::EnemyType enemyType);
     static std::string FormatEnemyHitMessage(int enemyId, int damage, bool killed, const std::string& shooterID, ParsedMessage::EnemyType enemyType = ParsedMessage::EnemyType::Regular);
     static std::string FormatEnemyDeathMessage(int enemyId, const std::string& killerID, bool rewardKill, ParsedMessage::EnemyType enemyType = ParsedMessage::EnemyType::Regular);
     static std::string FormatEnemyFullListMessage(const std::vector<int>& enemyIds, ParsedMessage::EnemyType enemyType = ParsedMessage::EnemyType::Regular);

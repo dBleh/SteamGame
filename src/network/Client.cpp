@@ -363,20 +363,31 @@ void ClientNetwork::ProcessEnemyBatchSpawnMessage(const ParsedMessage& parsed) {
     for (size_t i = 0; i < parsed.enemyPositions.size(); ++i) {
         int id = parsed.enemyPositions[i].first;
         sf::Vector2f position = parsed.enemyPositions[i].second;
-        int health = parsed.enemyHealths[i].second;
         
-        // Add the enemy based on type
+        // Ensure we get the correct health value
+        int health = (i < parsed.enemyHealths.size()) ? parsed.enemyHealths[i].second : 0;
+        
+        // Use appropriate default health if not provided
+        if (health <= 0) {
+            health = (parsed.enemyType == ParsedMessage::EnemyType::Triangle) ? 
+                TRIANGLE_HEALTH : ENEMY_HEALTH;
+        }
+        
+        // Add the enemy based on type with explicit health value
         if (parsed.enemyType == ParsedMessage::EnemyType::Triangle) {
             enemyManager->AddTriangleEnemy(id, position, health);
+            std::cout << "[CLIENT] Added triangle enemy #" << id 
+                      << " at (" << position.x << "," << position.y 
+                      << ") with health: " << health << "\n";
         } else {
             enemyManager->AddEnemy(id, position, EnemyType::Rectangle, health);
+            std::cout << "[CLIENT] Added regular enemy #" << id 
+                      << " at (" << position.x << "," << position.y 
+                      << ") with health: " << health << "\n";
         }
     }
-    
-    std::cout << "[CLIENT] Added batch of " << parsed.enemyPositions.size() 
-              << " " << (parsed.enemyType == ParsedMessage::EnemyType::Triangle ? "triangle" : "regular")
-              << " enemies\n";
 }
+
 
 void ClientNetwork::ProcessEnemyHitMessage(const ParsedMessage& parsed) {
     // Access the PlayingState's unified EnemyManager

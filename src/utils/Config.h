@@ -12,7 +12,7 @@
 
 // Enemy configuration
 #define ENEMY_SPEED 70.0f
-
+#define ENEMY_HEALTH 40.0f
 // Bullet configuration
 #define BULLET_SPEED 400.0f
 

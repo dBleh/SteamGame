@@ -405,9 +405,19 @@ void EnemyManager::SpawnEnemyBatch(int count) {
 }
 
 void EnemyManager::AddEnemy(int id, const sf::Vector2f& position, EnemyType type, int health) {
-    // Create the enemy
-    std::unique_ptr<EnemyBase> enemy = CreateEnemy(id, position, type, health);
+    // If health is not specified, use the appropriate default health value
+    int actualHealth = (health <= 0) ? 
+        ((type == EnemyType::Triangle) ? TRIANGLE_HEALTH : ENEMY_HEALTH) : 
+        health;
+    
+    // Create the enemy with the proper health
+    std::unique_ptr<EnemyBase> enemy = CreateEnemy(id, position, type, actualHealth);
     EnemyBase* enemyPtr = enemy.get();
+    
+    // Force update visuals to ensure correct color
+    if (enemy) {
+        enemy->UpdateVisuals();
+    }
     
     // Create entry and store it
     EnemyEntry entry;
@@ -428,8 +438,10 @@ void EnemyManager::AddEnemy(int id, const sf::Vector2f& position, EnemyType type
     if (id >= nextEnemyId) {
         nextEnemyId = id + 1;
     }
-}
 
+    // Debug message to verify health is set correctly
+    std::cout << "Added enemy " << id << " with health: " << actualHealth << "\n";
+}
 void EnemyManager::RemoveEnemy(int id) {
     auto it = enemyIdToIndex.find(id);
     if (it != enemyIdToIndex.end()) {
@@ -809,7 +821,7 @@ void EnemyManager::SyncEnemyPositions() {
         return;
     }
     
-    // Sync regular enemies
+    // Sync regular enemies with explicit health values
     if (!enemies.empty()) {
         auto regularEnemyData = GetRegularEnemyDataForSync();
         
@@ -819,7 +831,7 @@ void EnemyManager::SyncEnemyPositions() {
         }
     }
     
-    // Sync triangle enemies
+    // Sync triangle enemies with explicit health values
     if (!triangleEnemies.empty()) {
         auto triangleEnemyData = GetTriangleEnemyDataForSync();
         
@@ -1047,31 +1059,43 @@ void EnemyManager::SyncFullEnemyList() {
         return;
     }
     
-    // Sync regular enemies
-    std::vector<int> regularEnemyIds;
+    // Instead of just sending IDs, send positions and health values too using batch message format
+    
+    // Get regular enemy data with position and health
+    std::vector<std::tuple<int, sf::Vector2f, int>> regularEnemyData;
     for (const auto& entry : enemies) {
         if (entry.enemy && entry.enemy->IsAlive()) {
-            regularEnemyIds.push_back(entry.GetID());
+            regularEnemyData.emplace_back(
+                entry.GetID(),
+                entry.GetPosition(),
+                entry.GetHealth()
+            );
         }
     }
     
-    if (!regularEnemyIds.empty()) {
-        std::string regularMsg = MessageHandler::FormatEnemyFullListMessage(
-            regularEnemyIds, ParsedMessage::EnemyType::Regular);
+    // Send regular enemy batch spawn message
+    if (!regularEnemyData.empty()) {
+        std::string regularMsg = MessageHandler::FormatEnemyBatchSpawnMessage(
+            regularEnemyData, ParsedMessage::EnemyType::Regular);
         game->GetNetworkManager().BroadcastMessage(regularMsg);
     }
     
-    // Sync triangle enemies
-    std::vector<int> triangleEnemyIds;
+    // Get triangle enemy data with position and health
+    std::vector<std::tuple<int, sf::Vector2f, int>> triangleEnemyData;
     for (const auto& enemy : triangleEnemies) {
         if (enemy.IsAlive()) {
-            triangleEnemyIds.push_back(enemy.GetID());
+            triangleEnemyData.emplace_back(
+                enemy.GetID(),
+                enemy.GetPosition(),
+                enemy.GetHealth()
+            );
         }
     }
     
-    if (!triangleEnemyIds.empty()) {
-        std::string triangleMsg = MessageHandler::FormatEnemyFullListMessage(
-            triangleEnemyIds, ParsedMessage::EnemyType::Triangle);
+    // Send triangle enemy batch spawn message
+    if (!triangleEnemyData.empty()) {
+        std::string triangleMsg = MessageHandler::FormatEnemyBatchSpawnMessage(
+            triangleEnemyData, ParsedMessage::EnemyType::Triangle);
         game->GetNetworkManager().BroadcastMessage(triangleMsg);
     }
 }
