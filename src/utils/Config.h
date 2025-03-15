@@ -11,8 +11,14 @@
 #define PLAYER_HEALTH 10000
 
 // Enemy configuration
+#define ENEMY_SIZE 20.0f  // Removed erroneous '='
+#define ENEMY_ORIGIN 10.0f // Half of ENEMY_SIZE
 #define ENEMY_SPEED 70.0f
 #define ENEMY_HEALTH 40.0f
+
+// Triangle configuration
+#define TRIANGLE_SIZE 15.0f
+
 // Bullet configuration
 #define BULLET_SPEED 400.0f
 
@@ -33,4 +39,12 @@
 #define MAIN_BACKGROUND_COLOR sf::Color(70, 70, 70)
 constexpr int BASE_WIDTH = 1280;
 constexpr int BASE_HEIGHT = 720;
+
+// Network sync constants
+#define ENEMY_SYNC_INTERVAL 0.1f
+#define FULL_SYNC_INTERVAL 5.0f
+
+// Collision constants
+#define COLLISION_RADIUS 25.0f
+
 #endif // CONFIG_H

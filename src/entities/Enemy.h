@@ -32,8 +32,6 @@ private:
     sf::RectangleShape shape;   // Visual representation
     
     // Constants for this enemy type
-    static constexpr float ENEMY_SIZE = 40.0f;
-    static constexpr float ENEMY_ORIGIN = 20.0f; // Half of ENEMY_SIZE
 };
 
 #endif // ENEMY_H

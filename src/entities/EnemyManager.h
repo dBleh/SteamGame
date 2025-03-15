@@ -127,15 +127,27 @@ public:
         }
         return sf::Vector2f(0.f, 0.f);
     }
+  
 private:
+
     Game* game;
     PlayerManager* playerManager;
     std::vector<EnemyEntry> enemies;  // Unified container for all enemy types
     std::vector<TriangleEnemy> triangleEnemies; // Keep separate container during transition
-    
+    size_t lastProcessedRegularIndex = 0;
+    size_t lastProcessedTriangleIndex = 0;
     // ID mapping for faster lookup
     std::unordered_map<int, size_t> enemyIdToIndex;
-    
+    struct EnemySyncPriority {
+        int id;
+        sf::Vector2f position;
+        int health;
+        float priority;
+        bool isTriangle;
+        
+        EnemySyncPriority(int _id, const sf::Vector2f& _pos, int _health, float _priority, bool _isTriangle)
+            : id(_id), position(_pos), health(_health), priority(_priority), isTriangle(_isTriangle) {}
+    };
     // Wave management
     int currentWave;
     float waveTimer;
@@ -152,9 +164,7 @@ private:
     
     // Synchronization timers
     float enemySyncTimer = 0.0f;
-    static constexpr float ENEMY_SYNC_INTERVAL = 0.1f;
     float fullSyncTimer = 0.0f;
-    static constexpr float FULL_SYNC_INTERVAL = 5.0f;
     
     // Random number generation
     std::mt19937 rng;

@@ -24,22 +24,13 @@ EnemyManager::~EnemyManager() {
 }
 
 void EnemyManager::Update(float dt) {
-    // Update regular enemies
-    if (!waveActive) {
-        // If no wave is active, count down to next wave
-        waveTimer -= dt;
-        if (waveTimer <= 0.0f) {
-            StartNextWave();
-        }
-        return;
-    }
+    // Static variable to track the last time the spatial grid was updated
+    static float timeSinceLastGridUpdate = 0.0f;
+    timeSinceLastGridUpdate += dt;
     
-    // Update full sync timer for both enemy types
-    fullSyncTimer -= dt;
-    if (fullSyncTimer <= 0.0f) {
-        SyncFullEnemyList();
-        fullSyncTimer = FULL_SYNC_INTERVAL;
-    }
+    // Start by handling enemy removal more efficiently
+    // Only rebuild maps and update spatial grid when needed
+    bool removedEnemies = false;
     
     // Remove dead regular enemies
     size_t beforeSize = enemies.size();
@@ -49,14 +40,7 @@ void EnemyManager::Update(float dt) {
     
     if (beforeSize != afterSize) {
         std::cout << "Removed " << (beforeSize - afterSize) << " dead regular enemies" << std::endl;
-        
-        // Rebuild the ID to index map after removing enemies
-        enemyIdToIndex.clear();
-        for (size_t i = 0; i < enemies.size(); i++) {
-            if (enemies[i].enemy) {
-                enemyIdToIndex[enemies[i].GetID()] = i;
-            }
-        }
+        removedEnemies = true;
     }
     
     // Remove dead triangle enemies
@@ -67,7 +51,128 @@ void EnemyManager::Update(float dt) {
     
     if (triangleBeforeSize != triangleAfterSize) {
         std::cout << "Removed " << (triangleBeforeSize - triangleAfterSize) << " dead triangle enemies" << std::endl;
+        removedEnemies = true;
     }
+    
+    // If we removed enemies, rebuild the ID to index map and update spatial grid
+    if (removedEnemies) {
+        enemyIdToIndex.clear();
+        for (size_t i = 0; i < enemies.size(); i++) {
+            if (enemies[i].enemy) {
+                enemyIdToIndex[enemies[i].GetID()] = i;
+            }
+        }
+        
+        // Force update spatial grid
+        UpdateSpatialGrid();
+        timeSinceLastGridUpdate = 0.0f;
+    }
+    
+    // Update the spatial grid periodically to handle moving enemies
+    // (but not every frame - only when needed)
+    if (timeSinceLastGridUpdate > 0.5f) { // Update every half second
+        UpdateSpatialGrid();
+        timeSinceLastGridUpdate = 0.0f;
+    }
+    
+    // Handle wave state
+    if (!waveActive) {
+        // If no wave is active, count down to next wave
+        waveTimer -= dt;
+        if (waveTimer <= 0.0f) {
+            StartNextWave();
+        }
+        return;
+    }
+    
+    // Update position sync timer and sync if needed
+    enemySyncTimer -= dt;
+    if (enemySyncTimer <= 0.0f) {
+        SyncEnemyPositions();
+        enemySyncTimer = ENEMY_SYNC_INTERVAL;
+    }
+    
+    // Update full sync timer for both enemy types
+    fullSyncTimer -= dt;
+    if (fullSyncTimer <= 0.0f) {
+        SyncFullEnemyList();
+        fullSyncTimer = FULL_SYNC_INTERVAL;
+    }
+    
+    // Collect nearest player positions for each enemy in advance
+    // to avoid recalculating for each enemy
+    std::unordered_map<EnemyBase*, sf::Vector2f> enemyTargetPositions;
+    
+    // Process in batches for better cache locality and to allow frame splitting
+    const size_t BATCH_SIZE = 50; // Process up to 50 enemies per frame to avoid stutter
+    static size_t lastProcessedRegular = 0;
+    static size_t lastProcessedTriangle = 0;
+    
+    // Regular enemy batch update
+    size_t endIndex = std::min(lastProcessedRegular + BATCH_SIZE, enemies.size());
+    for (size_t i = lastProcessedRegular; i < endIndex; i++) {
+        auto& entry = enemies[i];
+        if (entry.enemy && entry.enemy->IsAlive()) {
+            // Find or calculate target position
+            sf::Vector2f targetPos;
+            auto it = enemyTargetPositions.find(entry.enemy.get());
+            if (it != enemyTargetPositions.end()) {
+                targetPos = it->second;
+            } else {
+                targetPos = FindClosestPlayerPosition(entry.GetPosition());
+                enemyTargetPositions[entry.enemy.get()] = targetPos;
+            }
+            
+            // Get the old position for spatial grid update
+            sf::Vector2f oldPos = entry.GetPosition();
+            
+            // Update the enemy
+            entry.enemy->Update(dt, targetPos);
+            
+            // Update the enemy's position in the spatial grid if it moved significantly
+            sf::Vector2f newPos = entry.GetPosition();
+            sf::Vector2f delta = newPos - oldPos;
+            float moveDist = delta.x * delta.x + delta.y * delta.y;
+            if (moveDist > 25.0f) { // Only update if moved more than 5 units
+                spatialGrid.UpdateEnemyPosition(entry.enemy.get(), oldPos);
+            }
+        }
+    }
+    
+    // Update lastProcessedRegular for next frame
+    lastProcessedRegular = endIndex;
+    if (lastProcessedRegular >= enemies.size()) {
+        lastProcessedRegular = 0;
+    }
+    
+    // Triangle enemy batch update
+    endIndex = std::min(lastProcessedTriangle + BATCH_SIZE, triangleEnemies.size());
+    for (size_t i = lastProcessedTriangle; i < endIndex; i++) {
+        auto& enemy = triangleEnemies[i];
+        if (enemy.IsAlive()) {
+            // Find or calculate target position
+            sf::Vector2f targetPos;
+            auto it = enemyTargetPositions.find(&enemy);
+            if (it != enemyTargetPositions.end()) {
+                targetPos = it->second;
+            } else {
+                targetPos = FindClosestPlayerPosition(enemy.GetPosition());
+                enemyTargetPositions[&enemy] = targetPos;
+            }
+            
+            // Update the enemy
+            enemy.Update(dt, targetPos);
+        }
+    }
+    
+    // Update lastProcessedTriangle for next frame
+    lastProcessedTriangle = endIndex;
+    if (lastProcessedTriangle >= triangleEnemies.size()) {
+        lastProcessedTriangle = 0;
+    }
+    
+    // Check for collisions with players
+    CheckPlayerCollisions();
     
     // Check if all enemies are dead
     if (enemies.empty() && triangleEnemies.empty()) {
@@ -84,37 +189,12 @@ void EnemyManager::Update(float dt) {
             game->GetNetworkManager().BroadcastMessage(msg);
         }
         
-        return;
+        // Reset batch processing indices
+        lastProcessedRegular = 0;
+        lastProcessedTriangle = 0;
     }
-    
-    // Update each regular enemy
-    for (auto& entry : enemies) {
-        if (entry.enemy && entry.enemy->IsAlive()) {
-            // Find closest player position
-            sf::Vector2f targetPos = FindClosestPlayerPosition(entry.GetPosition());
-            entry.enemy->Update(dt, targetPos);
-        }
-    }
-    
-    // Update each triangle enemy
-    for (auto& enemy : triangleEnemies) {
-        if (enemy.IsAlive()) {
-            // Find closest player position
-            sf::Vector2f targetPos = FindClosestPlayerPosition(enemy.GetPosition());
-            enemy.Update(dt, targetPos);
-        }
-    }
-    
-    // Update position sync timer and sync if needed
-    enemySyncTimer -= dt;
-    if (enemySyncTimer <= 0.0f) {
-        SyncEnemyPositions();
-        enemySyncTimer = ENEMY_SYNC_INTERVAL;
-    }
-    
-    // Check for collisions with players
-    CheckPlayerCollisions();
 }
+
 
 void EnemyManager::Render(sf::RenderWindow& window) {
     // Only render enemies that are in view
@@ -497,116 +577,95 @@ void EnemyManager::RemoveEnemy(int id) {
 }
 
 void EnemyManager::CheckBulletCollisions(const std::vector<Bullet>& bullets) {
-    // Create a vector to track which bullets need to be removed
+    // Track which bullets hit something
     std::vector<size_t> bulletsToRemove;
+    bulletsToRemove.reserve(bullets.size() / 4); // Reserve reasonable capacity
     
-    // Check regular enemies
+    // Check if we're the host
+    CSteamID localSteamID = SteamUser()->GetSteamID();
+    CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+    bool isHost = (localSteamID == hostID);
+    
+    // Process each bullet
     for (size_t bulletIndex = 0; bulletIndex < bullets.size(); bulletIndex++) {
         const Bullet& bullet = bullets[bulletIndex];
+        sf::Vector2f bulletPos = bullet.GetPosition();
+        float bulletRadius = 4.0f; // Bullet radius
+        
+        // Use spatial grid to get only nearby enemies
+        std::vector<EnemyBase*> nearbyEnemies = spatialGrid.GetNearbyEnemies(bulletPos, bulletRadius + ENEMY_SIZE);
+        
         bool bulletHit = false;
         
-        // Check against regular enemies
-        for (auto& entry : enemies) {
-            if (entry.enemy && entry.enemy->IsAlive()) {
-                // Get the actual enemy instance based on type
-                bool collided = false;
-                
-                if (entry.type == EnemyType::Rectangle) {
-                    Enemy* rectEnemy = static_cast<Enemy*>(entry.enemy.get());
-                    collided = rectEnemy->CheckBulletCollision(bullet.GetPosition(), 4.0f);
-                } else if (entry.type == EnemyType::Triangle) {
-                    TriangleEnemy* triEnemy = static_cast<TriangleEnemy*>(entry.enemy.get());
-                    collided = triEnemy->CheckBulletCollision(bullet.GetPosition(), 4.0f);
-                }
-                
-                if (collided) {
-                    // Enemy hit by bullet
-                    CSteamID localSteamID = SteamUser()->GetSteamID();
-                    CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
-                    bool isHost = (localSteamID == hostID);
+        // Check bullet against nearby regular enemies first
+        for (EnemyBase* baseEnemy : nearbyEnemies) {
+            // Skip already dead enemies
+            if (!baseEnemy->IsAlive()) continue;
+            
+            // Determine enemy type and check collision
+            bool collided = false;
+            int enemyId = baseEnemy->GetID();
+            EnemyType enemyType;
+            
+            // Check if it's a triangle enemy (IDs >= 10000)
+            if (enemyId >= 10000) {
+                TriangleEnemy* triEnemy = static_cast<TriangleEnemy*>(baseEnemy);
+                collided = triEnemy->CheckBulletCollision(bulletPos, bulletRadius);
+                enemyType = EnemyType::Triangle;
+            } else {
+                Enemy* rectEnemy = static_cast<Enemy*>(baseEnemy);
+                collided = rectEnemy->CheckBulletCollision(bulletPos, bulletRadius);
+                enemyType = EnemyType::Rectangle;
+            }
+            
+            if (collided) {
+                // Handle collision
+                if (isHost) {
+                    // Host applies actual damage
+                    bool killed = baseEnemy->TakeDamage(20); // Bullet damage
+                    baseEnemy->UpdateVisuals();
                     
-                    if (isHost) {
-                        // ONLY THE HOST APPLIES ACTUAL DAMAGE
-                        bool killed = entry.enemy->TakeDamage(20); // Each bullet does 20 damage
-                        entry.enemy->UpdateVisuals(); // Force update visuals after damage
-                        
-                        // Host immediately broadcasts hit message
-                        std::string msg = MessageHandler::FormatEnemyHitMessage(
-                            entry.GetID(), 20, killed, bullet.GetShooterID(), 
-                            static_cast<ParsedMessage::EnemyType>(static_cast<int>(entry.type)));
-                        game->GetNetworkManager().BroadcastMessage(msg);
-                        
-                        // If enemy was killed, handle rewards
-                        if (killed) {
-                            RewardShooter(bullet.GetShooterID(), entry.type);
-                        }
-                    } else {
-                        // CLIENT ONLY APPLIES VISUAL EFFECT - NO ACTUAL DAMAGE
-                        // But we can temporarily update visuals for feedback
-                        entry.enemy->UpdateVisuals();
-                        
-                        // Send hit message to host
-                        std::string msg = MessageHandler::FormatEnemyHitMessage(
-                            entry.GetID(), 20, false, bullet.GetShooterID(), 
-                            static_cast<ParsedMessage::EnemyType>(static_cast<int>(entry.type)));
-                        game->GetNetworkManager().SendMessage(hostID, msg);
+                    // Send hit message with appropriate type
+                    ParsedMessage::EnemyType msgType = 
+                        (enemyType == EnemyType::Triangle) ? 
+                        ParsedMessage::EnemyType::Triangle : 
+                        ParsedMessage::EnemyType::Regular;
+                    
+                    std::string msg = MessageHandler::FormatEnemyHitMessage(
+                        enemyId, 20, killed, bullet.GetShooterID(), msgType);
+                    game->GetNetworkManager().BroadcastMessage(msg);
+                    
+                    // If enemy was killed, handle rewards
+                    if (killed) {
+                        RewardShooter(bullet.GetShooterID(), enemyType);
                     }
+                } else {
+                    // Client only applies visual feedback
+                    baseEnemy->UpdateVisuals();
                     
-                    // Mark bullet for immediate removal
-                    bulletsToRemove.push_back(bulletIndex);
-                    bulletHit = true;
-                    break; // A bullet can only hit one enemy
+                    // Send hit message to host
+                    ParsedMessage::EnemyType msgType = 
+                        (enemyType == EnemyType::Triangle) ? 
+                        ParsedMessage::EnemyType::Triangle : 
+                        ParsedMessage::EnemyType::Regular;
+                    
+                    std::string msg = MessageHandler::FormatEnemyHitMessage(
+                        enemyId, 20, false, bullet.GetShooterID(), msgType);
+                    game->GetNetworkManager().SendMessage(hostID, msg);
                 }
+                
+                // Mark bullet for removal
+                bulletsToRemove.push_back(bulletIndex);
+                bulletHit = true;
+                break; // A bullet can only hit one enemy
             }
         }
         
-        if (bulletHit) continue; // Skip to next bullet
-        
-        // If bullet didn't hit a regular enemy, check triangle enemies
-        for (auto& enemy : triangleEnemies) {
-            if (enemy.IsAlive()) {
-                // Use the triangle-specific collision detection
-                if (enemy.CheckBulletCollision(bullet.GetPosition(), 4.0f)) { // 4.0f is bullet radius
-                    // Triangle enemy hit by bullet
-                    CSteamID localSteamID = SteamUser()->GetSteamID();
-                    CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
-                    bool isHost = (localSteamID == hostID);
-                    
-                    if (isHost) {
-                        // ONLY THE HOST APPLIES ACTUAL DAMAGE
-                        bool killed = enemy.TakeDamage(20); // Each bullet does 20 damage
-                        enemy.UpdateVisuals(); // Force update visuals
-                        
-                        // Host immediately broadcasts hit message
-                        std::string msg = MessageHandler::FormatEnemyHitMessage(
-                            enemy.GetID(), 20, killed, bullet.GetShooterID(), ParsedMessage::EnemyType::Triangle);
-                        game->GetNetworkManager().BroadcastMessage(msg);
-                        
-                        // If enemy was killed, handle rewards
-                        if (killed) {
-                            RewardShooter(bullet.GetShooterID(), EnemyType::Triangle);
-                        }
-                    } else {
-                        // CLIENT ONLY APPLIES VISUAL EFFECT - NO DAMAGE
-                        // But we can temporarily update visuals for feedback
-                        enemy.UpdateVisuals();
-                        
-                        // Send hit message to host
-                        std::string msg = MessageHandler::FormatEnemyHitMessage(
-                            enemy.GetID(), 20, false, bullet.GetShooterID(), ParsedMessage::EnemyType::Triangle);
-                        game->GetNetworkManager().SendMessage(hostID, msg);
-                    }
-                    
-                    // Mark bullet for immediate removal
-                    bulletsToRemove.push_back(bulletIndex);
-                    bulletHit = true;
-                    break; // A bullet can only hit one enemy
-                }
-            }
-        }
+        // If bullet already hit something, skip to next bullet
+        if (bulletHit) continue;
     }
     
-    // Immediately remove bullets that hit enemies
+    // Remove bullets that hit enemies
     if (!bulletsToRemove.empty()) {
         playerManager->RemoveBullets(bulletsToRemove);
     }
@@ -615,6 +674,13 @@ void EnemyManager::CheckBulletCollisions(const std::vector<Bullet>& bullets) {
 void EnemyManager::CheckPlayerCollisions() {
     auto& players = playerManager->GetPlayers();
     
+    // Check if we're the host
+    CSteamID localSteamID = SteamUser()->GetSteamID();
+    CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+    bool isHost = (localSteamID == hostID);
+    std::string localSteamIDStr = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
+    
+    // Process each player
     for (auto& playerPair : players) {
         const std::string& playerID = playerPair.first;
         RemotePlayer& remotePlayer = playerPair.second;
@@ -623,113 +689,70 @@ void EnemyManager::CheckPlayerCollisions() {
         if (remotePlayer.player.IsDead()) continue;
         
         sf::Vector2f playerPos = remotePlayer.player.GetPosition();
+        const sf::RectangleShape& playerShape = remotePlayer.player.GetShape();
         
-        // Check collisions with regular enemies
-        for (auto& entry : enemies) {
-            if (!(entry.enemy && entry.enemy->IsAlive())) continue;
+        // Use spatial grid to get only nearby enemies
+        float collisionRadius = ENEMY_SIZE * 2; // Conservative estimate
+        std::vector<EnemyBase*> nearbyEnemies = spatialGrid.GetNearbyEnemies(playerPos, collisionRadius);
+        
+        // Check collisions with nearby enemies
+        for (EnemyBase* baseEnemy : nearbyEnemies) {
+            if (!baseEnemy->IsAlive()) continue;
             
+            int enemyId = baseEnemy->GetID();
             bool collision = false;
-            if (entry.type == EnemyType::Rectangle) {
-                Enemy* rectEnemy = static_cast<Enemy*>(entry.enemy.get());
-                collision = rectEnemy->CheckCollision(remotePlayer.player.GetShape());
-            } else if (entry.type == EnemyType::Triangle) {
-                TriangleEnemy* triEnemy = static_cast<TriangleEnemy*>(entry.enemy.get());
-                collision = triEnemy->CheckCollision(remotePlayer.player.GetShape());
+            int damage = 0;
+            EnemyType enemyType;
+            ParsedMessage::EnemyType msgType;
+            
+            // Determine enemy type and check collision
+            if (enemyId >= 10000) { // Triangle enemy
+                TriangleEnemy* triEnemy = static_cast<TriangleEnemy*>(baseEnemy);
+                collision = triEnemy->CheckCollision(playerShape);
+                damage = TRIANGLE_DAMAGE;
+                enemyType = EnemyType::Triangle;
+                msgType = ParsedMessage::EnemyType::Triangle;
+            } else { // Regular enemy
+                Enemy* rectEnemy = static_cast<Enemy*>(baseEnemy);
+                collision = rectEnemy->CheckCollision(playerShape);
+                damage = 20; // Default damage
+                enemyType = EnemyType::Rectangle;
+                msgType = ParsedMessage::EnemyType::Regular;
             }
             
             if (collision) {
-                // Determine damage based on enemy type
-                int damage = (entry.type == EnemyType::Triangle) ? 
-                    TRIANGLE_DAMAGE : 20; // Default damage for rectangle enemies
-                
                 // Apply damage to player
                 remotePlayer.player.TakeDamage(damage);
                 
-                // Check if we're the host
-                CSteamID localSteamID = SteamUser()->GetSteamID();
-                CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
-                bool isHost = (localSteamID == hostID);
-                
-                // Only host should actually kill the enemy and send messages
+                // Only host should kill the enemy and send messages
                 if (isHost) {
                     // Kill enemy on collision
-                    entry.enemy->TakeDamage(entry.enemy->GetHealth());
+                    baseEnemy->TakeDamage(baseEnemy->GetHealth());
                     
-                    // Remove from spatial grid if in it
-                    spatialGrid.RemoveEnemy(entry.enemy.get());
+                    // Remove from spatial grid
+                    spatialGrid.RemoveEnemy(baseEnemy);
                     
                     // Send enemy death message - broadcast twice for reliability
                     std::string deathMsg = MessageHandler::FormatEnemyDeathMessage(
-                        entry.GetID(), "", false, 
-                        static_cast<ParsedMessage::EnemyType>(static_cast<int>(entry.type)));
+                        enemyId, "", false, msgType);
                     game->GetNetworkManager().BroadcastMessage(deathMsg);
                     game->GetNetworkManager().BroadcastMessage(deathMsg); // Send twice
                     
                     // Also send player damage message
                     std::string damageMsg = MessageHandler::FormatPlayerDamageMessage(
-                        playerID, damage, entry.GetID());
+                        playerID, damage, enemyId);
                     game->GetNetworkManager().BroadcastMessage(damageMsg);
                 } else {
                     // For clients, don't kill the enemy locally - let host tell us
                     // Just show visual effect
-                    entry.enemy->UpdateVisuals();
+                    baseEnemy->UpdateVisuals();
                 }
                 
                 // If this is the local player, check if they died
-                std::string localSteamIDStr = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
                 if (playerID == localSteamIDStr && remotePlayer.player.IsDead()) {
                     // Set respawn timer
                     remotePlayer.respawnTimer = 3.0f;
-                    
                     std::cout << "[DEATH] Local player died from enemy collision" << std::endl;
-                }
-            }
-        }
-        
-        // Check collisions with triangle enemies
-        for (auto& enemy : triangleEnemies) {
-            if (!enemy.IsAlive()) continue;
-            
-            if (enemy.CheckCollision(remotePlayer.player.GetShape())) {
-                // Determine damage
-                int damage = TRIANGLE_DAMAGE;
-                
-                // Apply damage to player
-                remotePlayer.player.TakeDamage(damage);
-                
-                // Check if we're the host
-                CSteamID localSteamID = SteamUser()->GetSteamID();
-                CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
-                bool isHost = (localSteamID == hostID);
-                
-                // Only host should actually kill the enemy and send messages
-                if (isHost) {
-                    // Kill enemy on collision
-                    enemy.TakeDamage(enemy.GetHealth());
-                    
-                    // Send enemy death message - broadcast twice for reliability
-                    std::string deathMsg = MessageHandler::FormatEnemyDeathMessage(
-                        enemy.GetID(), "", false, ParsedMessage::EnemyType::Triangle);
-                    game->GetNetworkManager().BroadcastMessage(deathMsg);
-                    game->GetNetworkManager().BroadcastMessage(deathMsg); // Send twice
-                    
-                    // Also send player damage message
-                    std::string damageMsg = MessageHandler::FormatPlayerDamageMessage(
-                        playerID, damage, enemy.GetID());
-                    game->GetNetworkManager().BroadcastMessage(damageMsg);
-                } else {
-                    // For clients, don't kill the enemy locally - let host tell us
-                    // Just show visual effect
-                    enemy.UpdateVisuals();
-                }
-                
-                // If this is the local player, check if they died
-                std::string localSteamIDStr = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
-                if (playerID == localSteamIDStr && remotePlayer.player.IsDead()) {
-                    // Set respawn timer
-                    remotePlayer.respawnTimer = 3.0f;
-                    
-                    std::cout << "[DEATH] Local player died from triangle enemy collision" << std::endl;
                 }
             }
         }
@@ -882,57 +905,142 @@ void EnemyManager::SyncEnemyPositions() {
         return;
     }
     
-    // IMPORTANT: Split enemy updates into small batches to avoid packet size issues
-    const int BATCH_SIZE = 15; // Send only 15 enemies per message
+    // Use priority-based syncing - only sync enemies that:
+    // 1. Have moved significantly since last sync
+    // 2. Have changed health significantly
+    // 3. Are close to players (higher priority)
     
-    // Batch regular enemies
-    if (!enemies.empty()) {
-        auto regularEnemyData = GetRegularEnemyDataForSync();
+    // Calculate center of all players
+    sf::Vector2f playerCenter = GetPlayerCenterPosition();
+    
+    // Collect regular enemies that need syncing with priority data
+    std::vector<std::tuple<int, sf::Vector2f, int, float>> priorityEnemies; // id, pos, health, priority
+    
+    // Process regular enemies
+    for (auto& entry : enemies) {
+        if (!(entry.enemy && entry.enemy->IsAlive())) continue;
         
-        // Process regular enemies in small batches
-        for (size_t i = 0; i < regularEnemyData.size(); i += BATCH_SIZE) {
-            // Create a batch with at most BATCH_SIZE enemies
-            std::vector<std::tuple<int, sf::Vector2f, int>> batch;
-            size_t batchEnd = std::min(i + BATCH_SIZE, regularEnemyData.size());
+        sf::Vector2f currentPos = entry.GetPosition();
+        sf::Vector2f delta = currentPos - entry.lastSyncedPosition;
+        float moveDist = std::sqrt(delta.x * delta.x + delta.y * delta.y);
+        
+        // Calculate distance to player center (for priority)
+        float distToPlayers = std::sqrt(
+            std::pow(currentPos.x - playerCenter.x, 2) + 
+            std::pow(currentPos.y - playerCenter.y, 2)
+        );
+        
+        // Calculate priority (higher = more important to sync)
+        // Enemies that moved more and/or are closer to players get higher priority
+        float priority = (moveDist * 5.0f) + (1000.0f / (distToPlayers + 50.0f));
+        
+        // Only sync if priority is high enough (moved significantly or close to players)
+        if (priority > 0.5f) {
+            priorityEnemies.emplace_back(
+                entry.GetID(), 
+                currentPos, 
+                entry.GetHealth(),
+                priority
+            );
             
-            for (size_t j = i; j < batchEnd; j++) {
-                batch.push_back(regularEnemyData[j]);
-            }
-            
-            if (!batch.empty()) {
-                std::string batchMsg = MessageHandler::FormatEnemyPositionsMessage(batch);
-                game->GetNetworkManager().BroadcastMessage(batchMsg);
-                
-                // Add a very small delay between batches to avoid network congestion
-                sf::sleep(sf::milliseconds(5));
-            }
+            // Update last synced position
+            entry.lastSyncedPosition = currentPos;
         }
     }
     
-    // Batch triangle enemies with same approach
-    if (!triangleEnemies.empty()) {
-        auto triangleEnemyData = GetTriangleEnemyDataForSync();
-        
-        // Process triangle enemies in small batches
-        for (size_t i = 0; i < triangleEnemyData.size(); i += BATCH_SIZE) {
-            // Create a batch with at most BATCH_SIZE enemies
-            std::vector<std::tuple<int, sf::Vector2f, int>> batch;
-            size_t batchEnd = std::min(i + BATCH_SIZE, triangleEnemyData.size());
-            
-            for (size_t j = i; j < batchEnd; j++) {
-                batch.push_back(triangleEnemyData[j]);
-            }
-            
-            if (!batch.empty()) {
-                std::string triangleMsg = MessageHandler::FormatEnemyPositionsMessage(batch);
-                game->GetNetworkManager().BroadcastMessage(triangleMsg);
-                
-                // Add a very small delay between batches
-                sf::sleep(sf::milliseconds(5));
-            }
+    // Sort by priority (highest first)
+    std::sort(priorityEnemies.begin(), priorityEnemies.end(),
+        [](const auto& a, const auto& b) {
+            return std::get<3>(a) > std::get<3>(b);
         }
+    );
+    
+    // Limit number of enemies synced per frame to avoid network congestion
+    // Higher tick rate with fewer enemies per tick is better than low tick rate with many enemies
+    const int MAX_ENEMIES_PER_SYNC = 8;
+    if (priorityEnemies.size() > MAX_ENEMIES_PER_SYNC) {
+        priorityEnemies.resize(MAX_ENEMIES_PER_SYNC);
+    }
+    
+    // Convert to format needed for message
+    std::vector<std::tuple<int, sf::Vector2f, int>> syncData;
+    for (const auto& enemy : priorityEnemies) {
+        syncData.emplace_back(
+            std::get<0>(enemy),  // ID
+            std::get<1>(enemy),  // Position
+            std::get<2>(enemy)   // Health
+        );
+    }
+    
+    // Only send message if we have data to sync
+    if (!syncData.empty()) {
+        std::string batchMsg = MessageHandler::FormatEnemyPositionsMessage(syncData);
+        game->GetNetworkManager().BroadcastMessage(batchMsg);
+    }
+    
+    // Do the same for triangle enemies, reusing the vectors
+    priorityEnemies.clear();
+    syncData.clear();
+    
+    // Process triangle enemies
+    for (auto& enemy : triangleEnemies) {
+        if (!enemy.IsAlive()) continue;
+        
+        sf::Vector2f currentPos = enemy.GetPosition();
+        sf::Vector2f lastPos = enemy.GetLastPosition();
+        sf::Vector2f delta = currentPos - lastPos;
+        float moveDist = std::sqrt(delta.x * delta.x + delta.y * delta.y);
+        
+        // Calculate distance to player center (for priority)
+        float distToPlayers = std::sqrt(
+            std::pow(currentPos.x - playerCenter.x, 2) + 
+            std::pow(currentPos.y - playerCenter.y, 2)
+        );
+        
+        // Calculate priority
+        float priority = (moveDist * 5.0f) + (1000.0f / (distToPlayers + 50.0f));
+        
+        if (priority > 0.5f) {
+            priorityEnemies.emplace_back(
+                enemy.GetID(), 
+                currentPos, 
+                enemy.GetHealth(),
+                priority
+            );
+            
+            // Update last position
+            enemy.SetLastPosition(currentPos);
+        }
+    }
+    
+    // Sort by priority
+    std::sort(priorityEnemies.begin(), priorityEnemies.end(),
+        [](const auto& a, const auto& b) {
+            return std::get<3>(a) > std::get<3>(b);
+        }
+    );
+    
+    // Limit number of enemies synced per frame
+    if (priorityEnemies.size() > MAX_ENEMIES_PER_SYNC) {
+        priorityEnemies.resize(MAX_ENEMIES_PER_SYNC);
+    }
+    
+    // Convert to format needed for message
+    for (const auto& enemy : priorityEnemies) {
+        syncData.emplace_back(
+            std::get<0>(enemy),  // ID
+            std::get<1>(enemy),  // Position
+            std::get<2>(enemy)   // Health
+        );
+    }
+    
+    // Only send message if we have data to sync
+    if (!syncData.empty()) {
+        std::string batchMsg = MessageHandler::FormatEnemyPositionsMessage(syncData);
+        game->GetNetworkManager().BroadcastMessage(batchMsg);
     }
 }
+
 
 TriangleEnemy* EnemyManager::GetTriangleEnemy(int id) {
     for (auto& enemy : triangleEnemies) {
@@ -1160,8 +1268,6 @@ void EnemyManager::SyncFullEnemyList() {
     // Limit full syncs to once every 2 seconds max to prevent flooding
     float timeSinceLast = std::chrono::duration<float>(now - lastFullSyncTime).count();
     if (timeSinceLast < 2.0f) {
-        std::cout << "[HOST] Skipping full sync - too soon after last sync (" 
-                 << timeSinceLast << "s)\n";
         return;
     }
     
@@ -1176,114 +1282,153 @@ void EnemyManager::SyncFullEnemyList() {
         return;
     }
     
-    // Use smaller batch sizes for reliability
-    const int BATCH_SIZE = 4; // Smaller batch size for full sync
+    // Efficient approach: Use small batch sizes and send more frequently
+    const int BATCH_SIZE = 8; // Smaller batch size for full sync
     
-    // Get regular enemy data with position and health
-    std::vector<std::tuple<int, sf::Vector2f, int>> regularEnemyData;
+    // Calculate center of all players for prioritization
+    sf::Vector2f playerCenter = GetPlayerCenterPosition();
+    
+    // Collect all live enemies with priority info
+    std::vector<std::tuple<int, sf::Vector2f, int, float>> allEnemiesWithPriority;
+    
+    // Add regular enemies
     for (const auto& entry : enemies) {
         if (entry.enemy && entry.enemy->IsAlive()) {
-            regularEnemyData.emplace_back(
+            sf::Vector2f pos = entry.GetPosition();
+            
+            // Calculate distance to players
+            float dx = pos.x - playerCenter.x;
+            float dy = pos.y - playerCenter.y;
+            float distToPlayers = std::sqrt(dx * dx + dy * dy);
+            
+            // Priority based on distance (closer = higher priority)
+            float priority = 1000.0f / (distToPlayers + 10.0f);
+            
+            allEnemiesWithPriority.emplace_back(
                 entry.GetID(),
-                entry.GetPosition(),
-                entry.GetHealth()
+                pos,
+                entry.GetHealth(),
+                priority
             );
         }
     }
     
-    // Send regular enemy batch spawn messages in small batches
-    if (!regularEnemyData.empty()) {
-        // First send validation list with just IDs (smaller packet)
-        std::vector<int> regularIds;
-        for (const auto& data : regularEnemyData) {
-            regularIds.push_back(std::get<0>(data));
-        }
-        
-        std::string validationMsg = MessageHandler::FormatEnemyValidationMessage(regularIds);
-        game->GetNetworkManager().BroadcastMessage(validationMsg);
-        
-        // Small delay to ensure validation message is processed first
-        sf::sleep(sf::milliseconds(20));
-        
-        // Now send batches of enemy data - but only if there aren't too many
-        // For large numbers, only send some of them to avoid flooding
-        size_t maxEnemies = std::min(regularEnemyData.size(), static_cast<size_t>(20));
-        
-        for (size_t i = 0; i < maxEnemies; i += BATCH_SIZE) {
-            std::vector<std::tuple<int, sf::Vector2f, int>> batch;
-            size_t batchEnd = std::min(i + BATCH_SIZE, maxEnemies);
-            
-            for (size_t j = i; j < batchEnd; j++) {
-                batch.push_back(regularEnemyData[j]);
-            }
-            
-            std::string regularMsg = MessageHandler::FormatEnemyBatchSpawnMessage(
-                batch, ParsedMessage::EnemyType::Regular);
-                
-            game->GetNetworkManager().BroadcastMessage(regularMsg);
-            
-            // Add smaller delay between batches
-            sf::sleep(sf::milliseconds(10));
-        }
-        
-        std::cout << "[HOST] Synced " << maxEnemies << " of " << regularEnemyData.size() 
-                 << " regular enemies in batches of " << BATCH_SIZE << std::endl;
-    } else {
-        std::cout << "[HOST] No regular enemies to sync in full list" << std::endl;
-    }
-    
-    // Small delay between regular and triangle enemy batches
-    sf::sleep(sf::milliseconds(20));
-    
-    // Get triangle enemy data with position and health
-    std::vector<std::tuple<int, sf::Vector2f, int>> triangleEnemyData;
+    // Add triangle enemies
     for (const auto& enemy : triangleEnemies) {
         if (enemy.IsAlive()) {
-            triangleEnemyData.emplace_back(
+            sf::Vector2f pos = enemy.GetPosition();
+            
+            // Calculate distance to players
+            float dx = pos.x - playerCenter.x;
+            float dy = pos.y - playerCenter.y;
+            float distToPlayers = std::sqrt(dx * dx + dy * dy);
+            
+            // Priority based on distance (closer = higher priority)
+            float priority = 1000.0f / (distToPlayers + 10.0f);
+            
+            allEnemiesWithPriority.emplace_back(
                 enemy.GetID(),
-                enemy.GetPosition(),
-                enemy.GetHealth()
+                pos,
+                enemy.GetHealth(),
+                priority
             );
         }
     }
     
-    // Send triangle enemy batch spawn messages in small batches
-    if (!triangleEnemyData.empty()) {
-        // First send validation list with just IDs (smaller packet)
-        std::vector<int> triangleIds;
-        for (const auto& data : triangleEnemyData) {
-            triangleIds.push_back(std::get<0>(data));
+    // Sort by priority (highest first)
+    std::sort(allEnemiesWithPriority.begin(), allEnemiesWithPriority.end(),
+        [](const auto& a, const auto& b) {
+            return std::get<3>(a) > std::get<3>(b);
         }
-        
+    );
+    
+    // First, send validation lists for both enemy types
+    std::vector<int> regularIds;
+    std::vector<int> triangleIds;
+    
+    for (const auto& enemyData : allEnemiesWithPriority) {
+        int id = std::get<0>(enemyData);
+        if (id >= 10000) {
+            triangleIds.push_back(id);
+        } else {
+            regularIds.push_back(id);
+        }
+    }
+    
+    // Send validation messages
+    if (!regularIds.empty()) {
+        std::string validationMsg = MessageHandler::FormatEnemyValidationMessage(regularIds);
+        game->GetNetworkManager().BroadcastMessage(validationMsg);
+    }
+    
+    if (!triangleIds.empty()) {
         std::string validationMsg = MessageHandler::FormatEnemyValidationMessage(triangleIds);
         game->GetNetworkManager().BroadcastMessage(validationMsg);
-        
-        // Small delay to ensure validation message is processed first
-        sf::sleep(sf::milliseconds(20));
-        
-        // Now send batches of triangle enemy data - but only if there aren't too many
-        // For large numbers, only send some of them to avoid flooding
-        size_t maxEnemies = std::min(triangleEnemyData.size(), static_cast<size_t>(20));
-        
-        for (size_t i = 0; i < maxEnemies; i += BATCH_SIZE) {
-            std::vector<std::tuple<int, sf::Vector2f, int>> batch;
-            size_t batchEnd = std::min(i + BATCH_SIZE, maxEnemies);
-            
-            for (size_t j = i; j < batchEnd; j++) {
-                batch.push_back(triangleEnemyData[j]);
-            }
-            
-            std::string triangleMsg = MessageHandler::FormatEnemyBatchSpawnMessage(
-                batch, ParsedMessage::EnemyType::Triangle);
-            game->GetNetworkManager().BroadcastMessage(triangleMsg);
-            
-            // Add smaller delay between batches
-            sf::sleep(sf::milliseconds(10));
-        }
-        
-        std::cout << "[HOST] Synced " << maxEnemies << " of " << triangleEnemyData.size() 
-                 << " triangle enemies in batches of " << BATCH_SIZE << std::endl;
     }
+    
+    // Small delay to ensure validation messages are processed first
+    sf::sleep(sf::milliseconds(20));
+    
+    // Limit to top N highest priority enemies
+    const size_t MAX_ENEMIES_TO_SYNC = 50;
+    if (allEnemiesWithPriority.size() > MAX_ENEMIES_TO_SYNC) {
+        allEnemiesWithPriority.resize(MAX_ENEMIES_TO_SYNC);
+    }
+    
+    // Process enemies in small batches, separating by type
+    std::vector<std::tuple<int, sf::Vector2f, int>> regularBatch;
+    std::vector<std::tuple<int, sf::Vector2f, int>> triangleBatch;
+    
+    for (const auto& enemyData : allEnemiesWithPriority) {
+        int id = std::get<0>(enemyData);
+        sf::Vector2f pos = std::get<1>(enemyData);
+        int health = std::get<2>(enemyData);
+        
+        if (id >= 10000) {
+            // Triangle enemy
+            triangleBatch.emplace_back(id, pos, health);
+            
+            // Send batch if full
+            if (triangleBatch.size() >= BATCH_SIZE) {
+                std::string triangleMsg = MessageHandler::FormatEnemyBatchSpawnMessage(
+                    triangleBatch, ParsedMessage::EnemyType::Triangle);
+                game->GetNetworkManager().BroadcastMessage(triangleMsg);
+                
+                // Clear batch and add delay
+                triangleBatch.clear();
+                sf::sleep(sf::milliseconds(10));
+            }
+        } else {
+            // Regular enemy
+            regularBatch.emplace_back(id, pos, health);
+            
+            // Send batch if full
+            if (regularBatch.size() >= BATCH_SIZE) {
+                std::string regularMsg = MessageHandler::FormatEnemyBatchSpawnMessage(
+                    regularBatch, ParsedMessage::EnemyType::Regular);
+                game->GetNetworkManager().BroadcastMessage(regularMsg);
+                
+                // Clear batch and add delay
+                regularBatch.clear();
+                sf::sleep(sf::milliseconds(10));
+            }
+        }
+    }
+    
+    // Send any remaining enemies in partial batches
+    if (!triangleBatch.empty()) {
+        std::string triangleMsg = MessageHandler::FormatEnemyBatchSpawnMessage(
+            triangleBatch, ParsedMessage::EnemyType::Triangle);
+        game->GetNetworkManager().BroadcastMessage(triangleMsg);
+    }
+    
+    if (!regularBatch.empty()) {
+        std::string regularMsg = MessageHandler::FormatEnemyBatchSpawnMessage(
+            regularBatch, ParsedMessage::EnemyType::Regular);
+        game->GetNetworkManager().BroadcastMessage(regularMsg);
+    }
+    
+    std::cout << "[HOST] Completed full enemy sync with priority-based selection" << std::endl;
 }
 
 void EnemyManager::ValidateEnemyList(const std::vector<int>& validIds) {

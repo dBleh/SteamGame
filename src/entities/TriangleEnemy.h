@@ -42,14 +42,14 @@ public:
     
     // Money reward for killing this enemy
     static constexpr int GetKillReward() { return TRIANGLE_KILL_REWARD; }
-    
+    sf::Vector2f GetLastPosition() const { return lastPosition; }
+    void SetLastPosition(const sf::Vector2f& pos) { lastPosition = pos; }
 private:
     sf::ConvexShape shape; // Triangle shape
     sf::Vector2f direction; // Cached direction vector
     sf::Vector2f lastPosition; // For delta calculations
     
     // Constants for this enemy type
-    static constexpr float TRIANGLE_SIZE = 15.f;
     
     // Initialize triangle shape
     void InitializeShape(const sf::Vector2f& position);
