@@ -356,7 +356,15 @@ void LobbyState::ProcessEvents(const sf::Event& event) {
         mouseHeld = false;
     }
 }
-
+LobbyState::~LobbyState() {
+    // Make sure to destroy in the correct order to avoid crashes
+    hostNetwork.reset();
+    clientNetwork.reset();
+    playerRenderer.reset();
+    playerManager.reset();
+    
+    std::cout << "[LOBBY] Lobby state destroyed and resources cleaned up" << std::endl;
+}
 void LobbyState::Update(float dt) {
     // Update HUD animations
     game->GetHUD().update(game->GetWindow(), GameState::Lobby, dt);

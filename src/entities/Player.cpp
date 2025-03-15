@@ -19,21 +19,11 @@ Player::Player(const sf::Vector2f& startPosition, const sf::Color& color)
 // that properly uses InputManager instead of hardcoded keys
 
 void Player::Update(float dt) {
-    // This method should be removed or updated to use the input manager
-    // Currently it uses hardcoded WASD keys which bypass your input system
-    sf::Vector2f movement(0.f, 0.f);
+    // This method is being replaced with the InputManager version
+    // We'll forward to a default implementation that doesn't move
+    // to prevent crashes when called without proper input handling
     
-    if (sf::Keyboard::isKeyPressed(sf::Keyboard::W))
-        movement.y -= movementSpeed * dt;
-    if (sf::Keyboard::isKeyPressed(sf::Keyboard::S))
-        movement.y += movementSpeed * dt;
-    if (sf::Keyboard::isKeyPressed(sf::Keyboard::A))
-        movement.x -= movementSpeed * dt;
-    if (sf::Keyboard::isKeyPressed(sf::Keyboard::D))
-        movement.x += movementSpeed * dt;
-    
-    shape.move(movement);
-
+    // Only handle cooldowns
     if (shootCooldown > 0.f) {
         shootCooldown -= dt;
     }

@@ -125,6 +125,23 @@ void Game::Run() {
 }
 
 void Game::SetCurrentState(GameState newState) {
+    // Clean up resources when leaving a lobby state
+    if ((currentState == GameState::Lobby || currentState == GameState::Playing) && 
+        newState == GameState::MainMenu && inLobby) {
+        // Leave the Steam lobby
+        SteamMatchmaking()->LeaveLobby(currentLobby);
+        
+        // Reset lobby state
+        inLobby = false;
+        currentLobby = k_steamIDNil;
+        
+        // Also reset the NetworkManager state
+        networkManager->ResetLobbyState();
+        
+        std::cout << "[GAME] Left lobby and reset lobby state" << std::endl;
+    }
+    
+    // Set the new state
     currentState = newState;
 }
 

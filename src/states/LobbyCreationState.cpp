@@ -4,6 +4,9 @@
 #include <iostream>
 
 LobbyCreationState::LobbyCreationState(Game* game) : State(game) {
+    // Reset any previous lobby creation state
+    game->GetLobbyNameInput().clear();
+    
     // Use fixed dimensions based on BASE_WIDTH and BASE_HEIGHT
     float centerX = BASE_WIDTH / 2.0f;
     
@@ -111,6 +114,9 @@ LobbyCreationState::LobbyCreationState(Game* game) : State(game) {
                              GameState::LobbyCreation, 
                              HUD::RenderMode::ScreenSpace, true,
                              "", "");
+    
+    // Initialize creation state flag
+    m_creationInProgress = false;
 }
 
 void LobbyCreationState::Update(float dt) {
@@ -153,6 +159,11 @@ void LobbyCreationState::Render() {
 }
 
 void LobbyCreationState::ProcessEvents(const sf::Event& event) {
+    // Ignore input events if lobby creation is already in progress
+    if (m_creationInProgress) {
+        return;
+    }
+    
     if (event.type == sf::Event::TextEntered) {
         if (event.text.unicode == '\r' || event.text.unicode == '\n') {
             if (!game->GetLobbyNameInput().empty()) {
@@ -202,10 +213,32 @@ void LobbyCreationState::ProcessEvent(const sf::Event& event) {
     ProcessEvents(event);
 }
 
+void LobbyCreationState::Enter() {
+    // Reset the creation state when entering this state
+    m_creationInProgress = false;
+    game->GetLobbyNameInput().clear();
+    game->GetHUD().updateText("inputField", "> " + game->GetLobbyNameInput());
+}
 
+void LobbyCreationState::Exit() {
+    // Clean up any pending operations when leaving this state
+    // The m_creationInProgress flag prevents race conditions with callbacks
+    if (m_creationInProgress) {
+        std::cout << "[LOBBY] Exiting LobbyCreationState while creation was in progress.\n";
+    }
+}
 
 void LobbyCreationState::CreateLobby(const std::string& lobbyName) {
+    // Prevent multiple creation attempts
+    if (m_creationInProgress) {
+        std::cout << "[LOBBY] Lobby creation already in progress, ignoring request.\n";
+        return;
+    }
+    
     std::cout << "[LOBBY] Lobby creation requested.\n";
+
+    // Set the flag to prevent multiple creation attempts
+    m_creationInProgress = true;
 
     // Update the lobby name input with the provided lobby name
     game->GetLobbyNameInput() = lobbyName;
@@ -214,6 +247,7 @@ void LobbyCreationState::CreateLobby(const std::string& lobbyName) {
     SteamAPICall_t call = SteamMatchmaking()->CreateLobby(k_ELobbyTypePublic, 10);
     if (call == k_uAPICallInvalid) {
         std::cout << "[LOBBY] CreateLobby call failed immediately.\n";
+        m_creationInProgress = false; // Reset the flag
         game->SetCurrentState(GameState::MainMenu);
     } else {
         std::cout << "[LOBBY] Lobby creation requested.\n";
@@ -225,6 +259,9 @@ void LobbyCreationState::CreateLobby(const std::string& lobbyName) {
 // onLobbyEnter: Handle actions when entering a newly created lobby
 //---------------------------------------------------------
 void LobbyCreationState::onLobbyEnter(CSteamID lobbyID) {
+    // Reset the creation flag
+    m_creationInProgress = false;
+    
     if (!SteamMatchmaking()) {
         std::cerr << "[ERROR] SteamMatchmaking interface not available!" << std::endl;
         game->SetCurrentState(GameState::MainMenu);
@@ -249,4 +286,11 @@ void LobbyCreationState::onLobbyEnter(CSteamID lobbyID) {
     // Log entry for debugging
     std::cout << "[LOBBY] Created and entered lobby " << lobbyID.ConvertToUint64() 
               << " as host" << std::endl;
+}
+
+// Handle failure of lobby creation
+void LobbyCreationState::onLobbyCreationFailed() {
+    std::cout << "[LOBBY] Lobby creation failed.\n";
+    m_creationInProgress = false;
+    game->SetCurrentState(GameState::MainMenu);
 }

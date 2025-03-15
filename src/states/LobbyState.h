@@ -19,6 +19,7 @@ class PlayerRenderer;
 class LobbyState : public State {
 public:
     LobbyState(Game* game);
+    ~LobbyState();
     bool IsFullyLoaded();
     void Update(float dt) override;
     void Render() override;
