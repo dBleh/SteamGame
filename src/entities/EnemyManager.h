@@ -147,7 +147,13 @@ private:
         
         EnemySyncPriority(int _id, const sf::Vector2f& _pos, int _health, float _priority, bool _isTriangle)
             : id(_id), position(_pos), health(_health), priority(_priority), isTriangle(_isTriangle) {}
+            
+        // Add comparison operator for sorting
+        bool operator<(const EnemySyncPriority& other) const {
+            return priority < other.priority;
+        }
     };
+    
     // Wave management
     int currentWave;
     float waveTimer;

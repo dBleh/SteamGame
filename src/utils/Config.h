@@ -41,8 +41,8 @@ constexpr int BASE_WIDTH = 1280;
 constexpr int BASE_HEIGHT = 720;
 
 // Network sync constants
-#define ENEMY_SYNC_INTERVAL 0.1f
-#define FULL_SYNC_INTERVAL 5.0f
+#define ENEMY_SYNC_INTERVAL 0.05f
+#define FULL_SYNC_INTERVAL 2.0f
 
 // Collision constants
 #define COLLISION_RADIUS 25.0f

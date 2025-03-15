@@ -1005,138 +1005,116 @@ void EnemyManager::SyncEnemyPositions() {
         return;
     }
     
-    // Use priority-based syncing - only sync enemies that:
-    // 1. Have moved significantly since last sync
-    // 2. Have changed health significantly
-    // 3. Are close to players (higher priority)
-    
     // Calculate center of all players
     sf::Vector2f playerCenter = GetPlayerCenterPosition();
     
-    // Collect regular enemies that need syncing with priority data
-    std::vector<std::tuple<int, sf::Vector2f, int, float>> priorityEnemies; // id, pos, health, priority
+    // Create a single combined list of enemy data with priority info
+    std::vector<EnemySyncPriority> allEnemiesWithPriority;
     
-    // Process regular enemies
+    // Add regular enemies
     for (auto& entry : enemies) {
-        if (!(entry.enemy && entry.enemy->IsAlive())) continue;
-        
-        sf::Vector2f currentPos = entry.GetPosition();
-        sf::Vector2f delta = currentPos - entry.lastSyncedPosition;
-        float moveDist = std::sqrt(delta.x * delta.x + delta.y * delta.y);
-        
-        // Calculate distance to player center (for priority)
-        float distToPlayers = std::sqrt(
-            std::pow(currentPos.x - playerCenter.x, 2) + 
-            std::pow(currentPos.y - playerCenter.y, 2)
-        );
-        
-        // Calculate priority (higher = more important to sync)
-        // Enemies that moved more and/or are closer to players get higher priority
-        float priority = (moveDist * 5.0f) + (1000.0f / (distToPlayers + 50.0f));
-        
-        // Only sync if priority is high enough (moved significantly or close to players)
-        if (priority > 0.5f) {
-            priorityEnemies.emplace_back(
-                entry.GetID(), 
-                currentPos, 
-                entry.GetHealth(),
-                priority
+        if (entry.enemy && entry.enemy->IsAlive()) {
+            sf::Vector2f currentPos = entry.GetPosition();
+            sf::Vector2f delta = currentPos - entry.lastSyncedPosition;
+            float moveDist = std::sqrt(delta.x * delta.x + delta.y * delta.y);
+            
+            // Calculate distance to player center
+            float distToPlayers = std::sqrt(
+                std::pow(currentPos.x - playerCenter.x, 2) + 
+                std::pow(currentPos.y - playerCenter.y, 2)
             );
             
-            // Update last synced position
-            entry.lastSyncedPosition = currentPos;
+            // New priority calculation:
+            // 1. Movement matters more (x6)
+            // 2. Being close to players matters more (1500 instead of 1000)
+            // 3. Lower threshold for update (0.3 instead of 0.5)
+            float priority = (moveDist * 6.0f) + (1500.0f / (distToPlayers + 50.0f));
+            
+            // Only prioritize if moved enough or close to players
+            if (priority > 0.3f || moveDist > 3.0f || distToPlayers < 300.0f) {
+                allEnemiesWithPriority.emplace_back(
+                    entry.GetID(),
+                    currentPos,
+                    entry.GetHealth(),
+                    priority,
+                    false  // not a triangle
+                );
+                
+                // Update last synced position
+                entry.lastSyncedPosition = currentPos;
+            }
+        }
+    }
+    
+    // Add triangle enemies
+    for (auto& enemy : triangleEnemies) {
+        if (enemy.IsAlive()) {
+            sf::Vector2f currentPos = enemy.GetPosition();
+            sf::Vector2f lastPos = enemy.GetLastPosition();
+            sf::Vector2f delta = currentPos - lastPos;
+            float moveDist = std::sqrt(delta.x * delta.x + delta.y * delta.y);
+            
+            // Calculate distance to player center
+            float distToPlayers = std::sqrt(
+                std::pow(currentPos.x - playerCenter.x, 2) + 
+                std::pow(currentPos.y - playerCenter.y, 2)
+            );
+            
+            // Same improved priority calculation
+            float priority = (moveDist * 6.0f) + (1500.0f / (distToPlayers + 50.0f));
+            
+            // Only prioritize if moved enough or close to players
+            if (priority > 0.3f || moveDist > 3.0f || distToPlayers < 300.0f) {
+                allEnemiesWithPriority.emplace_back(
+                    enemy.GetID(),
+                    currentPos,
+                    enemy.GetHealth(),
+                    priority,
+                    true  // is a triangle
+                );
+                
+                // Update last position
+                enemy.SetLastPosition(currentPos);
+            }
         }
     }
     
     // Sort by priority (highest first)
-    std::sort(priorityEnemies.begin(), priorityEnemies.end(),
+    std::sort(allEnemiesWithPriority.begin(), allEnemiesWithPriority.end(),
         [](const auto& a, const auto& b) {
-            return std::get<3>(a) > std::get<3>(b);
+            return a.priority > b.priority;
         }
     );
     
-    // Limit number of enemies synced per frame to avoid network congestion
-    // Higher tick rate with fewer enemies per tick is better than low tick rate with many enemies
-    const int MAX_ENEMIES_PER_SYNC = 8;
-    if (priorityEnemies.size() > MAX_ENEMIES_PER_SYNC) {
-        priorityEnemies.resize(MAX_ENEMIES_PER_SYNC);
+    // Increase the batch size for smoother updates
+    const int MAX_ENEMIES_PER_SYNC = 12; // Increased from 8
+    
+    // Limit number of enemies to send
+    if (allEnemiesWithPriority.size() > MAX_ENEMIES_PER_SYNC) {
+        allEnemiesWithPriority.resize(MAX_ENEMIES_PER_SYNC);
     }
     
-    // Convert to format needed for message
-    std::vector<std::tuple<int, sf::Vector2f, int>> syncData;
-    for (const auto& enemy : priorityEnemies) {
-        syncData.emplace_back(
-            std::get<0>(enemy),  // ID
-            std::get<1>(enemy),  // Position
-            std::get<2>(enemy)   // Health
-        );
+    // Split into separate regular and triangle lists
+    std::vector<std::tuple<int, sf::Vector2f, int>> regularData;
+    std::vector<std::tuple<int, sf::Vector2f, int>> triangleData;
+    
+    for (const auto& enemy : allEnemiesWithPriority) {
+        if (enemy.isTriangle) {
+            triangleData.emplace_back(enemy.id, enemy.position, enemy.health);
+        } else {
+            regularData.emplace_back(enemy.id, enemy.position, enemy.health);
+        }
     }
     
-    // Only send message if we have data to sync
-    if (!syncData.empty()) {
-        std::string batchMsg = MessageHandler::FormatEnemyPositionsMessage(syncData);
+    // Send regular enemy positions
+    if (!regularData.empty()) {
+        std::string batchMsg = MessageHandler::FormatEnemyPositionsMessage(regularData);
         game->GetNetworkManager().BroadcastMessage(batchMsg);
     }
     
-    // Do the same for triangle enemies, reusing the vectors
-    priorityEnemies.clear();
-    syncData.clear();
-    
-    // Process triangle enemies
-    for (auto& enemy : triangleEnemies) {
-        if (!enemy.IsAlive()) continue;
-        
-        sf::Vector2f currentPos = enemy.GetPosition();
-        sf::Vector2f lastPos = enemy.GetLastPosition();
-        sf::Vector2f delta = currentPos - lastPos;
-        float moveDist = std::sqrt(delta.x * delta.x + delta.y * delta.y);
-        
-        // Calculate distance to player center (for priority)
-        float distToPlayers = std::sqrt(
-            std::pow(currentPos.x - playerCenter.x, 2) + 
-            std::pow(currentPos.y - playerCenter.y, 2)
-        );
-        
-        // Calculate priority
-        float priority = (moveDist * 5.0f) + (1000.0f / (distToPlayers + 50.0f));
-        
-        if (priority > 0.5f) {
-            priorityEnemies.emplace_back(
-                enemy.GetID(), 
-                currentPos, 
-                enemy.GetHealth(),
-                priority
-            );
-            
-            // Update last position
-            enemy.SetLastPosition(currentPos);
-        }
-    }
-    
-    // Sort by priority
-    std::sort(priorityEnemies.begin(), priorityEnemies.end(),
-        [](const auto& a, const auto& b) {
-            return std::get<3>(a) > std::get<3>(b);
-        }
-    );
-    
-    // Limit number of enemies synced per frame
-    if (priorityEnemies.size() > MAX_ENEMIES_PER_SYNC) {
-        priorityEnemies.resize(MAX_ENEMIES_PER_SYNC);
-    }
-    
-    // Convert to format needed for message
-    for (const auto& enemy : priorityEnemies) {
-        syncData.emplace_back(
-            std::get<0>(enemy),  // ID
-            std::get<1>(enemy),  // Position
-            std::get<2>(enemy)   // Health
-        );
-    }
-    
-    // Only send message if we have data to sync
-    if (!syncData.empty()) {
-        std::string batchMsg = MessageHandler::FormatEnemyPositionsMessage(syncData);
+    // Send triangle enemy positions
+    if (!triangleData.empty()) {
+        std::string batchMsg = MessageHandler::FormatEnemyPositionsMessage(triangleData);
         game->GetNetworkManager().BroadcastMessage(batchMsg);
     }
 }
@@ -1624,8 +1602,18 @@ void EnemyManager::UpdateEnemyPositions(const std::vector<std::tuple<int, sf::Ve
                 // Update triangle enemy
                 TriangleEnemy* enemy = GetTriangleEnemy(id);
                 if (enemy && enemy->IsAlive()) {
-                    // Update position with interpolation
-                    enemy->UpdatePosition(pos, true); // true = use interpolation
+                    // Store the current position for interpolation calculations
+                    sf::Vector2f oldPos = enemy->GetPosition();
+                    
+                    // Calculate distance to new position (for network jitter detection)
+                    float distSquared = std::pow(oldPos.x - pos.x, 2) + std::pow(oldPos.y - pos.y, 2);
+                    
+                    // If position change is too large (teleporting), snap directly
+                    // Otherwise use interpolation
+                    bool useInterpolation = (distSquared < 90000.0f); // 300^2 - max reasonable movement
+                    
+                    // Update position with smoother interpolation
+                    enemy->UpdatePosition(pos, useInterpolation);
                     
                     // Update health if it's significantly different
                     int currentHealth = enemy->GetHealth();
@@ -1641,7 +1629,6 @@ void EnemyManager::UpdateEnemyPositions(const std::vector<std::tuple<int, sf::Ve
                 } else if (!enemy && health > 0) {
                     // Enemy doesn't exist locally but should - create it
                     AddTriangleEnemy(id, pos, health);
-                    std::cout << "[EM] Created missing triangle enemy #" << id << " during position update\n";
                     successCount++;
                 }
             } else {
@@ -1650,16 +1637,26 @@ void EnemyManager::UpdateEnemyPositions(const std::vector<std::tuple<int, sf::Ve
                 if (it != enemyIdToIndex.end() && it->second < enemies.size() && enemies[it->second].enemy) {
                     auto& entry = enemies[it->second];
                     
+                    // Store the current position for interpolation calculations
+                    sf::Vector2f oldPos = entry.GetPosition();
+                    
+                    // Calculate distance to new position (for network jitter detection)
+                    float distSquared = std::pow(oldPos.x - pos.x, 2) + std::pow(oldPos.y - pos.y, 2);
+                    
+                    // If position change is too large (teleporting), snap directly
+                    // Otherwise use interpolation
+                    bool useInterpolation = (distSquared < 90000.0f); // 300^2 - max reasonable movement
+                    
                     // Get the correct shape based on type
                     if (entry.type == EnemyType::Rectangle) {
                         Enemy* rectEnemy = static_cast<Enemy*>(entry.enemy.get());
-                        rectEnemy->UpdatePosition(pos, true); // Use the new interpolation method
+                        rectEnemy->UpdatePosition(pos, useInterpolation);
                         
                         // Update base class position as well to be safe
                         entry.enemy->SetPosition(rectEnemy->GetPosition());
                     } else if (entry.type == EnemyType::Triangle) {
                         TriangleEnemy* triEnemy = static_cast<TriangleEnemy*>(entry.enemy.get());
-                        triEnemy->UpdatePosition(pos, true); // true = interpolate
+                        triEnemy->UpdatePosition(pos, useInterpolation);
                     }
                     
                     // Update health if it's significantly different
@@ -1681,7 +1678,6 @@ void EnemyManager::UpdateEnemyPositions(const std::vector<std::tuple<int, sf::Ve
                 } else if (health > 0) {
                     // Enemy doesn't exist locally but should - create it
                     AddEnemy(id, pos, EnemyType::Rectangle, health);
-                    std::cout << "[EM] Created missing regular enemy #" << id << " during position update\n";
                     successCount++;
                 }
             }

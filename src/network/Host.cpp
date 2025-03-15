@@ -442,6 +442,7 @@ void HostNetwork::ProcessWaveCompleteMessage(const ParsedMessage& parsed) {
     game->GetNetworkManager().BroadcastMessage(waveMsg);
 }
 
+
 void HostNetwork::ProcessEnemyValidationRequestMessage(const ParsedMessage& parsed) {
     // Get the PlayingState and its unified EnemyManager
     PlayingState* playingState = GetPlayingState(game);
@@ -465,35 +466,157 @@ void HostNetwork::ProcessEnemyValidationRequestMessage(const ParsedMessage& pars
     
     // Send with slight delay to ensure it goes after other messages
     // This is a simple way to improve the timing without complex task scheduling
-    sf::sleep(sf::milliseconds(50));
+    sf::sleep(sf::milliseconds(20)); // Reduced from 50ms
     
     // Get all regular enemy IDs for validation
     std::vector<int> regularIds = enemyManager->GetAllEnemyIds();
     
     // Send regular enemy validation list first
-    std::string regularMsg = MessageHandler::FormatEnemyValidationMessage(regularIds);
-    game->GetNetworkManager().BroadcastMessage(regularMsg);
-    
-    std::cout << "[HOST] Sent validation list with " << regularIds.size() << " regular enemies" << std::endl;
+    if (!regularIds.empty()) {
+        std::string regularMsg = MessageHandler::FormatEnemyValidationMessage(regularIds);
+        game->GetNetworkManager().BroadcastMessage(regularMsg);
+        std::cout << "[HOST] Sent validation list with " << regularIds.size() << " regular enemies" << std::endl;
+    }
     
     // Add a delay between messages
-    sf::sleep(sf::milliseconds(50));
+    sf::sleep(sf::milliseconds(20)); // Reduced from 50ms
     
     // Get all triangle enemy IDs for validation
     std::vector<int> triangleIds = enemyManager->GetAllTriangleEnemyIds();
     
     // Send triangle enemy validation list
-    std::string triangleMsg = MessageHandler::FormatEnemyValidationMessage(triangleIds);
-    game->GetNetworkManager().BroadcastMessage(triangleMsg);
-    
-    std::cout << "[HOST] Sent validation list with " << triangleIds.size() << " triangle enemies" << std::endl;
+    if (!triangleIds.empty()) {
+        std::string triangleMsg = MessageHandler::FormatEnemyValidationMessage(triangleIds);
+        game->GetNetworkManager().BroadcastMessage(triangleMsg);
+        std::cout << "[HOST] Sent validation list with " << triangleIds.size() << " triangle enemies" << std::endl;
+    }
     
     // Add a delay before position updates
-    sf::sleep(sf::milliseconds(50));
+    sf::sleep(sf::milliseconds(20)); // Reduced from 50ms
     
     // Now send actual position data in small batches
-    // We'll use the SyncFullEnemyList method we've already improved
-    enemyManager->SyncFullEnemyList();
+    // This is more efficient than using SyncFullEnemyList directly
+    
+    // Calculate center of all players for prioritization
+    sf::Vector2f playerCenter(0, 0);
+    int playerCount = 0;
+    
+    auto& players = playerManager->GetPlayers();
+    for (const auto& pair : players) {
+        if (!pair.second.player.IsDead()) {
+            playerCenter += pair.second.player.GetPosition();
+            playerCount++;
+        }
+    }
+    
+    if (playerCount > 0) {
+        playerCenter /= static_cast<float>(playerCount);
+    }
+    
+    // Create a list of all enemies with priority data
+    std::vector<std::tuple<int, sf::Vector2f, int, float, bool>> priorityEnemies;
+    
+    // Add regular enemies with priority based on distance to players
+    for (auto& entry : enemyManager->GetRegularEnemyDataForSync()) {
+        int id = std::get<0>(entry);
+        sf::Vector2f pos = std::get<1>(entry);
+        int health = std::get<2>(entry);
+        
+        // Calculate distance to players
+        float distToPlayers = std::sqrt(
+            std::pow(pos.x - playerCenter.x, 2) + 
+            std::pow(pos.y - playerCenter.y, 2)
+        );
+        
+        // Calculate priority (higher = more important)
+        float priority = 1000.0f / (distToPlayers + 10.0f);
+        
+        // Add to priority list
+        priorityEnemies.emplace_back(id, pos, health, priority, false);
+    }
+    
+    // Add triangle enemies with priority
+    for (auto& entry : enemyManager->GetTriangleEnemyDataForSync()) {
+        int id = std::get<0>(entry);
+        sf::Vector2f pos = std::get<1>(entry);
+        int health = std::get<2>(entry);
+        
+        // Calculate distance to players
+        float distToPlayers = std::sqrt(
+            std::pow(pos.x - playerCenter.x, 2) + 
+            std::pow(pos.y - playerCenter.y, 2)
+        );
+        
+        // Calculate priority (higher = more important)
+        float priority = 1000.0f / (distToPlayers + 10.0f);
+        
+        // Add to priority list
+        priorityEnemies.emplace_back(id, pos, health, priority, true);
+    }
+    
+    // Sort by priority (highest first)
+    std::sort(priorityEnemies.begin(), priorityEnemies.end(),
+        [](const auto& a, const auto& b) {
+            return std::get<3>(a) > std::get<3>(b);
+        }
+    );
+    
+    // Separate into regular and triangle lists
+    std::vector<std::tuple<int, sf::Vector2f, int>> regularBatch;
+    std::vector<std::tuple<int, sf::Vector2f, int>> triangleBatch;
+    
+    // Smaller batch size for more frequent, smoother updates
+    const int BATCH_SIZE = 6; // Smaller batch size for validation response
+    
+    for (const auto& entry : priorityEnemies) {
+        int id = std::get<0>(entry);
+        sf::Vector2f pos = std::get<1>(entry);
+        int health = std::get<2>(entry);
+        bool isTriangle = std::get<4>(entry);
+        
+        if (isTriangle) {
+            triangleBatch.emplace_back(id, pos, health);
+            
+            // Send batch if full
+            if (triangleBatch.size() >= BATCH_SIZE) {
+                std::string triangleMsg = MessageHandler::FormatEnemyBatchSpawnMessage(
+                    triangleBatch, ParsedMessage::EnemyType::Triangle);
+                game->GetNetworkManager().BroadcastMessage(triangleMsg);
+                
+                // Clear batch and add small delay
+                triangleBatch.clear();
+                sf::sleep(sf::milliseconds(10));
+            }
+        } else {
+            regularBatch.emplace_back(id, pos, health);
+            
+            // Send batch if full
+            if (regularBatch.size() >= BATCH_SIZE) {
+                std::string regularMsg = MessageHandler::FormatEnemyBatchSpawnMessage(
+                    regularBatch, ParsedMessage::EnemyType::Regular);
+                game->GetNetworkManager().BroadcastMessage(regularMsg);
+                
+                // Clear batch and add small delay
+                regularBatch.clear();
+                sf::sleep(sf::milliseconds(10));
+            }
+        }
+    }
+    
+    // Send any remaining batches
+    if (!triangleBatch.empty()) {
+        std::string triangleMsg = MessageHandler::FormatEnemyBatchSpawnMessage(
+            triangleBatch, ParsedMessage::EnemyType::Triangle);
+        game->GetNetworkManager().BroadcastMessage(triangleMsg);
+    }
+    
+    if (!regularBatch.empty()) {
+        std::string regularMsg = MessageHandler::FormatEnemyBatchSpawnMessage(
+            regularBatch, ParsedMessage::EnemyType::Regular);
+        game->GetNetworkManager().BroadcastMessage(regularMsg);
+    }
+    
+    std::cout << "[HOST] Completed validation response with prioritized enemies" << std::endl;
 }
 
 void HostNetwork::ProcessTriangleWaveStartMessage(const ParsedMessage& parsed) {

@@ -292,10 +292,10 @@ void ClientNetwork::Update() {
     if (m_validationRequestTimer > 0) {
         m_validationRequestTimer -= elapsed;
         if (m_validationRequestTimer <= 0) {
-            // Check if enough time has passed since the last validation (increased to 5 seconds)
+            // Check if enough time has passed since the last validation
             float timeSinceLast = std::chrono::duration<float>(now - m_lastValidationTime).count();
             
-            if (timeSinceLast >= 5.0f) {  // Increased from 3.0f to 5.0f
+            if (timeSinceLast >= 5.0f) {
                 // Send validation request
                 std::string validationRequest = MessageHandler::FormatEnemyValidationRequestMessage();
                 if (game->GetNetworkManager().SendMessage(hostID, validationRequest)) {
@@ -312,17 +312,17 @@ void ClientNetwork::Update() {
         }
     }
     
-    // Significantly reduce frequency of periodic validation checks
+    // Reduce frequency of periodic validation checks
     m_periodicValidationTimer -= elapsed;
     
     if (m_periodicValidationTimer <= 0) {
-        // Reset timer - check every 60 seconds (increased from 30)
-        m_periodicValidationTimer = 60.0f;  // Doubled from 30.0f to 60.0f
+        // Reset timer - check every 60 seconds
+        m_periodicValidationTimer = 60.0f;
         
-        // Only request validation if we haven't requested in the last 10 seconds (increased from 5)
+        // Only request validation if we haven't requested in the last 10 seconds
         float timeSinceLast = std::chrono::duration<float>(now - m_lastValidationTime).count();
         
-        if (timeSinceLast >= 10.0f) {  // Increased from 5.0f to 10.0f
+        if (timeSinceLast >= 10.0f) {
             // Check if we're in the Playing state before requesting validation
             if (game->GetCurrentState() == GameState::Playing) {
                 std::cout << "[CLIENT] Performing periodic ghost enemy check\n";
@@ -332,16 +332,11 @@ void ClientNetwork::Update() {
                 if (game->GetNetworkManager().SendMessage(hostID, validationRequest)) {
                     m_lastValidationTime = now;
                 }
-            } else {
-                // We're not in the Playing state, so don't request validation
-                std::cout << "[CLIENT] Skipped periodic validation - not in Playing state\n";
             }
-        } else {
-            std::cout << "[CLIENT] Skipped periodic validation - too soon after previous\n";
         }
     }
     
-    // Add periodic check for ghost enemies near origin
+    // Improved ghost enemy detection near origin
     static float ghostCheckTimer = 0.0f;
     ghostCheckTimer -= elapsed;
 
@@ -354,14 +349,24 @@ void ClientNetwork::Update() {
             if (playingState) {
                 EnemyManager* enemyManager = playingState->GetEnemyManager();
                 if (enemyManager) {
-                    // Check for enemies near the origin or top-left corner
+                    // Check for enemies near the origin or top-left corner with expanded detection
                     bool foundGhosts = false;
                     std::vector<int> enemyIdsToRemove;
+                    
+                    // Get all enemies and inspect their positions
                     for (int id : enemyManager->GetAllEnemyIds()) {
                         if (enemyManager->HasEnemy(id)) {
                             sf::Vector2f pos = enemyManager->GetEnemyPosition(id);
-                            if ((std::abs(pos.x) < 10.0f && std::abs(pos.y) < 10.0f) || // Near origin
-                                (pos.x < 10.0f && pos.y < 10.0f)) {                      // Top-left corner
+                            
+                            // More sophisticated ghost detection:
+                            // 1. Enemies at exact origin (0,0)
+                            // 2. Enemies near origin (within 10 units)
+                            // 3. Enemies at or near top-left corner (within 15 units)
+                            // 4. Enemies that haven't moved in a long time (could add this with timestamp tracking)
+                            if ((pos.x == 0.0f && pos.y == 0.0f) ||                       // Exact origin
+                                (std::abs(pos.x) < 10.0f && std::abs(pos.y) < 10.0f) ||   // Near origin
+                                (pos.x < 15.0f && pos.y < 15.0f)) {                        // Top-left corner
+                                
                                 enemyIdsToRemove.push_back(id);
                                 foundGhosts = true;
                             }
@@ -370,7 +375,7 @@ void ClientNetwork::Update() {
                     
                     // Remove any ghost enemies
                     for (int id : enemyIdsToRemove) {
-                        std::cout << "[CLIENT] Periodic check: Removing ghost enemy at origin, ID: " << id << "\n";
+                        std::cout << "[CLIENT] Removing ghost enemy, ID: " << id << "\n";
                         enemyManager->RemoveEnemy(id);
                     }
                     
@@ -379,8 +384,12 @@ void ClientNetwork::Update() {
                     for (int id : enemyManager->GetAllTriangleEnemyIds()) {
                         if (enemyManager->HasTriangleEnemy(id)) {
                             sf::Vector2f pos = enemyManager->GetTriangleEnemyPosition(id);
-                            if ((std::abs(pos.x) < 10.0f && std::abs(pos.y) < 10.0f) || // Near origin
-                                (pos.x < 10.0f && pos.y < 10.0f)) {                      // Top-left corner
+                            
+                            // Same detection criteria as regular enemies
+                            if ((pos.x == 0.0f && pos.y == 0.0f) ||
+                                (std::abs(pos.x) < 10.0f && std::abs(pos.y) < 10.0f) ||
+                                (pos.x < 15.0f && pos.y < 15.0f)) {
+                                
                                 triangleIdsToRemove.push_back(id);
                                 foundGhosts = true;
                             }
@@ -389,12 +398,12 @@ void ClientNetwork::Update() {
                     
                     // Remove any ghost triangle enemies
                     for (int id : triangleIdsToRemove) {
-                        std::cout << "[CLIENT] Periodic check: Removing ghost triangle enemy at origin, ID: " << id << "\n";
+                        std::cout << "[CLIENT] Removing ghost triangle enemy, ID: " << id << "\n";
                         enemyManager->HandleTriangleEnemyHit(id, 1000, true, "");
                     }
                     
-                    // If we found ghosts, request a validation
-                    if (foundGhosts) {
+                    // If we found ghosts, request a validation only if significant number found
+                    if (foundGhosts && (enemyIdsToRemove.size() + triangleIdsToRemove.size() > 2)) {
                         // Request validation data from host
                         std::string validationRequest = MessageHandler::FormatEnemyValidationRequestMessage();
                         game->GetNetworkManager().SendMessage(hostID, validationRequest);
@@ -744,7 +753,13 @@ void ClientNetwork::ProcessEnemyPositionsMessage(const ParsedMessage& parsed) {
     EnemyManager* enemyManager = playingState->GetEnemyManager();
     if (!enemyManager) return;
     
-    // Convert from vector<pair> to vector<tuple>
+    // Create a more structured approach to matching enemy IDs with their health
+    std::unordered_map<int, int> healthMap;
+    for (const auto& healthPair : parsed.enemyHealths) {
+        healthMap[healthPair.first] = healthPair.second;
+    }
+    
+    // Convert from vector<pair> to vector<tuple> with proper error handling
     std::vector<std::tuple<int, sf::Vector2f, int>> positionData;
     positionData.reserve(parsed.enemyPositions.size());
     
@@ -753,28 +768,32 @@ void ClientNetwork::ProcessEnemyPositionsMessage(const ParsedMessage& parsed) {
         int id = parsed.enemyPositions[i].first;
         sf::Vector2f position = parsed.enemyPositions[i].second;
         
-        // Find the health for this enemy id
-        int health = 0;
-        for (const auto& healthPair : parsed.enemyHealths) {
-            if (healthPair.first == id) {
-                health = healthPair.second;
-                break;
-            }
+        // Perform ghost enemy detection at origin
+        // Ignore enemies that appear at exact origin (0,0)
+        if (position.x == 0.0f && position.y == 0.0f) {
+            std::cout << "[CLIENT] Ignoring potential ghost enemy at origin, ID: " << id << "\n";
+            continue;
         }
         
-        // Add to the tuple vector
-        positionData.emplace_back(id, position, health);
+        // Find the health for this enemy id using our map
+        int health = 0;
+        auto healthIt = healthMap.find(id);
+        if (healthIt != healthMap.end()) {
+            health = healthIt->second;
+        } else {
+            // If no health is found, use default values based on enemy type
+            health = (id >= 10000) ? TRIANGLE_HEALTH : ENEMY_HEALTH;
+        }
+        
+        // Add to the tuple vector if it has valid health
+        if (health > 0) {
+            positionData.emplace_back(id, position, health);
+        }
     }
     
     // Update enemy positions
-    enemyManager->UpdateEnemyPositions(positionData);
-    
-    // Update enemy health values separately if needed
-    for (const auto& healthPair : parsed.enemyHealths) {
-        int id = healthPair.first;
-        int health = healthPair.second;
-        
-        enemyManager->UpdateEnemyHealth(id, health);
+    if (!positionData.empty()) {
+        enemyManager->UpdateEnemyPositions(positionData);
     }
 }
 

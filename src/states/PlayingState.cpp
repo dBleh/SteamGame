@@ -423,25 +423,62 @@ void PlayingState::Update(float dt) {
         playerManager->Update(game);
         if (clientNetwork) clientNetwork->Update();
         if (hostNetwork) hostNetwork->Update();
-        auto& localPlayer = playerManager->GetLocalPlayer();
-    if (localPlayer.player.IsDead() && localPlayer.respawnTimer > 0.0f) {
-        // Format timer text
-        int seconds = static_cast<int>(std::ceil(localPlayer.respawnTimer));
-        std::string timerText = "Respawning in " + std::to_string(seconds) + "...";
         
-        // Update the HUD element
-        game->GetHUD().updateText("deathTimer", timerText);
+        // Add special check for client initial sync during the first few seconds after joining
+        static bool initialSyncDone = false;
+        static float initialSyncTimer = 3.0f;
         
-        if (!isDeathTimerVisible) {
-            isDeathTimerVisible = true;
+        if (!initialSyncDone) {
+            initialSyncTimer -= dt;
+            
+            // Check if we're a client
+            CSteamID myID = SteamUser()->GetSteamID();
+            CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+            
+            if (myID != hostID && clientNetwork) {
+                // Request validation every 1 second for the first 3 seconds
+                if (std::fmod(initialSyncTimer, 1.0f) < dt) {
+                    std::cout << "[CLIENT] Sending initial sync validation request\n";
+                    
+                    // Request validation from host
+                    std::string validationMsg = MessageHandler::FormatEnemyValidationRequestMessage();
+                    game->GetNetworkManager().SendMessage(hostID, validationMsg);
+                }
+                
+                // After 3 seconds, mark initial sync as done
+                if (initialSyncTimer <= 0.0f) {
+                    initialSyncDone = true;
+                    std::cout << "[CLIENT] Initial sync complete\n";
+                }
+            } else {
+                // Host doesn't need initial sync
+                initialSyncDone = true;
+            }
         }
-    } else if (isDeathTimerVisible) {
-        // Hide timer when player is alive
-        game->GetHUD().updateText("deathTimer", "");
-        isDeathTimerVisible = false;
-    }
-        // Update EnemyManager
+        
+        auto& localPlayer = playerManager->GetLocalPlayer();
+        if (localPlayer.player.IsDead() && localPlayer.respawnTimer > 0.0f) {
+            // Format timer text
+            int seconds = static_cast<int>(std::ceil(localPlayer.respawnTimer));
+            std::string timerText = "Respawning in " + std::to_string(seconds) + "...";
+            
+            // Update the HUD element
+            game->GetHUD().updateText("deathTimer", timerText);
+            
+            if (!isDeathTimerVisible) {
+                isDeathTimerVisible = true;
+            }
+        } else if (isDeathTimerVisible) {
+            // Hide timer when player is alive
+            game->GetHUD().updateText("deathTimer", "");
+            isDeathTimerVisible = false;
+        }
+        
+        // Update EnemyManager with improved frame timing
         if (enemyManager) {
+            // Track how much time enemy updates take
+            auto startTime = std::chrono::high_resolution_clock::now();
+            
             enemyManager->Update(dt);
             
             // Check bullet collisions with enemies
@@ -452,6 +489,15 @@ void PlayingState::Update(float dt) {
             
             // Update wave info in HUD
             UpdateWaveInfo();
+            
+            // Debug performance if needed
+            auto endTime = std::chrono::high_resolution_clock::now();
+            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime).count();
+            
+            // Only log if update takes more than 10ms (potential performance issue)
+            if (duration > 10000) {
+                std::cout << "[PERF] Enemy update took " << (duration / 1000.0f) << "ms\n";
+            }
         }
         
         // Check if all enemies are defeated and start next wave (only host)

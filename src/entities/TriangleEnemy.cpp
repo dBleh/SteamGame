@@ -30,6 +30,7 @@ void TriangleEnemy::Update(float dt, const sf::Vector2f& targetPosition)
 {
     if (isDead) return;
     
+    // Store last position for delta tracking
     lastPosition = shape.getPosition();
     
     // Calculate direction vector to target
@@ -49,9 +50,21 @@ void TriangleEnemy::Update(float dt, const sf::Vector2f& targetPosition)
     // Update the base class position
     position = shape.getPosition();
     
-    // Update rotation to face direction of movement
-    float angle = std::atan2(direction.y, direction.x) * 180 / 3.14159f;
-    shape.setRotation(angle + 90.f); // Adjust to make triangle point forward
+    // Update rotation to face direction of movement with smoother transitions
+    // Store the last rotation angle (add this as a class member variable)
+    float targetAngle = std::atan2(direction.y, direction.x) * 180 / 3.14159f + 90.f;
+    
+    // Smoothly interpolate rotation (prevents jittery rotation)
+    float currentAngle = shape.getRotation();
+    
+    // Find the shortest path to the target angle
+    float angleDiff = targetAngle - currentAngle;
+    while (angleDiff > 180.0f) angleDiff -= 360.0f;
+    while (angleDiff < -180.0f) angleDiff += 360.0f;
+    
+    // Interpolate the rotation
+    float newAngle = currentAngle + angleDiff * 0.1f;
+    shape.setRotation(newAngle);
 }
 
 bool TriangleEnemy::CheckCollision(const sf::RectangleShape& playerShape) const {
@@ -167,9 +180,26 @@ void TriangleEnemy::UpdatePosition(const sf::Vector2f& newPosition, bool interpo
         sf::Vector2f currentPos = shape.getPosition();
         sf::Vector2f targetPos = newPosition;
         
-        // Move 25% of the way to the target (adjust as needed for smoothness)
-        sf::Vector2f interpolatedPos = currentPos + (targetPos - currentPos) * 0.25f;
-        shape.setPosition(interpolatedPos);
+        // Use a smoother interpolation factor (0.15 instead of 0.25)
+        // This makes movement appear less jerky
+        sf::Vector2f interpolatedPos = currentPos + (targetPos - currentPos) * 0.15f;
+        
+        // Add a small damping factor to prevent micro-oscillations
+        // which can cause the visual "blinking" effect
+        const float DAMPING_THRESHOLD = 1.0f;
+        float distance = std::sqrt(
+            std::pow(targetPos.x - currentPos.x, 2) + 
+            std::pow(targetPos.y - currentPos.y, 2)
+        );
+        
+        if (distance < DAMPING_THRESHOLD) {
+            // If we're very close to the target, just snap to it
+            // This prevents oscillation around the target position
+            shape.setPosition(targetPos);
+        } else {
+            // Otherwise use the interpolated position
+            shape.setPosition(interpolatedPos);
+        }
     }
     else {
         // Directly set position (for server-side or when correction is needed)

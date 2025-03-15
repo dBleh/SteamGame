@@ -108,9 +108,26 @@ void Enemy::UpdatePosition(const sf::Vector2f& newPosition, bool interpolate) {
         sf::Vector2f currentPos = shape.getPosition();
         sf::Vector2f targetPos = newPosition;
         
-        // Move 25% of the way to the target (adjust as needed for smoothness)
-        sf::Vector2f interpolatedPos = currentPos + (targetPos - currentPos) * 0.25f;
-        shape.setPosition(interpolatedPos);
+        // Use a smoother interpolation factor (0.15 instead of 0.25)
+        // This makes movement appear less jerky
+        sf::Vector2f interpolatedPos = currentPos + (targetPos - currentPos) * 0.15f;
+        
+        // Add a small damping factor to prevent micro-oscillations
+        // which can cause the visual "blinking" effect
+        const float DAMPING_THRESHOLD = 1.0f;
+        float distance = std::sqrt(
+            std::pow(targetPos.x - currentPos.x, 2) + 
+            std::pow(targetPos.y - currentPos.y, 2)
+        );
+        
+        if (distance < DAMPING_THRESHOLD) {
+            // If we're very close to the target, just snap to it
+            // This prevents oscillation around the target position
+            shape.setPosition(targetPos);
+        } else {
+            // Otherwise use the interpolated position
+            shape.setPosition(interpolatedPos);
+        }
     }
     else {
         // Directly set position (for server-side or when correction is needed)
