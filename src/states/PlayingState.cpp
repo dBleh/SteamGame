@@ -116,7 +116,13 @@ PlayingState::PlayingState(Game* game)
                              HUD::RenderMode::ScreenSpace, true,
                              "bottomBarLine", "");
     game->GetHUD().updateBaseColor("gridToggle", sf::Color::Black);
-    
+    // Death timer text (initially hidden)
+    game->GetHUD().addElement("deathTimer", "", 36, 
+        sf::Vector2f(centerX - 100.0f, BASE_HEIGHT / 2.0f - 50.0f), 
+        GameState::Playing, 
+        HUD::RenderMode::ScreenSpace, false);
+    game->GetHUD().updateBaseColor("deathTimer", sf::Color::Red);
+    isDeathTimerVisible = false;
     // Cursor lock toggle
     game->GetHUD().addElement("cursorLockHint", "L - Toggle Cursor Lock", 16, 
                              sf::Vector2f(30.0f + spacing * 2, controlsY), 
@@ -208,7 +214,6 @@ PlayingState::PlayingState(Game* game)
     localPlayer.cubeColor = sf::Color::Blue;
     localPlayer.nameText.setCharacterSize(16);
     localPlayer.nameText.setFillColor(sf::Color::Black);
-    localPlayer.player.SetRespawnPosition(sf::Vector2f(0.f, 0.f));
     localPlayer.kills = 0;
     localPlayer.money = 0;
     playerManager->AddOrUpdatePlayer(myIDStr, localPlayer);
@@ -377,7 +382,23 @@ void PlayingState::Update(float dt) {
         playerManager->Update(game);
         if (clientNetwork) clientNetwork->Update();
         if (hostNetwork) hostNetwork->Update();
+        auto& localPlayer = playerManager->GetLocalPlayer();
+    if (localPlayer.player.IsDead() && localPlayer.respawnTimer > 0.0f) {
+        // Format timer text
+        int seconds = static_cast<int>(std::ceil(localPlayer.respawnTimer));
+        std::string timerText = "Respawning in " + std::to_string(seconds) + "...";
         
+        // Update the HUD element
+        game->GetHUD().updateText("deathTimer", timerText);
+        
+        if (!isDeathTimerVisible) {
+            isDeathTimerVisible = true;
+        }
+    } else if (isDeathTimerVisible) {
+        // Hide timer when player is alive
+        game->GetHUD().updateText("deathTimer", "");
+        isDeathTimerVisible = false;
+    }
         // Update EnemyManager
         if (enemyManager) {
             enemyManager->Update(dt);

@@ -65,7 +65,8 @@ private:
     // Cursor locking
     bool cursorLocked;
     sf::Vector2i windowCenter;
-    
+    sf::Text deathTimerText;
+    bool isDeathTimerVisible;   
     // Leaderboard
     bool showLeaderboard;
 };

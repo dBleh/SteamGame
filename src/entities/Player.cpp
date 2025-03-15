@@ -111,8 +111,10 @@ float Player::GetSpeed() const {
 void Player::TakeDamage(int amount) {
     health -= amount;
     if (health <= 0) {
-        isDead = true;
         health = 0;
+        isDead = true;
+        // Save current position as respawn position
+        respawnPosition = shape.getPosition();
     }
 }
 
