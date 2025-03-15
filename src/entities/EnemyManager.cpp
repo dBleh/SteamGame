@@ -587,6 +587,11 @@ void EnemyManager::RemoveEnemy(int id) {
 }
 
 void EnemyManager::CheckBulletCollisions(const std::vector<Bullet>& bullets) {
+    // Early exit if no bullets or enemies
+    if (bullets.empty() || (enemies.empty() && triangleEnemies.empty())) {
+        return;
+    }
+
     // Track which bullets hit something
     std::vector<size_t> bulletsToRemove;
     bulletsToRemove.reserve(bullets.size() / 4); // Reserve reasonable capacity
@@ -596,28 +601,61 @@ void EnemyManager::CheckBulletCollisions(const std::vector<Bullet>& bullets) {
     CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
     bool isHost = (localSteamID == hostID);
     
-    // Process each bullet
+    // Simplified for better performance - check all enemies against each bullet
     for (size_t bulletIndex = 0; bulletIndex < bullets.size(); bulletIndex++) {
         const Bullet& bullet = bullets[bulletIndex];
         sf::Vector2f bulletPos = bullet.GetPosition();
         float bulletRadius = 4.0f; // Bullet radius
         
-        // Use spatial grid to get only nearby enemies
+        // Get nearby enemies - use a smaller search radius for better performance
         std::vector<EnemyBase*> nearbyEnemies;
+        float searchRadius = bulletRadius + ENEMY_SIZE;
         
         try {
-            // Get nearby enemies with a slightly larger radius to ensure we don't miss any
-            nearbyEnemies = spatialGrid.GetNearbyEnemies(bulletPos, bulletRadius + ENEMY_SIZE * 1.5f);
-        } catch (const std::exception& e) {
-            std::cout << "Error getting nearby enemies for bullet collision: " << e.what() << std::endl;
-            continue; // Skip to next bullet if there's an error
+            nearbyEnemies = spatialGrid.GetNearbyEnemies(bulletPos, searchRadius);
+        } 
+        catch (const std::exception& e) {
+            // If spatial grid fails, fallback to direct checking as a last resort
+            // This should rarely happen with our improved implementation
+            std::cout << "Spatial grid failed, using fallback: " << e.what() << std::endl;
+            
+            // Simple proximity check for regular enemies
+            for (auto& entry : enemies) {
+                if (entry.enemy && entry.enemy->IsAlive()) {
+                    sf::Vector2f enemyPos = entry.GetPosition();
+                    float dx = enemyPos.x - bulletPos.x;
+                    float dy = enemyPos.y - bulletPos.y;
+                    float distSquared = dx * dx + dy * dy;
+                    
+                    if (distSquared <= (searchRadius * searchRadius)) {
+                        nearbyEnemies.push_back(entry.enemy.get());
+                    }
+                }
+            }
+            
+            // Simple proximity check for triangle enemies
+            for (auto& enemy : triangleEnemies) {
+                if (enemy.IsAlive()) {
+                    sf::Vector2f enemyPos = enemy.GetPosition();
+                    float dx = enemyPos.x - bulletPos.x;
+                    float dy = enemyPos.y - bulletPos.y;
+                    float distSquared = dx * dx + dy * dy;
+                    
+                    if (distSquared <= (searchRadius * searchRadius)) {
+                        nearbyEnemies.push_back(&enemy);
+                    }
+                }
+            }
         }
         
-        bool bulletHit = false;
+        // If no nearby enemies, continue to next bullet
+        if (nearbyEnemies.empty()) {
+            continue;
+        }
         
-        // Check bullet against nearby enemies
+        // Check for collisions with nearby enemies
+        bool bulletHit = false;
         for (EnemyBase* baseEnemy : nearbyEnemies) {
-            // Skip null or already dead enemies
             if (!baseEnemy || !baseEnemy->IsAlive()) continue;
             
             try {
@@ -638,6 +676,11 @@ void EnemyManager::CheckBulletCollisions(const std::vector<Bullet>& bullets) {
                 }
                 
                 if (collided) {
+                    // Log the hit for debugging
+                    std::cout << "Bullet hit enemy #" << enemyId 
+                              << " of type " << (enemyType == EnemyType::Triangle ? "Triangle" : "Rectangle") 
+                              << std::endl;
+                    
                     // Handle collision
                     if (isHost) {
                         // Host applies actual damage
@@ -679,20 +722,16 @@ void EnemyManager::CheckBulletCollisions(const std::vector<Bullet>& bullets) {
                     // Mark bullet for removal
                     bulletsToRemove.push_back(bulletIndex);
                     bulletHit = true;
-                    
-                    // Debug output to verify collision was detected
-                    std::cout << "Bullet hit enemy #" << enemyId << 
-                        " of type " << (enemyType == EnemyType::Triangle ? "Triangle" : "Rectangle") << std::endl;
-                    
                     break; // A bullet can only hit one enemy
                 }
-            } catch (const std::exception& e) {
-                std::cout << "Error processing bullet collision with enemy: " << e.what() << std::endl;
-                continue; // Skip to next enemy if there's an error
+            } 
+            catch (const std::exception& e) {
+                std::cout << "Error checking bullet collision: " << e.what() << std::endl;
+                continue; // Skip this enemy
             }
         }
         
-        // If bullet already hit something, skip to next bullet
+        // If bullet hit something, skip to next bullet
         if (bulletHit) continue;
     }
     

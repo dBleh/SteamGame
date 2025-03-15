@@ -5,10 +5,9 @@
 #include <unordered_map>
 #include <vector>
 #include <cmath>
-#include <sstream>
-#include <functional>
-#include <algorithm>
 #include <iostream>
+#include <algorithm>
+#include <unordered_set>
 #include "../entities/EnemyBase.h"
 
 // Forward declaration of base enemy class
@@ -28,10 +27,11 @@ public:
         gridWidth = std::max(10, gridWidth);
         gridHeight = std::max(10, gridHeight);
         
-        std::cout << "SpatialGrid initialized with " << gridWidth << "x" << gridHeight << " cells" << std::endl;
+        // Initialize cells vector with the right size
+        cells.resize(gridWidth * gridHeight);
         
-        // Initialize the grid
-        Clear();
+        std::cout << "SpatialGrid initialized with " << gridWidth << "x" << gridHeight << " cells (" 
+                 << cells.size() << " total cells)" << std::endl;
     }
     
     // Add an enemy to the grid
@@ -42,30 +42,22 @@ public:
             // Get enemy position
             sf::Vector2f position = enemy->GetPosition();
             
-            // Calculate grid cell coordinates
-            int cellX = static_cast<int>(std::floor(position.x / cellSize));
-            int cellY = static_cast<int>(std::floor(position.y / cellSize));
-            
-            // Ensure within grid bounds
-            cellX = std::max(0, std::min(gridWidth - 1, cellX));
-            cellY = std::max(0, std::min(gridHeight - 1, cellY));
-            
             // Calculate cell index
-            int cellIndex = cellY * gridWidth + cellX;
+            int cellX = GetCellX(position.x);
+            int cellY = GetCellY(position.y);
+            int cellIndex = GetCellIndex(cellX, cellY);
             
-            // Ensure cells vector is large enough
-            if (cellIndex >= cells.size()) {
-                cells.resize(gridWidth * gridHeight);
+            // Add to the appropriate cell
+            if (cellIndex >= 0 && cellIndex < cells.size()) {
+                // Add to cell if not already there
+                auto& cellEnemies = cells[cellIndex];
+                if (std::find(cellEnemies.begin(), cellEnemies.end(), enemy) == cellEnemies.end()) {
+                    cellEnemies.push_back(enemy);
+                }
+                
+                // Update tracking map
+                enemyCellIndices[enemy] = cellIndex;
             }
-            
-            // Add to cell vector if not already there
-            auto& cellVec = cells[cellIndex];
-            if (std::find(cellVec.begin(), cellVec.end(), enemy) == cellVec.end()) {
-                cellVec.push_back(enemy);
-            }
-            
-            // Store which cell the enemy is in for fast lookups
-            enemyCellIndices[enemy] = cellIndex;
         }
         catch (const std::exception& e) {
             std::cout << "Exception in AddEnemy: " << e.what() << std::endl;
@@ -81,14 +73,15 @@ public:
             auto it = enemyCellIndices.find(enemy);
             if (it == enemyCellIndices.end()) return;
             
-            // Get the cell index and remove enemy from that cell
+            // Get the cell index
             int cellIndex = it->second;
             
+            // Remove from that cell
             if (cellIndex >= 0 && cellIndex < cells.size()) {
-                auto& cellVec = cells[cellIndex];
-                cellVec.erase(
-                    std::remove(cellVec.begin(), cellVec.end(), enemy),
-                    cellVec.end()
+                auto& cellEnemies = cells[cellIndex];
+                cellEnemies.erase(
+                    std::remove(cellEnemies.begin(), cellEnemies.end(), enemy),
+                    cellEnemies.end()
                 );
             }
             
@@ -105,73 +98,11 @@ public:
         if (!enemy) return;
         
         try {
-            // Calculate old cell
-            int oldCellX = static_cast<int>(std::floor(oldPosition.x / cellSize));
-            int oldCellY = static_cast<int>(std::floor(oldPosition.y / cellSize));
+            // Remove from old cell
+            RemoveEnemy(enemy);
             
-            // Calculate new cell based on current position
-            sf::Vector2f newPosition = enemy->GetPosition();
-            int newCellX = static_cast<int>(std::floor(newPosition.x / cellSize));
-            int newCellY = static_cast<int>(std::floor(newPosition.y / cellSize));
-            
-            // If position is invalid, skip update
-            if (std::isnan(newPosition.x) || std::isnan(newPosition.y) ||
-                std::isinf(newPosition.x) || std::isinf(newPosition.y)) {
-                std::cout << "Warning: Invalid position detected in UpdateEnemyPosition" << std::endl;
-                return;
-            }
-            
-            // If cell hasn't changed, nothing to do
-            if (oldCellX == newCellX && oldCellY == newCellY) return;
-            
-            // Ensure bounds for old cell
-            oldCellX = std::max(0, std::min(gridWidth - 1, oldCellX));
-            oldCellY = std::max(0, std::min(gridHeight - 1, oldCellY));
-            
-            // Calculate old cell index
-            int oldCellIndex = oldCellY * gridWidth + oldCellX;
-            
-            // Ensure bounds for new cell
-            newCellX = std::max(0, std::min(gridWidth - 1, newCellX));
-            newCellY = std::max(0, std::min(gridHeight - 1, newCellY));
-            
-            // Calculate new cell index
-            int newCellIndex = newCellY * gridWidth + newCellX;
-            
-            // Make sure cell indices are valid
-            if (oldCellIndex < 0 || oldCellIndex >= cells.size() ||
-                newCellIndex < 0 || newCellIndex >= cells.size()) {
-                return;
-            }
-            
-            // Get auto iterate handle from map
-            auto it = enemyCellIndices.find(enemy);
-            
-            // If enemy is already in the grid
-            if (it != enemyCellIndices.end()) {
-                // Get current cell index from the map
-                int currentCellIndex = it->second;
-                
-                // Remove from current cell if it's different from the new cell
-                if (currentCellIndex != newCellIndex && currentCellIndex >= 0 && currentCellIndex < cells.size()) {
-                    auto& currentCellVec = cells[currentCellIndex];
-                    currentCellVec.erase(
-                        std::remove(currentCellVec.begin(), currentCellVec.end(), enemy),
-                        currentCellVec.end()
-                    );
-                }
-                
-                // Add to new cell
-                cells[newCellIndex].push_back(enemy);
-                
-                // Update the map with new cell index
-                it->second = newCellIndex;
-            }
-            else {
-                // Enemy wasn't found in the map, add it
-                cells[newCellIndex].push_back(enemy);
-                enemyCellIndices[enemy] = newCellIndex;
-            }
+            // Add to new cell based on current position
+            AddEnemy(enemy);
         }
         catch (const std::exception& e) {
             std::cout << "Exception in UpdateEnemyPosition: " << e.what() << std::endl;
@@ -179,75 +110,55 @@ public:
     }
     
     // Get enemies near a position within a radius
-    // Get enemies near a position within a radius
-std::vector<EnemyBase*> GetNearbyEnemies(const sf::Vector2f& position, float radius) {
-    std::vector<EnemyBase*> nearbyEnemies;
-    
-    try {
-        // Calculate the grid cells that overlap with the search area
-        int minCellX = static_cast<int>((position.x - radius) / cellSize);
-        int maxCellX = static_cast<int>((position.x + radius) / cellSize);
-        int minCellY = static_cast<int>((position.y - radius) / cellSize);
-        int maxCellY = static_cast<int>((position.y + radius) / cellSize);
+    std::vector<EnemyBase*> GetNearbyEnemies(const sf::Vector2f& position, float radius) {
+        // Use a set to automatically prevent duplicates
+        std::unordered_set<EnemyBase*> enemySet;
         
-        // Clamp to grid boundaries
-        minCellX = std::max(0, minCellX);
-        maxCellX = std::min(gridWidth - 1, maxCellX);
-        minCellY = std::max(0, minCellY);
-        maxCellY = std::min(gridHeight - 1, maxCellY);
-        
-        // Limit the search area to avoid excessive memory allocation
-        // Don't search more than 10x10 cells at once
-        if (maxCellX - minCellX > 10) {
-            maxCellX = minCellX + 10;
-        }
-        if (maxCellY - minCellY > 10) {
-            maxCellY = minCellY + 10;
-        }
-        
-        // Reserve a reasonable amount of memory (maximum 100 enemies per call)
-        // This prevents the "vector too long" exception
-        nearbyEnemies.reserve(std::min(100, (maxCellX - minCellX + 1) * (maxCellY - minCellY + 1) * 2));
-        
-        // Track how many enemies we've added to avoid excessive memory use
-        int enemyCount = 0;
-        const int MAX_ENEMIES = 100;
-        
-        // Collect enemies from all relevant cells
-        for (int y = minCellY; y <= maxCellY && enemyCount < MAX_ENEMIES; y++) {
-            for (int x = minCellX; x <= maxCellX && enemyCount < MAX_ENEMIES; x++) {
-                int cellIndex = y * gridWidth + x;
-                if (cellIndex >= 0 && cellIndex < cells.size()) {
-                    const auto& cellEnemies = cells[cellIndex];
-                    // Only add enemies if we won't exceed our max count
-                    if (enemyCount + cellEnemies.size() <= MAX_ENEMIES) {
-                        nearbyEnemies.insert(nearbyEnemies.end(), cellEnemies.begin(), cellEnemies.end());
-                        enemyCount += cellEnemies.size();
-                    } else {
-                        // Add enemies until we reach the max
-                        for (auto enemy : cellEnemies) {
-                            if (enemyCount < MAX_ENEMIES) {
-                                nearbyEnemies.push_back(enemy);
-                                enemyCount++;
-                            } else {
-                                break;
-                            }
+        try {
+            // Calculate the grid cells that overlap with the search area
+            int minCellX = GetCellX(position.x - radius);
+            int maxCellX = GetCellX(position.x + radius);
+            int minCellY = GetCellY(position.y - radius);
+            int maxCellY = GetCellY(position.y + radius);
+            
+            // Limit the search area to avoid excessive computation
+            const int MAX_CELLS = 5;
+            if (maxCellX - minCellX > MAX_CELLS) {
+                maxCellX = minCellX + MAX_CELLS;
+            }
+            if (maxCellY - minCellY > MAX_CELLS) {
+                maxCellY = minCellY + MAX_CELLS;
+            }
+            
+            // Collect enemies from cells in the search area
+            for (int y = minCellY; y <= maxCellY; y++) {
+                for (int x = minCellX; x <= maxCellX; x++) {
+                    int cellIndex = GetCellIndex(x, y);
+                    if (cellIndex >= 0 && cellIndex < cells.size()) {
+                        const auto& cellEnemies = cells[cellIndex];
+                        enemySet.insert(cellEnemies.begin(), cellEnemies.end());
+                        
+                        // Stop if we're collecting too many enemies
+                        if (enemySet.size() > 100) {
+                            // Convert set to vector and return
+                            return std::vector<EnemyBase*>(enemySet.begin(), enemySet.end());
                         }
                     }
                 }
             }
         }
-        
-        // Remove duplicates if needed
-        if (nearbyEnemies.size() > 1) {
-            std::sort(nearbyEnemies.begin(), nearbyEnemies.end());
-            nearbyEnemies.erase(std::unique(nearbyEnemies.begin(), nearbyEnemies.end()), nearbyEnemies.end());
+        catch (const std::exception& e) {
+            std::cout << "Exception in GetNearbyEnemies: " << e.what() << std::endl;
+            return std::vector<EnemyBase*>();
         }
         
-        // Filter by exact distance if needed
+        // Convert set to vector
+        std::vector<EnemyBase*> result(enemySet.begin(), enemySet.end());
+        
+        // Filter by actual distance if needed
         if (radius > cellSize) {
-            nearbyEnemies.erase(
-                std::remove_if(nearbyEnemies.begin(), nearbyEnemies.end(), 
+            result.erase(
+                std::remove_if(result.begin(), result.end(),
                              [&position, radius](EnemyBase* enemy) {
                                  if (!enemy) return true;
                                  sf::Vector2f enemyPos = enemy->GetPosition();
@@ -256,67 +167,51 @@ std::vector<EnemyBase*> GetNearbyEnemies(const sf::Vector2f& position, float rad
                                  float distSquared = dx * dx + dy * dy;
                                  return distSquared > radius * radius;
                              }),
-                nearbyEnemies.end()
+                result.end()
             );
         }
-    }
-    catch (const std::exception& e) {
-        std::cout << "Exception in GetNearbyEnemies: " << e.what() << std::endl;
-        nearbyEnemies.clear();
+        
+        return result;
     }
     
-    return nearbyEnemies;
-}
     // Get enemies in a specified view rectangle
     std::vector<EnemyBase*> GetEnemiesInView(const sf::FloatRect& viewBounds) {
-        std::vector<EnemyBase*> visibleEnemies;
+        // Use a set for automatic deduplication
+        std::unordered_set<EnemyBase*> enemySet;
         
         try {
             // Calculate the range of cells covered by the view
-            int minCellX = static_cast<int>(viewBounds.left / cellSize);
-            int maxCellX = static_cast<int>((viewBounds.left + viewBounds.width) / cellSize);
-            int minCellY = static_cast<int>(viewBounds.top / cellSize);
-            int maxCellY = static_cast<int>((viewBounds.top + viewBounds.height) / cellSize);
+            int minCellX = GetCellX(viewBounds.left);
+            int maxCellX = GetCellX(viewBounds.left + viewBounds.width);
+            int minCellY = GetCellY(viewBounds.top);
+            int maxCellY = GetCellY(viewBounds.top + viewBounds.height);
             
-            // Clamp to grid boundaries
-            minCellX = std::max(0, minCellX);
-            maxCellX = std::min(gridWidth - 1, maxCellX);
-            minCellY = std::max(0, minCellY);
-            maxCellY = std::min(gridHeight - 1, maxCellY);
-            
-            // Reserve space for efficiency
-            visibleEnemies.reserve((maxCellX - minCellX + 1) * (maxCellY - minCellY + 1) * 4);
-            
-            // Collect enemies from all cells in the view
+            // Collect enemies from cells in the view
             for (int y = minCellY; y <= maxCellY; y++) {
                 for (int x = minCellX; x <= maxCellX; x++) {
-                    int cellIndex = y * gridWidth + x;
+                    int cellIndex = GetCellIndex(x, y);
                     if (cellIndex >= 0 && cellIndex < cells.size()) {
                         const auto& cellEnemies = cells[cellIndex];
-                        visibleEnemies.insert(visibleEnemies.end(), cellEnemies.begin(), cellEnemies.end());
+                        enemySet.insert(cellEnemies.begin(), cellEnemies.end());
                     }
                 }
-            }
-            
-            // Remove duplicates if needed
-            if (visibleEnemies.size() > 1) {
-                std::sort(visibleEnemies.begin(), visibleEnemies.end());
-                visibleEnemies.erase(std::unique(visibleEnemies.begin(), visibleEnemies.end()), visibleEnemies.end());
             }
         }
         catch (const std::exception& e) {
             std::cout << "Exception in GetEnemiesInView: " << e.what() << std::endl;
-            visibleEnemies.clear();
+            return std::vector<EnemyBase*>();
         }
         
-        return visibleEnemies;
+        // Convert set to vector
+        return std::vector<EnemyBase*>(enemySet.begin(), enemySet.end());
     }
     
     // Clear the grid
     void Clear() {
         try {
-            cells.clear();
-            cells.resize(gridWidth * gridHeight);
+            for (auto& cell : cells) {
+                cell.clear();
+            }
             enemyCellIndices.clear();
         }
         catch (const std::exception& e) {
@@ -335,6 +230,24 @@ private:
     
     // Map of enemies to their cell indices for quick lookups
     std::unordered_map<EnemyBase*, int> enemyCellIndices;
+    
+    // Helper functions to convert positions to cell coordinates
+    inline int GetCellX(float x) const {
+        int cellX = static_cast<int>(std::floor(x / cellSize));
+        return std::max(0, std::min(gridWidth - 1, cellX));
+    }
+    
+    inline int GetCellY(float y) const {
+        int cellY = static_cast<int>(std::floor(y / cellSize));
+        return std::max(0, std::min(gridHeight - 1, cellY));
+    }
+    
+    inline int GetCellIndex(int cellX, int cellY) const {
+        // Ensure coordinates are in bounds
+        cellX = std::max(0, std::min(gridWidth - 1, cellX));
+        cellY = std::max(0, std::min(gridHeight - 1, cellY));
+        return cellY * gridWidth + cellX;
+    }
 };
 
 #endif // SPATIAL_GRID_H
