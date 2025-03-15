@@ -123,17 +123,17 @@ void EnemyManager::Update(float dt) {
                 enemyTargetPositions[entry.enemy.get()] = targetPos;
             }
             
-            // Get the old position for spatial grid update
+            // Store old position for spatial grid update
             sf::Vector2f oldPos = entry.GetPosition();
             
             // Update the enemy
             entry.enemy->Update(dt, targetPos);
             
-            // Update the enemy's position in the spatial grid if it moved
+            // Get new position
             sf::Vector2f newPos = entry.GetPosition();
-            sf::Vector2f delta = newPos - oldPos;
-            float moveDist = delta.x * delta.x + delta.y * delta.y;
-            if (moveDist > 1.0f) { // Lower threshold to catch more movement
+            
+            // Always update the spatial grid if the enemy moved at all
+            if (oldPos != newPos) {
                 spatialGrid.UpdateEnemyPosition(entry.enemy.get(), oldPos);
             }
         }
@@ -160,11 +160,21 @@ void EnemyManager::Update(float dt) {
                 enemyTargetPositions[&enemy] = targetPos;
             }
             
+            // Store old position for spatial grid update
+            sf::Vector2f oldPos = enemy.GetPosition();
+            
             // Update the enemy
             enemy.Update(dt, targetPos);
+            
+            // Get new position
+            sf::Vector2f newPos = enemy.GetPosition();
+            
+            // Always update spatial grid if the enemy moved at all
+            if (oldPos != newPos) {
+                spatialGrid.UpdateEnemyPosition(&enemy, oldPos);
+            }
         }
     }
-    
     // Update lastProcessedTriangle for next frame
     lastProcessedTriangle = endIndex;
     if (lastProcessedTriangle >= triangleEnemies.size()) {
@@ -593,71 +603,92 @@ void EnemyManager::CheckBulletCollisions(const std::vector<Bullet>& bullets) {
         float bulletRadius = 4.0f; // Bullet radius
         
         // Use spatial grid to get only nearby enemies
-        std::vector<EnemyBase*> nearbyEnemies = spatialGrid.GetNearbyEnemies(bulletPos, bulletRadius + ENEMY_SIZE);
+        std::vector<EnemyBase*> nearbyEnemies;
+        
+        try {
+            // Get nearby enemies with a slightly larger radius to ensure we don't miss any
+            nearbyEnemies = spatialGrid.GetNearbyEnemies(bulletPos, bulletRadius + ENEMY_SIZE * 1.5f);
+        } catch (const std::exception& e) {
+            std::cout << "Error getting nearby enemies for bullet collision: " << e.what() << std::endl;
+            continue; // Skip to next bullet if there's an error
+        }
         
         bool bulletHit = false;
         
-        // Check bullet against nearby regular enemies first
+        // Check bullet against nearby enemies
         for (EnemyBase* baseEnemy : nearbyEnemies) {
-            // Skip already dead enemies
-            if (!baseEnemy->IsAlive()) continue;
+            // Skip null or already dead enemies
+            if (!baseEnemy || !baseEnemy->IsAlive()) continue;
             
-            // Determine enemy type and check collision
-            bool collided = false;
-            int enemyId = baseEnemy->GetID();
-            EnemyType enemyType;
-            
-            // Check if it's a triangle enemy (IDs >= 10000)
-            if (enemyId >= 10000) {
-                TriangleEnemy* triEnemy = static_cast<TriangleEnemy*>(baseEnemy);
-                collided = triEnemy->CheckBulletCollision(bulletPos, bulletRadius);
-                enemyType = EnemyType::Triangle;
-            } else {
-                Enemy* rectEnemy = static_cast<Enemy*>(baseEnemy);
-                collided = rectEnemy->CheckBulletCollision(bulletPos, bulletRadius);
-                enemyType = EnemyType::Rectangle;
-            }
-            
-            if (collided) {
-                // Handle collision
-                if (isHost) {
-                    // Host applies actual damage
-                    bool killed = baseEnemy->TakeDamage(20); // Bullet damage
-                    baseEnemy->UpdateVisuals();
-                    
-                    // Send hit message with appropriate type
-                    ParsedMessage::EnemyType msgType = 
-                        (enemyType == EnemyType::Triangle) ? 
-                        ParsedMessage::EnemyType::Triangle : 
-                        ParsedMessage::EnemyType::Regular;
-                    
-                    std::string msg = MessageHandler::FormatEnemyHitMessage(
-                        enemyId, 20, killed, bullet.GetShooterID(), msgType);
-                    game->GetNetworkManager().BroadcastMessage(msg);
-                    
-                    // If enemy was killed, handle rewards
-                    if (killed) {
-                        RewardShooter(bullet.GetShooterID(), enemyType);
-                    }
+            try {
+                // Determine enemy type and check collision
+                bool collided = false;
+                int enemyId = baseEnemy->GetID();
+                EnemyType enemyType;
+                
+                // Check if it's a triangle enemy (IDs >= 10000)
+                if (enemyId >= 10000) {
+                    TriangleEnemy* triEnemy = static_cast<TriangleEnemy*>(baseEnemy);
+                    collided = triEnemy->CheckBulletCollision(bulletPos, bulletRadius);
+                    enemyType = EnemyType::Triangle;
                 } else {
-                    // Client only applies visual feedback
-                    baseEnemy->UpdateVisuals();
-                    
-                    // Send hit message to host
-                    ParsedMessage::EnemyType msgType = 
-                        (enemyType == EnemyType::Triangle) ? 
-                        ParsedMessage::EnemyType::Triangle : 
-                        ParsedMessage::EnemyType::Regular;
-                    
-                    std::string msg = MessageHandler::FormatEnemyHitMessage(
-                        enemyId, 20, false, bullet.GetShooterID(), msgType);
-                    game->GetNetworkManager().SendMessage(hostID, msg);
+                    Enemy* rectEnemy = static_cast<Enemy*>(baseEnemy);
+                    collided = rectEnemy->CheckBulletCollision(bulletPos, bulletRadius);
+                    enemyType = EnemyType::Rectangle;
                 }
                 
-                // Mark bullet for removal
-                bulletsToRemove.push_back(bulletIndex);
-                bulletHit = true;
-                break; // A bullet can only hit one enemy
+                if (collided) {
+                    // Handle collision
+                    if (isHost) {
+                        // Host applies actual damage
+                        bool killed = baseEnemy->TakeDamage(20); // Bullet damage
+                        baseEnemy->UpdateVisuals();
+                        
+                        // Send hit message with appropriate type
+                        ParsedMessage::EnemyType msgType = 
+                            (enemyType == EnemyType::Triangle) ? 
+                            ParsedMessage::EnemyType::Triangle : 
+                            ParsedMessage::EnemyType::Regular;
+                        
+                        std::string msg = MessageHandler::FormatEnemyHitMessage(
+                            enemyId, 20, killed, bullet.GetShooterID(), msgType);
+                        game->GetNetworkManager().BroadcastMessage(msg);
+                        
+                        // If enemy was killed, handle rewards
+                        if (killed) {
+                            RewardShooter(bullet.GetShooterID(), enemyType);
+                            
+                            // Remove from spatial grid when killed
+                            spatialGrid.RemoveEnemy(baseEnemy);
+                        }
+                    } else {
+                        // Client only applies visual feedback
+                        baseEnemy->UpdateVisuals();
+                        
+                        // Send hit message to host
+                        ParsedMessage::EnemyType msgType = 
+                            (enemyType == EnemyType::Triangle) ? 
+                            ParsedMessage::EnemyType::Triangle : 
+                            ParsedMessage::EnemyType::Regular;
+                        
+                        std::string msg = MessageHandler::FormatEnemyHitMessage(
+                            enemyId, 20, false, bullet.GetShooterID(), msgType);
+                        game->GetNetworkManager().SendMessage(hostID, msg);
+                    }
+                    
+                    // Mark bullet for removal
+                    bulletsToRemove.push_back(bulletIndex);
+                    bulletHit = true;
+                    
+                    // Debug output to verify collision was detected
+                    std::cout << "Bullet hit enemy #" << enemyId << 
+                        " of type " << (enemyType == EnemyType::Triangle ? "Triangle" : "Rectangle") << std::endl;
+                    
+                    break; // A bullet can only hit one enemy
+                }
+            } catch (const std::exception& e) {
+                std::cout << "Error processing bullet collision with enemy: " << e.what() << std::endl;
+                continue; // Skip to next enemy if there's an error
             }
         }
         
@@ -691,69 +722,99 @@ void EnemyManager::CheckPlayerCollisions() {
         sf::Vector2f playerPos = remotePlayer.player.GetPosition();
         const sf::RectangleShape& playerShape = remotePlayer.player.GetShape();
         
-        // Use spatial grid to get only nearby enemies
+        // Create a copy of nearby enemies to avoid issues if collection is modified during iteration
         float collisionRadius = ENEMY_SIZE * 2; // Conservative estimate
-        std::vector<EnemyBase*> nearbyEnemies = spatialGrid.GetNearbyEnemies(playerPos, collisionRadius);
+        std::vector<EnemyBase*> nearbyEnemies;
+        
+        try {
+            // Get nearby enemies
+            nearbyEnemies = spatialGrid.GetNearbyEnemies(playerPos, collisionRadius);
+        } catch (const std::exception& e) {
+            std::cerr << "Exception in GetNearbyEnemies: " << e.what() << std::endl;
+            continue; // Skip this player if there's an error
+        }
+        
+        // Keep track of enemies to remove
+        std::vector<EnemyBase*> enemiesToRemove;
         
         // Check collisions with nearby enemies
         for (EnemyBase* baseEnemy : nearbyEnemies) {
-            if (!baseEnemy->IsAlive()) continue;
+            if (!baseEnemy || !baseEnemy->IsAlive()) continue;
             
-            int enemyId = baseEnemy->GetID();
-            bool collision = false;
-            int damage = 0;
-            EnemyType enemyType;
-            ParsedMessage::EnemyType msgType;
-            
-            // Determine enemy type and check collision
-            if (enemyId >= 10000) { // Triangle enemy
-                TriangleEnemy* triEnemy = static_cast<TriangleEnemy*>(baseEnemy);
-                collision = triEnemy->CheckCollision(playerShape);
-                damage = TRIANGLE_DAMAGE;
-                enemyType = EnemyType::Triangle;
-                msgType = ParsedMessage::EnemyType::Triangle;
-            } else { // Regular enemy
-                Enemy* rectEnemy = static_cast<Enemy*>(baseEnemy);
-                collision = rectEnemy->CheckCollision(playerShape);
-                damage = 20; // Default damage
-                enemyType = EnemyType::Rectangle;
-                msgType = ParsedMessage::EnemyType::Regular;
+            try {
+                int enemyId = baseEnemy->GetID();
+                bool collision = false;
+                int damage = 0;
+                EnemyType enemyType;
+                ParsedMessage::EnemyType msgType;
+                
+                // Determine enemy type and check collision
+                if (enemyId >= 10000) { // Triangle enemy
+                    TriangleEnemy* triEnemy = static_cast<TriangleEnemy*>(baseEnemy);
+                    collision = triEnemy->CheckCollision(playerShape);
+                    damage = TRIANGLE_DAMAGE;
+                    enemyType = EnemyType::Triangle;
+                    msgType = ParsedMessage::EnemyType::Triangle;
+                } else { // Regular enemy
+                    Enemy* rectEnemy = static_cast<Enemy*>(baseEnemy);
+                    collision = rectEnemy->CheckCollision(playerShape);
+                    damage = 20; // Default damage
+                    enemyType = EnemyType::Rectangle;
+                    msgType = ParsedMessage::EnemyType::Regular;
+                }
+                
+                if (collision) {
+                    // Apply damage to player
+                    remotePlayer.player.TakeDamage(damage);
+                    
+                    // Only host should kill the enemy and send messages
+                    if (isHost) {
+                        // Mark enemy for removal to avoid modifying collection during iteration
+                        enemiesToRemove.push_back(baseEnemy);
+                        
+                        // Send enemy death message - broadcast twice for reliability
+                        std::string deathMsg = MessageHandler::FormatEnemyDeathMessage(
+                            enemyId, "", false, msgType);
+                        game->GetNetworkManager().BroadcastMessage(deathMsg);
+                        game->GetNetworkManager().BroadcastMessage(deathMsg); // Send twice
+                        
+                        // Also send player damage message
+                        std::string damageMsg = MessageHandler::FormatPlayerDamageMessage(
+                            playerID, damage, enemyId);
+                        game->GetNetworkManager().BroadcastMessage(damageMsg);
+                    } else {
+                        // For clients, don't kill the enemy locally - let host tell us
+                        // Just show visual effect
+                        baseEnemy->UpdateVisuals();
+                    }
+                    
+                    // If this is the local player, check if they died
+                    if (playerID == localSteamIDStr && remotePlayer.player.IsDead()) {
+                        // Set respawn timer
+                        remotePlayer.respawnTimer = 3.0f;
+                        std::cout << "[DEATH] Local player died from enemy collision" << std::endl;
+                    }
+                }
+            } catch (const std::exception& e) {
+                std::cerr << "Exception processing enemy collision: " << e.what() << std::endl;
+                continue; // Skip this enemy if there's an error
             }
-            
-            if (collision) {
-                // Apply damage to player
-                remotePlayer.player.TakeDamage(damage);
+        }
+        
+        // Now safely remove enemies marked for deletion
+        for (EnemyBase* enemyToRemove : enemiesToRemove) {
+            try {
+                int id = enemyToRemove->GetID();
                 
-                // Only host should kill the enemy and send messages
-                if (isHost) {
-                    // Kill enemy on collision
-                    baseEnemy->TakeDamage(baseEnemy->GetHealth());
-                    
-                    // Remove from spatial grid
-                    spatialGrid.RemoveEnemy(baseEnemy);
-                    
-                    // Send enemy death message - broadcast twice for reliability
-                    std::string deathMsg = MessageHandler::FormatEnemyDeathMessage(
-                        enemyId, "", false, msgType);
-                    game->GetNetworkManager().BroadcastMessage(deathMsg);
-                    game->GetNetworkManager().BroadcastMessage(deathMsg); // Send twice
-                    
-                    // Also send player damage message
-                    std::string damageMsg = MessageHandler::FormatPlayerDamageMessage(
-                        playerID, damage, enemyId);
-                    game->GetNetworkManager().BroadcastMessage(damageMsg);
-                } else {
-                    // For clients, don't kill the enemy locally - let host tell us
-                    // Just show visual effect
-                    baseEnemy->UpdateVisuals();
-                }
+                // Kill enemy on collision
+                enemyToRemove->TakeDamage(enemyToRemove->GetHealth());
                 
-                // If this is the local player, check if they died
-                if (playerID == localSteamIDStr && remotePlayer.player.IsDead()) {
-                    // Set respawn timer
-                    remotePlayer.respawnTimer = 3.0f;
-                    std::cout << "[DEATH] Local player died from enemy collision" << std::endl;
-                }
+                // Remove from spatial grid
+                spatialGrid.RemoveEnemy(enemyToRemove);
+                
+                std::cout << "[COLLISION] Enemy #" << id << " killed after colliding with player " << playerID << "\n";
+            } catch (const std::exception& e) {
+                std::cerr << "Exception removing enemy after collision: " << e.what() << std::endl;
             }
         }
     }
