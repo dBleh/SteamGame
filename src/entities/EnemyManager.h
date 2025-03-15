@@ -145,6 +145,10 @@ private:
         float priority;
         bool isTriangle;
         
+        // Default constructor
+        EnemySyncPriority() : id(0), position(0.f, 0.f), health(0), priority(0.f), isTriangle(false) {}
+        
+        // Parameter constructor
         EnemySyncPriority(int _id, const sf::Vector2f& _pos, int _health, float _priority, bool _isTriangle)
             : id(_id), position(_pos), health(_health), priority(_priority), isTriangle(_isTriangle) {}
             
