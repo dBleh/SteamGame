@@ -13,7 +13,10 @@
 class Game;
 class EnemyManager;
 class PlayingState;
-class TriangleEnemyManager;
+
+// Forward declaration helper
+inline PlayingState* GetPlayingState(Game* game);
+
 class HostNetwork {
 public:
     explicit HostNetwork(Game* game, PlayerManager* manager);
@@ -40,6 +43,8 @@ private:
     void ProcessWaveStartMessage(const ParsedMessage& parsed);
     void ProcessWaveCompleteMessage(const ParsedMessage& parsed);
     void ProcessEnemyValidationRequestMessage(const ParsedMessage& parsed);
+    void ProcessTriangleWaveStartMessage(const ParsedMessage& parsed);
+    void ProcessEnemyBatchSpawnMessage(const ParsedMessage& parsed);
 
     Game* game;
     PlayerManager* playerManager;

@@ -13,7 +13,10 @@
 class Game;
 class EnemyManager;
 class PlayingState;
-class TriangleEnemyManager;
+
+// Forward declaration helper (same as in Host.h)
+PlayingState* GetPlayingState(Game* game);
+
 class ClientNetwork {
 public:
     explicit ClientNetwork(Game* game, PlayerManager* manager);
@@ -29,7 +32,6 @@ public:
 
 private:
     // Message handlers
-    void ProcessEnemyPositionsMessage(const ParsedMessage& parsed);
     void ProcessChatMessage(const ParsedMessage& parsed);
     void ProcessConnectionMessage(const ParsedMessage& parsed);
     void ProcessReadyStatusMessage(const ParsedMessage& parsed);
@@ -37,11 +39,13 @@ private:
     void ProcessBulletMessage(const ParsedMessage& parsed);
     void ProcessPlayerDeathMessage(const ParsedMessage& parsed);
     void ProcessPlayerRespawnMessage(const ParsedMessage& parsed);
+    void ProcessEnemyPositionsMessage(const ParsedMessage& parsed);
     void ProcessEnemyValidationMessage(const ParsedMessage& parsed);
     void ProcessTriangleWaveStartMessage(const ParsedMessage& parsed);
 
     // Enemy-related message handlers - unified for all enemy types
     void ProcessEnemySpawnMessage(const ParsedMessage& parsed);
+    void ProcessEnemyBatchSpawnMessage(const ParsedMessage& parsed);
     void ProcessEnemyHitMessage(const ParsedMessage& parsed);
     void ProcessEnemyDeathMessage(const ParsedMessage& parsed);
     void ProcessWaveStartMessage(const ParsedMessage& parsed);

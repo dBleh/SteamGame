@@ -540,6 +540,150 @@ void PlayingState::Update(float dt) {
     sf::Vector2f mousePosView = game->GetWindow().mapPixelToCoords(mousePos, game->GetUIView());
 }
 
+// Add these implementations to your PlayingState.cpp file
+
+// Getter for the EnemyManager
+EnemyManager* PlayingState::GetEnemyManager() {
+    return enemyManager.get();
+}
+
+// Process events from SFML
+void PlayingState::ProcessEvent(const sf::Event& event) {
+    // Call the internal event processing function
+    ProcessEvents(event);
+}
+
+// Handle shooting logic
+void PlayingState::AttemptShoot(int mouseX, int mouseY) {
+    // Skip if the game is paused or not fully loaded
+    if (showEscapeMenu || !playerLoaded) return;
+    
+    // Get the current mouse position in world coordinates
+    sf::Vector2i mousePos(mouseX, mouseY);
+    sf::Vector2f worldPos = game->GetWindow().mapPixelToCoords(mousePos, game->GetCamera());
+    
+    // Get the local player
+    auto& localPlayer = playerManager->GetLocalPlayer();
+    
+    // Calculate direction vector from player to mouse position
+    sf::Vector2f playerPos = localPlayer.player.GetPosition();
+    sf::Vector2f direction = worldPos - playerPos;
+    
+    // Normalize the direction vector
+    float length = std::sqrt(direction.x * direction.x + direction.y * direction.y);
+    if (length > 0) {
+        direction /= length;
+    }
+    
+    // Get local player ID
+    std::string localPlayerID = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
+    
+    // Create a bullet
+    playerManager->AddBullet(localPlayerID, playerPos, direction, 800.0f);
+    
+    // Send the bullet message to all other players
+    std::string bulletMsg = MessageHandler::FormatBulletMessage(
+        localPlayerID, playerPos, direction, 800.0f);
+    
+    // Send to host if client, broadcast if host
+    if (clientNetwork) {
+        game->GetNetworkManager().SendMessage(clientNetwork->GetHostID(), bulletMsg);
+    } else if (hostNetwork) {
+        game->GetNetworkManager().BroadcastMessage(bulletMsg);
+    }
+}
+
+// Update player stats in the HUD
+void PlayingState::UpdatePlayerStats() {
+    if (!playerManager) return;
+    
+    // Get the local player
+    const auto& localPlayer = playerManager->GetLocalPlayer();
+    
+    // Format stats string
+    std::string statsText = "HP: " + std::to_string(localPlayer.player.GetHealth()) + 
+                            " | Kills: " + std::to_string(localPlayer.kills) + 
+                            " | Money: " + std::to_string(localPlayer.money);
+    
+    // Update the HUD
+    game->GetHUD().updateText("playerStats", statsText);
+    
+    // Update color based on health
+    int health = localPlayer.player.GetHealth();
+    if (health < 30) {
+        game->GetHUD().updateBaseColor("playerStats", sf::Color::Red);
+    } else if (health < 70) {
+        game->GetHUD().updateBaseColor("playerStats", sf::Color(255, 165, 0)); // Orange
+    } else {
+        game->GetHUD().updateBaseColor("playerStats", sf::Color::Black);
+    }
+}
+
+// Update leaderboard display
+void PlayingState::UpdateLeaderboard() {
+    if (!playerManager) return;
+    
+    // Get all players
+    auto& players = playerManager->GetPlayers();
+    
+    // Vector to hold player data for sorting
+    std::vector<std::pair<std::string, int>> playerData;
+    
+    // Collect data
+    for (const auto& pair : players) {
+        playerData.push_back({pair.second.baseName, pair.second.kills});
+    }
+    
+    // Sort by kills (highest first)
+    std::sort(playerData.begin(), playerData.end(), 
+        [](const auto& a, const auto& b) { return a.second > b.second; });
+    
+    // Format leaderboard string
+    std::string leaderboardText = "LEADERBOARD\n\n";
+    
+    for (size_t i = 0; i < playerData.size(); ++i) {
+        leaderboardText += std::to_string(i + 1) + ". " + 
+                          playerData[i].first + " - " + 
+                          std::to_string(playerData[i].second) + " kills\n";
+    }
+    
+    // Update the HUD
+    game->GetHUD().updateText("leaderboard", leaderboardText);
+}
+
+// Start the next wave of enemies
+void PlayingState::StartNextWave() {
+    if (!enemyManager || !playerLoaded) return;
+    
+    // Only the host should start the wave
+    CSteamID myID = SteamUser()->GetSteamID();
+    CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+    
+    if (myID == hostID) {
+        std::cout << "[HOST] Starting next wave" << std::endl;
+        
+        try {
+            // Start the next wave
+            enemyManager->StartNextWave();
+            
+            // Broadcast the wave start to all clients
+            std::string waveMsg = MessageHandler::FormatWaveStartMessage(
+                enemyManager->GetCurrentWave());
+            game->GetNetworkManager().BroadcastMessage(waveMsg);
+            
+            std::cout << "[HOST] Next enemy wave started: " 
+                      << enemyManager->GetCurrentWave() << std::endl;
+        } catch (const std::exception& e) {
+            std::cerr << "[ERROR] Failed to start next wave: " << e.what() << std::endl;
+        }
+    }
+}
+
+// Check if the game state is fully loaded
+bool PlayingState::IsFullyLoaded() {
+    return playerLoaded;
+}
+
 void PlayingState::Render() {
     game->GetWindow().clear(MAIN_BACKGROUND_COLOR);
     

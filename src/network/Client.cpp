@@ -3,8 +3,8 @@
 #include "../network/NetworkManager.h"
 #include "../utils/MessageHandler.h"
 #include "../states/PlayingState.h"
-#include "../entities/TriangleManager.h"
 #include <iostream>
+
 
 ClientNetwork::ClientNetwork(Game* game, PlayerManager* manager)
     : game(game), playerManager(manager), lastSendTime(std::chrono::steady_clock::now()) {
@@ -22,6 +22,7 @@ void ClientNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
         parsed.type == MessageType::ChunkPart) {
         return;
     }
+    
     switch (parsed.type) {
         case MessageType::Chat:
             ProcessChatMessage(parsed);
@@ -62,6 +63,9 @@ void ClientNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
         // Enemy-related messages
         case MessageType::EnemySpawn:
             ProcessEnemySpawnMessage(parsed);
+            break;
+        case MessageType::EnemyBatchSpawn:
+            ProcessEnemyBatchSpawnMessage(parsed);
             break;
         case MessageType::EnemyHit:
             ProcessEnemyHitMessage(parsed);
@@ -157,11 +161,11 @@ void ClientNetwork::ProcessTriangleWaveStartMessage(const ParsedMessage& parsed)
     PlayingState* playingState = GetPlayingState(game);
     if (!playingState) return;
     
-    TriangleEnemyManager* triangleManager = playingState->GetTriangleEnemyManager();
-    if (!triangleManager) return;
+    EnemyManager* enemyManager = playingState->GetEnemyManager();
+    if (!enemyManager) return;
     
-    // Generate enemies with the same seed the host used
-    triangleManager->GenerateEnemiesWithSeed(parsed.seed, parsed.enemyCount);
+    // Generate triangle enemies with the same seed the host used
+    enemyManager->SpawnTriangleWave(parsed.enemyCount, parsed.seed);
 }
 
 void ClientNetwork::ProcessBulletMessage(const ParsedMessage& parsed) {
@@ -311,7 +315,11 @@ void ClientNetwork::ProcessPlayerRespawnMessage(const ParsedMessage& parsed) {
         // Check health after respawn
         int newHealth = player.player.GetHealth();
         bool isDeadNow = player.player.IsDead();
-  
+        
+        std::cout << "[CLIENT] Player " << normalizedID 
+                  << " respawned. Was dead: " << (wasDead ? "yes" : "no") 
+                  << ", Health: " << oldHealth << " -> " << newHealth 
+                  << ", Is dead now: " << (isDeadNow ? "yes" : "no") << "\n";
                   
         // If health is not 100 after respawn, force it
         if (newHealth < 100) {
@@ -324,169 +332,212 @@ void ClientNetwork::ProcessPlayerRespawnMessage(const ParsedMessage& parsed) {
 }
 
 void ClientNetwork::ProcessEnemySpawnMessage(const ParsedMessage& parsed) {
-    // Access the PlayingState's EnemyManager through the Game
+    // Access the PlayingState's unified EnemyManager
     PlayingState* playingState = GetPlayingState(game);
-    if (playingState) {
-        // Determine if this is for a regular enemy or triangle enemy based on ID range
-        // Negative IDs are used for triangle enemies (optional - if you want to distinguish)
-        if (parsed.enemyId < 0) {
-            TriangleEnemyManager* triangleManager = playingState->GetTriangleEnemyManager();
-            if (triangleManager) {
-                triangleManager->AddEnemy(parsed.enemyId, parsed.position);
-            }
-        } else {
-            EnemyManager* enemyManager = playingState->GetEnemyManager();
-            if (enemyManager) {
-                enemyManager->AddEnemy(parsed.enemyId, parsed.position);
-            }
-        }
+    if (!playingState) return;
+    
+    EnemyManager* enemyManager = playingState->GetEnemyManager();
+    if (!enemyManager) return;
+    
+    // Add the enemy based on type
+    if (parsed.enemyType == ParsedMessage::EnemyType::Triangle) {
+        enemyManager->AddTriangleEnemy(parsed.enemyId, parsed.position);
+        std::cout << "[CLIENT] Added triangle enemy #" << parsed.enemyId 
+                  << " at (" << parsed.position.x << "," << parsed.position.y << ")\n";
+    } else {
+        enemyManager->AddEnemy(parsed.enemyId, parsed.position, EnemyType::Rectangle);
+        std::cout << "[CLIENT] Added regular enemy #" << parsed.enemyId 
+                  << " at (" << parsed.position.x << "," << parsed.position.y << ")\n";
     }
 }
 
+void ClientNetwork::ProcessEnemyBatchSpawnMessage(const ParsedMessage& parsed) {
+    // Access the PlayingState's unified EnemyManager
+    PlayingState* playingState = GetPlayingState(game);
+    if (!playingState) return;
+    
+    EnemyManager* enemyManager = playingState->GetEnemyManager();
+    if (!enemyManager) return;
+    
+    // Process each enemy in the batch
+    for (size_t i = 0; i < parsed.enemyPositions.size(); ++i) {
+        int id = parsed.enemyPositions[i].first;
+        sf::Vector2f position = parsed.enemyPositions[i].second;
+        int health = parsed.enemyHealths[i].second;
+        
+        // Add the enemy based on type
+        if (parsed.enemyType == ParsedMessage::EnemyType::Triangle) {
+            enemyManager->AddTriangleEnemy(id, position, health);
+        } else {
+            enemyManager->AddEnemy(id, position, EnemyType::Rectangle, health);
+        }
+    }
+    
+    std::cout << "[CLIENT] Added batch of " << parsed.enemyPositions.size() 
+              << " " << (parsed.enemyType == ParsedMessage::EnemyType::Triangle ? "triangle" : "regular")
+              << " enemies\n";
+}
+
 void ClientNetwork::ProcessEnemyHitMessage(const ParsedMessage& parsed) {
-    // Access the PlayingState's EnemyManager
+    // Access the PlayingState's unified EnemyManager
     PlayingState* playingState = GetPlayingState(game);
     if (!playingState) return;
 
+    EnemyManager* enemyManager = playingState->GetEnemyManager();
+    if (!enemyManager) return;
+    
     // Check if this hit was from the local player
     std::string localSteamIDStr = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
     bool isLocalHit = (parsed.steamID == localSteamIDStr);
     
-    // Determine which enemy manager to use based on enemy ID
-    if (parsed.enemyId < 0) {
-        // Triangle enemy
-        TriangleEnemyManager* triangleManager = playingState->GetTriangleEnemyManager();
-        if (triangleManager) {
-            if (isLocalHit) {
-                std::cout << "[CLIENT] Received confirmation of local player's hit on triangle enemy " << parsed.enemyId << "\n";
-            }
-            triangleManager->HandleEnemyHit(parsed.enemyId, parsed.damage, parsed.killed);
-        }
-    } else {
-        // Regular enemy
-        EnemyManager* enemyManager = playingState->GetEnemyManager();
-        if (enemyManager) {
-            if (isLocalHit) {
-                std::cout << "[CLIENT] Received confirmation of local player's hit on enemy " << parsed.enemyId << "\n";
-            }
-            enemyManager->HandleEnemyHit(parsed.enemyId, parsed.damage, parsed.killed);
-        }
+    if (isLocalHit) {
+        std::cout << "[CLIENT] Received confirmation of local player's hit on " 
+                 << (parsed.enemyType == ParsedMessage::EnemyType::Triangle ? "triangle " : "")
+                 << "enemy " << parsed.enemyId << "\n";
     }
+    
+    // Handle the hit in the unified EnemyManager
+    enemyManager->HandleEnemyHit(parsed.enemyId, parsed.damage, parsed.killed, parsed.steamID, parsed.enemyType);
 }
 
 void ClientNetwork::ProcessEnemyDeathMessage(const ParsedMessage& parsed) {
-    // Get the PlayingState
+    // Get the PlayingState and the unified EnemyManager
     PlayingState* playingState = GetPlayingState(game);
     if (!playingState) {
         std::cout << "[CLIENT] Cannot process enemy death: PlayingState not available" << std::endl;
         return;
     }
 
-    // Determine which enemy manager to use based on enemy ID
-    if (parsed.enemyId < 0) {
-        // Triangle enemy
-        TriangleEnemyManager* triangleManager = playingState->GetTriangleEnemyManager();
-        if (triangleManager && triangleManager->HasEnemy(parsed.enemyId)) {
-            triangleManager->RemoveEnemy(parsed.enemyId);
-            std::cout << "[CLIENT] Removed triangle enemy " << parsed.enemyId << " after death message" << std::endl;
-            
-            // Check if this was a rewarded kill for the local player
-            std::string localSteamIDStr = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
-            if (parsed.rewardKill && parsed.killerID == localSteamIDStr) {
-                std::cout << "[CLIENT] Local player killed triangle enemy " << parsed.enemyId << "\n";
-            }
-        }
+    EnemyManager* enemyManager = playingState->GetEnemyManager();
+    if (!enemyManager) return;
+    
+    // Check if the enemy exists
+    bool enemyExists = false;
+    
+    if (parsed.enemyType == ParsedMessage::EnemyType::Triangle) {
+        enemyExists = enemyManager->HasTriangleEnemy(parsed.enemyId);
     } else {
-        // Regular enemy
-        EnemyManager* enemyManager = playingState->GetEnemyManager();
-        if (enemyManager && enemyManager->HasEnemy(parsed.enemyId)) {
-            enemyManager->RemoveEnemy(parsed.enemyId);
-            std::cout << "[CLIENT] Removed enemy " << parsed.enemyId << " after death message" << std::endl;
-            
-            // Check if this was a rewarded kill for the local player
-            std::string localSteamIDStr = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
-            if (parsed.rewardKill && parsed.killerID == localSteamIDStr) {
-                std::cout << "[CLIENT] Local player killed enemy " << parsed.enemyId << "\n";
-            }
-        }
+        enemyExists = enemyManager->HasEnemy(parsed.enemyId);
+    }
+    
+    if (!enemyExists) {
+        std::cout << "[CLIENT] Received death message for non-existent " 
+                 << (parsed.enemyType == ParsedMessage::EnemyType::Triangle ? "triangle " : "")
+                 << "enemy " << parsed.enemyId << "\n";
+        return;
+    }
+    
+    // Handle enemy death based on type
+    if (parsed.enemyType == ParsedMessage::EnemyType::Triangle) {
+        // Handle triangle enemy death
+        enemyManager->HandleTriangleEnemyHit(parsed.enemyId, 1000, true, parsed.killerID); // Force kill
+    } else {
+        // Handle regular enemy death
+        enemyManager->RemoveEnemy(parsed.enemyId);
+    }
+    
+    std::cout << "[CLIENT] Removed " 
+              << (parsed.enemyType == ParsedMessage::EnemyType::Triangle ? "triangle " : "")
+              << "enemy " << parsed.enemyId << " after death message" << std::endl;
+    
+    // Check if this was a rewarded kill for the local player
+    std::string localSteamIDStr = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
+    if (parsed.rewardKill && parsed.killerID == localSteamIDStr) {
+        std::cout << "[CLIENT] Local player killed " 
+                 << (parsed.enemyType == ParsedMessage::EnemyType::Triangle ? "triangle " : "")
+                 << "enemy " << parsed.enemyId << "\n";
+        
+        // We'll let the host update our kills/money since they're the authority
     }
 }
 
 void ClientNetwork::ProcessWaveStartMessage(const ParsedMessage& parsed) {
-    // Get the PlayingState and its EnemyManager
-    PlayingState* playingState = GetPlayingState(game);
-    if (playingState) {
-        EnemyManager* enemyManager = playingState->GetEnemyManager();
-        if (enemyManager) {
-            // Clear any lingering enemies before new wave starts
-            std::vector<int> emptyList;
-            enemyManager->RemoveStaleEnemies(emptyList);
-            
-            // As a client, we don't spawn enemies, but we update our wave number
-            if (parsed.waveNumber > enemyManager->GetCurrentWave()) {
-                std::cout << "[CLIENT] Starting wave " << parsed.waveNumber << "\n";
-                // The enemies will be spawned via EnemySpawn messages from the host
-            }
-        }
-    }
-}
-
-void ClientNetwork::ProcessWaveCompleteMessage(const ParsedMessage& parsed) {
-    // Get the PlayingState and its EnemyManager
-    if (game->GetCurrentState() == GameState::Playing) {
-        PlayingState* playingState = dynamic_cast<PlayingState*>(game->GetState());
-        if (playingState) {
-            EnemyManager* enemyManager = playingState->GetEnemyManager();
-            if (enemyManager) {
-                std::cout << "[CLIENT] Wave " << parsed.waveNumber << " complete\n";
-                // Client-side wave completion logic (if any)
-            }
-        }
-    }
-}
-
-void ClientNetwork::ProcessEnemyPositionsMessage(const ParsedMessage& parsed) {
+    // Get the PlayingState and its unified EnemyManager
     PlayingState* playingState = GetPlayingState(game);
     if (!playingState) return;
     
-    // Process regular enemies
     EnemyManager* enemyManager = playingState->GetEnemyManager();
-    if (enemyManager) {
-        // First update positions
-        enemyManager->UpdateEnemyPositions(parsed.enemyPositions);
+    if (!enemyManager) return;
+    
+    std::cout << "[CLIENT] Starting wave " << parsed.waveNumber << "\n";
+    
+    // As a client, we mostly wait for the host to spawn enemies
+    // But we can update our wave number for UI purposes
+    // This would need an accessor method in EnemyManager
+}
+
+void ClientNetwork::ProcessWaveCompleteMessage(const ParsedMessage& parsed) {
+    // Get the PlayingState and its unified EnemyManager
+    PlayingState* playingState = GetPlayingState(game);
+    if (!playingState) return;
+    
+    EnemyManager* enemyManager = playingState->GetEnemyManager();
+    if (!enemyManager) return;
+    
+    std::cout << "[CLIENT] Wave " << parsed.waveNumber << " complete\n";
+    
+    // Client-side wave completion logic (if any)
+    // This might be informing the EnemyManager for UI updates
+}
+
+void ClientNetwork::ProcessEnemyPositionsMessage(const ParsedMessage& parsed) {
+    // Get the PlayingState and its unified EnemyManager
+    PlayingState* playingState = GetPlayingState(game);
+    if (!playingState) return;
+    
+    EnemyManager* enemyManager = playingState->GetEnemyManager();
+    if (!enemyManager) return;
+    
+    // Convert from vector<pair> to vector<tuple>
+    std::vector<std::tuple<int, sf::Vector2f, int>> positionData;
+    positionData.reserve(parsed.enemyPositions.size());
+    
+    // Process each enemy position and find its corresponding health
+    for (size_t i = 0; i < parsed.enemyPositions.size(); ++i) {
+        int id = parsed.enemyPositions[i].first;
+        sf::Vector2f position = parsed.enemyPositions[i].second;
         
-        // Now update health values
+        // Find the health for this enemy id
+        int health = 0;
         for (const auto& healthPair : parsed.enemyHealths) {
-            int id = healthPair.first;
-            int health = healthPair.second;
-            
-            enemyManager->UpdateEnemyHealth(id, health);
+            if (healthPair.first == id) {
+                health = healthPair.second;
+                break;
+            }
         }
+        
+        // Add to the tuple vector
+        positionData.emplace_back(id, position, health);
     }
     
-    // Process triangle enemies
-    TriangleEnemyManager* triangleManager = playingState->GetTriangleEnemyManager();
-    if (triangleManager && !parsed.triangleEnemyPositions.empty()) {
-        triangleManager->UpdateEnemyPositions(parsed.triangleEnemyPositions);
+    // Update enemy positions
+    enemyManager->UpdateEnemyPositions(positionData);
+    
+    // Update enemy health values separately if needed
+    for (const auto& healthPair : parsed.enemyHealths) {
+        int id = healthPair.first;
+        int health = healthPair.second;
+        
+        enemyManager->UpdateEnemyHealth(id, health);
     }
 }
 
 void ClientNetwork::ProcessEnemyValidationMessage(const ParsedMessage& parsed) {
-    // Access the PlayingState
+    // Get the PlayingState and its unified EnemyManager
     PlayingState* playingState = GetPlayingState(game);
     if (!playingState) return;
-
-    // Process regular enemies
-    EnemyManager* enemyManager = playingState->GetEnemyManager();
-    if (enemyManager) {
-        enemyManager->ValidateEnemyList(parsed.validEnemyIds);
-        std::cout << "[CLIENT] Processed enemy validation with " << parsed.validEnemyIds.size() << " enemies" << std::endl;
-    }
     
-    // Process triangle enemies
-    TriangleEnemyManager* triangleManager = playingState->GetTriangleEnemyManager();
-    if (triangleManager && !parsed.triangleValidEnemyIds.empty()) {
-        triangleManager->ValidateEnemyList(parsed.triangleValidEnemyIds);
-        std::cout << "[CLIENT] Processed triangle enemy validation with " << parsed.triangleValidEnemyIds.size() << " enemies" << std::endl;
+    EnemyManager* enemyManager = playingState->GetEnemyManager();
+    if (!enemyManager) return;
+    
+    // Validate enemy list based on type
+    if (parsed.enemyType == ParsedMessage::EnemyType::Triangle) {
+        enemyManager->ValidateTriangleEnemyList(parsed.validEnemyIds);
+        std::cout << "[CLIENT] Processed triangle enemy validation with " 
+                 << parsed.validEnemyIds.size() << " enemies" << std::endl;
+    } else {
+        enemyManager->ValidateEnemyList(parsed.validEnemyIds);
+        std::cout << "[CLIENT] Processed regular enemy validation with " 
+                 << parsed.validEnemyIds.size() << " enemies" << std::endl;
     }
 }

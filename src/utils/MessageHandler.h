@@ -26,7 +26,7 @@ enum class MessageType {
     EnemyPositions,
     EnemyValidation,
     EnemyValidationRequest,
-    // Combined message types for all enemy types
+    EnemyBatchSpawn,
     TriangleWaveStart,
     ChunkStart,
     ChunkPart,
@@ -46,24 +46,35 @@ struct ParsedMessage {
     sf::Vector2f direction;  // For Bullet
     float velocity;          // For Bullet
     std::vector<int> validEnemyIds;
+    
     // Enemy-related fields
     int enemyId;             // ID of the enemy
     int damage;              // Damage amount
     bool killed;             // Was enemy killed
     int waveNumber;          // Wave number
     bool rewardKill;         // Should killer be rewarded
+    
+    // Enemy position data
     std::vector<std::pair<int, sf::Vector2f>> enemyPositions; // For enemy position updates (id, position)
-    std::vector<std::pair<int, int>> enemyHealths;
-    std::vector<std::tuple<int, sf::Vector2f, int>> triangleEnemyPositions;
-    std::vector<std::pair<int, int>> triangleEnemyHealths;
-    std::vector<int> triangleValidEnemyIds;
+    std::vector<std::pair<int, int>> enemyHealths;            // For enemy health updates (id, health)
+    
+    // Enemy types enum
+    enum class EnemyType {
+        Regular = 0,
+        Triangle = 1
+    };
+    
+    EnemyType enemyType = EnemyType::Regular;  // Default to regular enemy
+    
+    // Wave data
     uint32_t seed;
     int enemyCount;
+    
+    // Chunking data
     std::string chunkId;
     int chunkNum;
     int totalChunks;
     std::string chunkType;
-    
 };
 
 class MessageHandler {
@@ -77,21 +88,27 @@ public:
     static std::string FormatPlayerRespawnMessage(const std::string& playerID, const sf::Vector2f& position);
     static std::string FormatStartGameMessage(const std::string& hostID);
     
-    // Unified enemy position messages for all enemy types
-    static std::string FormatEnemyPositionsMessage(const std::vector<std::pair<int, sf::Vector2f>>& enemyPositions);
+    // Enemy-related message formatting
+    static std::string FormatEnemySpawnMessage(int enemyId, const sf::Vector2f& position, ParsedMessage::EnemyType enemyType = ParsedMessage::EnemyType::Regular);
+    static std::string FormatEnemyBatchSpawnMessage(const std::vector<std::tuple<int, sf::Vector2f, int>>& batchData, ParsedMessage::EnemyType enemyType = ParsedMessage::EnemyType::Regular);
+    static std::string FormatEnemyHitMessage(int enemyId, int damage, bool killed, const std::string& shooterID, ParsedMessage::EnemyType enemyType = ParsedMessage::EnemyType::Regular);
+    static std::string FormatEnemyDeathMessage(int enemyId, const std::string& killerID, bool rewardKill, ParsedMessage::EnemyType enemyType = ParsedMessage::EnemyType::Regular);
+    static std::string FormatEnemyFullListMessage(const std::vector<int>& enemyIds, ParsedMessage::EnemyType enemyType = ParsedMessage::EnemyType::Regular);
+
+    
+    // Unified enemy positions message for all enemy types
     static std::string FormatEnemyPositionsMessage(const std::vector<std::tuple<int, sf::Vector2f, int>>& enemyData);
     
-    // Triangle wave start format
+    // Wave management messages
     static std::string FormatTriangleWaveStartMessage(uint32_t seed, int enemyCount);
-    
-    // Generic enemy messages for all types
-    static std::string FormatEnemySpawnMessage(int enemyId, const sf::Vector2f& position);
-    static std::string FormatEnemyHitMessage(int enemyId, int damage, bool killed, const std::string& shooterID);
-    static std::string FormatEnemyDeathMessage(int enemyId, const std::string& killerID, bool rewardKill);
-    static std::string FormatPlayerDamageMessage(const std::string& playerID, int damage, int enemyId);
     static std::string FormatWaveStartMessage(int waveNumber);
     static std::string FormatWaveCompleteMessage(int waveNumber);
+    static std::string FormatWaveStartWithTypesMessage(int waveNumber, uint32_t seed, const std::vector<int>& typeInts);
+    
+    // Other enemy-related messages
+    static std::string FormatPlayerDamageMessage(const std::string& playerID, int damage, int enemyId);
     static std::string FormatEnemyValidationMessage(const std::vector<int>& enemyIds);
+    static std::string FormatEnemyFullListMessage(const std::vector<int>& enemyIds, int enemyType = 0);
     static std::string FormatEnemyValidationRequestMessage();
     
     // Message parsing methods
@@ -116,6 +133,8 @@ public:
 
     // Main message parser
     static ParsedMessage ParseMessage(const std::string& msg);
+    
+    // Maximum packet size constant
 };
 
 #endif // MESSAGE_HANDLER_H

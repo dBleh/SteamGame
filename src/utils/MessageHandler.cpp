@@ -142,7 +142,7 @@ std::string MessageHandler::FormatBulletMessage(const std::string& shooterID, co
     try {
         uint64_t idNum = std::stoull(shooterID);
         normalizedID = std::to_string(idNum);
-    } catch (const std::exception& e) {
+    } catch (const std::exception&) {
         // Keep original if conversion fails
     }
 
@@ -181,23 +181,25 @@ std::string MessageHandler::FormatStartGameMessage(const std::string& hostID) {
     return oss.str();
 }
 
-std::string MessageHandler::FormatEnemySpawnMessage(int enemyId, const sf::Vector2f& position) {
+std::string MessageHandler::FormatEnemySpawnMessage(int enemyId, const sf::Vector2f& position, ParsedMessage::EnemyType enemyType) {
     std::ostringstream oss;
-    oss << "ES|" << enemyId << "|" << position.x << "," << position.y;
+    oss << "ES|" << enemyId << "|" << position.x << "," << position.y << "|" << static_cast<int>(enemyType);
     return oss.str();
 }
 
-std::string MessageHandler::FormatEnemyPositionsMessage(const std::vector<std::pair<int, sf::Vector2f>>& enemyPositions) {
-    std::ostringstream oss;
-    oss << "EP|" << enemyPositions.size();
+std::string MessageHandler::FormatEnemyBatchSpawnMessage(
+    const std::vector<std::tuple<int, sf::Vector2f, int>>& batchData,
+    ParsedMessage::EnemyType enemyType) {
     
-    // Use default health value since health info wasn't provided
-    for (const auto& enemy : enemyPositions) {
-        int id = enemy.first;
-        sf::Vector2f pos = enemy.second;
-        int defaultHealth = 40; // Default max health
+    std::ostringstream oss;
+    oss << "EBS|" << static_cast<int>(enemyType) << "|" << batchData.size();
+    
+    for (const auto& enemy : batchData) {
+        int id = std::get<0>(enemy);
+        sf::Vector2f pos = std::get<1>(enemy);
+        int health = std::get<2>(enemy);
         
-        oss << "|" << id << "," << pos.x << "," << pos.y << "," << defaultHealth;
+        oss << "|" << id << "," << pos.x << "," << pos.y << "," << health;
     }
     
     return oss.str();
@@ -218,15 +220,15 @@ std::string MessageHandler::FormatEnemyPositionsMessage(const std::vector<std::t
     return oss.str();
 }
 
-std::string MessageHandler::FormatEnemyHitMessage(int enemyId, int damage, bool killed, const std::string& shooterID) {
+std::string MessageHandler::FormatEnemyHitMessage(int enemyId, int damage, bool killed, const std::string& shooterID, ParsedMessage::EnemyType enemyType) {
     std::ostringstream oss;
-    oss << "EH|" << enemyId << "|" << damage << "|" << (killed ? "1" : "0") << "|" << shooterID;
+    oss << "EH|" << enemyId << "|" << damage << "|" << (killed ? "1" : "0") << "|" << shooterID << "|" << static_cast<int>(enemyType);
     return oss.str();
 }
 
-std::string MessageHandler::FormatEnemyDeathMessage(int enemyId, const std::string& killerID, bool rewardKill) {
+std::string MessageHandler::FormatEnemyDeathMessage(int enemyId, const std::string& killerID, bool rewardKill, ParsedMessage::EnemyType enemyType) {
     std::ostringstream oss;
-    oss << "ED|" << enemyId << "|" << killerID << "|" << (rewardKill ? "1" : "0");
+    oss << "ED|" << enemyId << "|" << killerID << "|" << (rewardKill ? "1" : "0") << "|" << static_cast<int>(enemyType);
     return oss.str();
 }
 
@@ -248,6 +250,17 @@ std::string MessageHandler::FormatWaveCompleteMessage(int waveNumber) {
     return oss.str();
 }
 
+std::string MessageHandler::FormatWaveStartWithTypesMessage(int waveNumber, uint32_t seed, const std::vector<int>& typeInts) {
+    std::ostringstream oss;
+    oss << "WST|" << waveNumber << "|" << seed << "|" << typeInts.size();
+    
+    for (int type : typeInts) {
+        oss << "|" << type;
+    }
+    
+    return oss.str();
+}
+
 std::string MessageHandler::FormatEnemyValidationRequestMessage() {
     return "EVR|";  // Simple message, no additional data needed
 }
@@ -255,6 +268,17 @@ std::string MessageHandler::FormatEnemyValidationRequestMessage() {
 std::string MessageHandler::FormatTriangleWaveStartMessage(uint32_t seed, int enemyCount) {
     std::ostringstream oss;
     oss << "TWS|" << seed << "|" << enemyCount;
+    return oss.str();
+}
+
+std::string MessageHandler::FormatEnemyFullListMessage(const std::vector<int>& enemyIds, ParsedMessage::EnemyType enemyType) {
+    std::ostringstream oss;
+    oss << "EFL|" << static_cast<int>(enemyType) << "|" << enemyIds.size();
+    
+    for (int id : enemyIds) {
+        oss << "|" << id;
+    }
+    
     return oss.str();
 }
 
@@ -365,17 +389,40 @@ ParsedMessage MessageHandler::ParseMessage(const std::string& msg) {
         char comma;
         posStream >> x >> comma >> y;
         parsed.position = sf::Vector2f(x, y);
+        
+        // Parse enemy type if provided
+        if (parts.size() >= 4) {
+            parsed.enemyType = static_cast<ParsedMessage::EnemyType>(std::stoi(parts[3]));
+        } else {
+            parsed.enemyType = ParsedMessage::EnemyType::Regular; // Default
+        }
     } else if (parts[0] == "EH" && parts.size() >= 5) {
         parsed.type = MessageType::EnemyHit;
         parsed.enemyId = std::stoi(parts[1]);
         parsed.damage = std::stoi(parts[2]);
         parsed.killed = (parts[3] == "1");
         parsed.steamID = parts[4];  // Shooter ID
+        
+        // Parse enemy type if available
+        if (parts.size() >= 6) {
+            parsed.enemyType = static_cast<ParsedMessage::EnemyType>(std::stoi(parts[5]));
+        } else {
+            // Default to Regular if not specified
+            parsed.enemyType = ParsedMessage::EnemyType::Regular;
+        }
     } else if (parts[0] == "ED" && parts.size() >= 4) {
         parsed.type = MessageType::EnemyDeath;
         parsed.enemyId = std::stoi(parts[1]);
         parsed.killerID = parts[2];
         parsed.rewardKill = (parts[3] == "1");
+        
+        // Parse enemy type if available
+        if (parts.size() >= 5) {
+            parsed.enemyType = static_cast<ParsedMessage::EnemyType>(std::stoi(parts[4]));
+        } else {
+            // Default to Regular if not specified
+            parsed.enemyType = ParsedMessage::EnemyType::Regular;
+        }
     } else if (parts[0] == "PD" && parts.size() >= 4) {
         parsed.type = MessageType::PlayerDamage;
         parsed.steamID = parts[1];   // Player who was damaged
@@ -429,8 +476,64 @@ ParsedMessage MessageHandler::ParseMessage(const std::string& msg) {
         for (int i = 0; i < numEnemies && i + 2 < parts.size(); ++i) {
             parsed.validEnemyIds.push_back(std::stoi(parts[i + 2]));
         }
+    } else if (parts[0] == "EFL" && parts.size() >= 3) {
+        parsed.type = MessageType::EnemyValidation;
+        parsed.enemyType = static_cast<ParsedMessage::EnemyType>(std::stoi(parts[1]));
+        int numEnemies = std::stoi(parts[2]);
+        
+        parsed.validEnemyIds.clear();
+        
+        for (int i = 0; i < numEnemies && i + 3 < parts.size(); ++i) {
+            parsed.validEnemyIds.push_back(std::stoi(parts[i + 3]));
+        }
+    } else if (parts[0] == "EBS" && parts.size() >= 3) {
+        parsed.type = MessageType::EnemyBatchSpawn;
+        parsed.enemyType = static_cast<ParsedMessage::EnemyType>(std::stoi(parts[1]));
+        int count = std::stoi(parts[2]);
+        
+        parsed.enemyPositions.clear();
+        parsed.enemyHealths.clear();
+        
+        for (int i = 0; i < count && i + 3 < parts.size(); ++i) {
+            std::string enemyData = parts[i + 3];
+            std::vector<std::string> values;
+            std::stringstream ss(enemyData);
+            std::string value;
+            
+            while (std::getline(ss, value, ',')) {
+                values.push_back(value);
+            }
+            
+            if (values.size() >= 4) {
+                try {
+                    int id = std::stoi(values[0]);
+                    float x = std::stof(values[1]);
+                    float y = std::stof(values[2]);
+                    int health = std::stoi(values[3]);
+                    
+                    parsed.enemyPositions.emplace_back(id, sf::Vector2f(x, y));
+                    parsed.enemyHealths.emplace_back(id, health);
+                } catch (const std::exception& e) {
+                    std::cout << "[ERROR] Failed to parse enemy batch spawn data: " << e.what() << std::endl;
+                }
+            }
+        }
     } else if (parts[0] == "EVR") {
         parsed.type = MessageType::EnemyValidationRequest;
+    } else if (parts[0] == "WST" && parts.size() >= 4) {
+        parsed.type = MessageType::WaveStart;
+        parsed.waveNumber = std::stoi(parts[1]);
+        parsed.seed = std::stoul(parts[2]);
+        int typeCount = std::stoi(parts[3]);
+        
+        // Parse enemy types if available
+        for (int i = 0; i < typeCount && i + 4 < parts.size(); ++i) {
+            int typeValue = std::stoi(parts[i + 4]);
+            if (typeValue == static_cast<int>(ParsedMessage::EnemyType::Triangle)) {
+                parsed.enemyType = ParsedMessage::EnemyType::Triangle;
+            }
+            // Could store multiple types in the future if needed
+        }
     } else if (parts[0] == "TWS") {
         return ParseTriangleWaveStartMessage(msg);
     } else if (parts[0] == "CHUNK_START" && parts.size() >= 4) {

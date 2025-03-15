@@ -11,7 +11,6 @@ class Game;
 class PlayerManager;
 class PlayerRenderer;
 class EnemyManager;
-class TriangleEnemyManager;
 class HostNetwork;
 class ClientNetwork;
 
@@ -25,12 +24,8 @@ public:
     void ProcessEvent(const sf::Event& event) override;
     bool IsFullyLoaded();
     
-    // Getter for EnemyManager
+    // Getter for unified EnemyManager
     EnemyManager* GetEnemyManager();
-    
-    // This method is kept for backward compatibility but returns nullptr
-    // as all enemies are now handled by the unified EnemyManager
-    TriangleEnemyManager* GetTriangleEnemyManager();
 
 private:
     void AttemptShoot(int mouseX, int mouseY);

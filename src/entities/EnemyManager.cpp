@@ -44,7 +44,7 @@ void EnemyManager::Update(float dt) {
     // Remove dead regular enemies
     size_t beforeSize = enemies.size();
     enemies.erase(std::remove_if(enemies.begin(), enemies.end(), 
-        [](const Enemy& e) { return !e.IsAlive(); }), enemies.end());
+        [](const EnemyEntry& e) { return !e.IsAlive(); }), enemies.end());
     size_t afterSize = enemies.size();
     
     if (beforeSize != afterSize) {
@@ -80,11 +80,11 @@ void EnemyManager::Update(float dt) {
     }
     
     // Update each regular enemy
-    for (auto& enemy : enemies) {
-        if (enemy.IsAlive()) {
+    for (auto& entry : enemies) {
+        if (entry.enemy && entry.enemy->IsAlive()) {
             // Find closest player position
-            sf::Vector2f targetPos = FindClosestPlayerPosition(enemy.GetPosition());
-            enemy.Update(dt, targetPos);
+            sf::Vector2f targetPos = FindClosestPlayerPosition(entry.GetPosition());
+            entry.enemy->Update(dt, targetPos);
         }
     }
     
@@ -115,10 +115,11 @@ void EnemyManager::Render(sf::RenderWindow& window) {
         window.getView().getSize()
     );
     
+    // Render regular enemies
     for (auto& entry : enemies) {
         if (entry.enemy && entry.enemy->IsAlive()) {
             // Check if enemy is in view bounds
-            sf::Vector2f pos = entry.enemy->GetPosition();
+            sf::Vector2f pos = entry.GetPosition();
             if (viewBounds.contains(pos)) {
                 // Draw enemy based on its type
                 switch (entry.type) {
@@ -133,6 +134,16 @@ void EnemyManager::Render(sf::RenderWindow& window) {
                         break;
                     }
                 }
+            }
+        }
+    }
+    
+    // Render triangle enemies (separate container during transition)
+    for (auto& enemy : triangleEnemies) {
+        if (enemy.IsAlive()) {
+            sf::Vector2f pos = enemy.GetPosition();
+            if (viewBounds.contains(pos)) {
+                window.draw(enemy.GetShape());
             }
         }
     }
@@ -170,7 +181,7 @@ void EnemyManager::SpawnRegularWave() {
     for (int i = 0; i < numEnemies; i++) {
         sf::Vector2f pos = GetRandomSpawnPosition();
         int enemyId = nextEnemyId++;
-        enemies.emplace_back(enemyId, pos);
+        AddEnemy(enemyId, pos, EnemyType::Rectangle);
         
         // If we're the host, broadcast enemy spawn
         CSteamID localSteamID = SteamUser()->GetSteamID();
@@ -179,10 +190,12 @@ void EnemyManager::SpawnRegularWave() {
         if (localSteamID == hostID) {
             std::string msg = MessageHandler::FormatEnemySpawnMessage(
                 enemyId, pos, ParsedMessage::EnemyType::Regular);
+
             game->GetNetworkManager().BroadcastMessage(msg);
         }
     }
 }
+
 void EnemyManager::AddTriangleEnemy(int id, const sf::Vector2f& position) {
     // Check if triangle enemy already exists
     for (auto& enemy : triangleEnemies) {
@@ -199,7 +212,6 @@ void EnemyManager::AddTriangleEnemy(int id, const sf::Vector2f& position) {
         triangleNextEnemyId = id + 1;
     }
 }
-
 
 void EnemyManager::AddTriangleEnemy(int id, const sf::Vector2f& position, int health) {
     // Check if triangle enemy already exists
@@ -229,6 +241,7 @@ void EnemyManager::AddTriangleEnemy(int id, const sf::Vector2f& position, int he
         triangleNextEnemyId = id + 1;
     }
 }
+
 sf::Vector2f EnemyManager::GetPlayerCenterPosition() {
     sf::Vector2f centerPos(0.0f, 0.0f);
     int playerCount = 0;
@@ -352,7 +365,7 @@ void EnemyManager::SpawnEnemyBatch(int count) {
     }
     
     // Prepare a batch of enemy data for efficient network transmission
-    std::vector<std::tuple<int, sf::Vector2f, int, int>> batchData; // id, pos, health, type
+    std::vector<std::tuple<int, sf::Vector2f, int>> batchData; // id, pos, health
     batchData.reserve(batchCount);
     
     // Spawn the batch
@@ -374,8 +387,7 @@ void EnemyManager::SpawnEnemyBatch(int count) {
         batchData.emplace_back(
             enemyId, 
             position, 
-            TRIANGLE_HEALTH, // Default health from config
-            static_cast<int>(type)
+            TRIANGLE_HEALTH // Default health from config
         );
     }
     
@@ -385,13 +397,12 @@ void EnemyManager::SpawnEnemyBatch(int count) {
         CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
         
         if (localSteamID == hostID) {
-            std::string batchMsg = MessageHandler::FormatEnemyBatchSpawnMessage(batchData);
+            std::string batchMsg = MessageHandler::FormatEnemyBatchSpawnMessage(
+                batchData, static_cast<ParsedMessage::EnemyType>(1)); // 0 = Regular type
             game->GetNetworkManager().BroadcastMessage(batchMsg);
         }
     }
 }
-
-
 
 void EnemyManager::AddEnemy(int id, const sf::Vector2f& position, EnemyType type, int health) {
     // Create the enemy
@@ -440,9 +451,6 @@ void EnemyManager::RemoveEnemy(int id) {
     }
 }
 
-// Update spatial grid in the Update method
-
-
 void EnemyManager::CheckBulletCollisions(const std::vector<Bullet>& bullets) {
     // Create a vector to track which bullets need to be removed
     std::vector<size_t> bulletsToRemove;
@@ -453,42 +461,45 @@ void EnemyManager::CheckBulletCollisions(const std::vector<Bullet>& bullets) {
         bool bulletHit = false;
         
         // Check against regular enemies
-        for (auto& enemy : enemies) {
-            if (enemy.IsAlive()) {
-                if (enemy.GetShape().getGlobalBounds().intersects(bullet.GetShape().getGlobalBounds())) {
-                    // Regular enemy hit by bullet
+        for (auto& entry : enemies) {
+            if (entry.enemy && entry.enemy->IsAlive()) {
+                // Get the actual enemy instance based on type
+                bool collided = false;
+                
+                if (entry.type == EnemyType::Rectangle) {
+                    Enemy* rectEnemy = static_cast<Enemy*>(entry.enemy.get());
+                    collided = rectEnemy->GetShape().getGlobalBounds().intersects(bullet.GetShape().getGlobalBounds());
+                } else if (entry.type == EnemyType::Triangle) {
+                    TriangleEnemy* triEnemy = static_cast<TriangleEnemy*>(entry.enemy.get());
+                    collided = triEnemy->CheckBulletCollision(bullet.GetPosition(), 4.0f);
+                }
+                
+                if (collided) {
+                    // Enemy hit by bullet
                     CSteamID localSteamID = SteamUser()->GetSteamID();
                     CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
                     bool isHost = (localSteamID == hostID);
                     
                     if (isHost) {
                         // ONLY THE HOST APPLIES ACTUAL DAMAGE
-                        bool killed = enemy.TakeDamage(20); // Each bullet does 20 damage
+                        bool killed = entry.enemy->TakeDamage(20); // Each bullet does 20 damage
                         
-                        // Host immediately broadcasts hit message using the consolidated format
+                        // Host immediately broadcasts hit message
                         std::string msg = MessageHandler::FormatEnemyHitMessage(
-                            enemy.GetID(), 20, killed, bullet.GetShooterID(), ParsedMessage::EnemyType::Regular);
+                            entry.GetID(), 20, killed, bullet.GetShooterID(), 
+                            static_cast<ParsedMessage::EnemyType>(static_cast<int>(entry.type)));
                         game->GetNetworkManager().BroadcastMessage(msg);
+                        
+                        // If enemy was killed, handle rewards
+                        if (killed) {
+                            RewardShooter(bullet.GetShooterID(), entry.type);
+                        }
                     } else {
                         // CLIENT ONLY APPLIES VISUAL EFFECT - NO DAMAGE
-                        // Store current health
-                        int currentHealth = enemy.GetHealth();
-                        
-                        // Apply temporary visual damage without changing actual health
-                        int tempHealth = currentHealth - 20;
-                        if (tempHealth < 0) tempHealth = 0;
-                        
-                        float healthPercent = static_cast<float>(tempHealth) / 40.0f;
-                        sf::Color newColor(
-                            255,  // Full red
-                            static_cast<sf::Uint8>(255 * healthPercent),
-                            static_cast<sf::Uint8>(255 * healthPercent)
-                        );
-                        enemy.GetShape().setFillColor(newColor);
-                        
-                        // Send hit message to host using the consolidated format
+                        // Send hit message to host
                         std::string msg = MessageHandler::FormatEnemyHitMessage(
-                            enemy.GetID(), 20, false, bullet.GetShooterID(), ParsedMessage::EnemyType::Regular);
+                            entry.GetID(), 20, false, bullet.GetShooterID(), 
+                            static_cast<ParsedMessage::EnemyType>(static_cast<int>(entry.type)));
                         game->GetNetworkManager().SendMessage(hostID, msg);
                     }
                     
@@ -516,13 +527,18 @@ void EnemyManager::CheckBulletCollisions(const std::vector<Bullet>& bullets) {
                         // ONLY THE HOST APPLIES ACTUAL DAMAGE
                         bool killed = enemy.TakeDamage(20); // Each bullet does 20 damage
                         
-                        // Host immediately broadcasts hit message using the consolidated format
+                        // Host immediately broadcasts hit message
                         std::string msg = MessageHandler::FormatEnemyHitMessage(
                             enemy.GetID(), 20, killed, bullet.GetShooterID(), ParsedMessage::EnemyType::Triangle);
                         game->GetNetworkManager().BroadcastMessage(msg);
+                        
+                        // If enemy was killed, handle rewards
+                        if (killed) {
+                            RewardShooter(bullet.GetShooterID(), EnemyType::Triangle);
+                        }
                     } else {
                         // CLIENT ONLY APPLIES VISUAL EFFECT - NO DAMAGE
-                        // Send hit message to host using the consolidated format
+                        // Send hit message to host
                         std::string msg = MessageHandler::FormatEnemyHitMessage(
                             enemy.GetID(), 20, false, bullet.GetShooterID(), ParsedMessage::EnemyType::Triangle);
                         game->GetNetworkManager().SendMessage(hostID, msg);
@@ -543,7 +559,6 @@ void EnemyManager::CheckBulletCollisions(const std::vector<Bullet>& bullets) {
     }
 }
 
-
 void EnemyManager::CheckPlayerCollisions() {
     auto& players = playerManager->GetPlayers();
     
@@ -556,24 +571,20 @@ void EnemyManager::CheckPlayerCollisions() {
         
         sf::Vector2f playerPos = remotePlayer.player.GetPosition();
         
-        // Get enemies near the player
-        auto nearbyEnemies = spatialGrid.GetEnemiesNearPosition(playerPos, 50.f);
-        
-        // Check collisions
-        for (EnemyBase* enemyBase : nearbyEnemies) {
-            if (!enemyBase || !enemyBase->IsAlive()) continue;
+        // Check collisions with regular enemies
+        for (auto& entry : enemies) {
+            if (!(entry.enemy && entry.enemy->IsAlive())) continue;
             
-            if (enemyBase->CheckCollision(remotePlayer.player.GetShape())) {
-                // Get the enemy ID
-                int enemyId = enemyBase->GetID();
-                
-                // Get the enemy type to determine damage
-                auto indexIt = enemyIdToIndex.find(enemyId);
-                if (indexIt == enemyIdToIndex.end()) continue;
-                
-                size_t index = indexIt->second;
-                const EnemyEntry& entry = enemies[index];
-                
+            bool collision = false;
+            if (entry.type == EnemyType::Rectangle) {
+                Enemy* rectEnemy = static_cast<Enemy*>(entry.enemy.get());
+                collision = rectEnemy->GetShape().getGlobalBounds().intersects(remotePlayer.player.GetShape().getGlobalBounds());
+            } else if (entry.type == EnemyType::Triangle) {
+                TriangleEnemy* triEnemy = static_cast<TriangleEnemy*>(entry.enemy.get());
+                collision = triEnemy->CheckCollision(remotePlayer.player.GetShape());
+            }
+            
+            if (collision) {
                 // Determine damage based on enemy type
                 int damage = (entry.type == EnemyType::Triangle) ? 
                     TRIANGLE_DAMAGE : 20; // Default damage for rectangle enemies
@@ -582,10 +593,10 @@ void EnemyManager::CheckPlayerCollisions() {
                 remotePlayer.player.TakeDamage(damage);
                 
                 // Kill enemy on collision
-                enemyBase->TakeDamage(enemyBase->GetHealth());
+                entry.enemy->TakeDamage(entry.enemy->GetHealth());
                 
-                // Remove from spatial grid
-                spatialGrid.RemoveEnemy(enemyBase);
+                // Remove from spatial grid if in it
+                spatialGrid.RemoveEnemy(entry.enemy.get());
                 
                 // Send death message if we're the host
                 CSteamID localSteamID = SteamUser()->GetSteamID();
@@ -594,12 +605,13 @@ void EnemyManager::CheckPlayerCollisions() {
                 if (localSteamID == hostID) {
                     // Send enemy death message
                     std::string deathMsg = MessageHandler::FormatEnemyDeathMessage(
-                        enemyId, "", false);  // No killer, no reward
+                        entry.GetID(), "", false, 
+                        static_cast<ParsedMessage::EnemyType>(static_cast<int>(entry.type)));
                     game->GetNetworkManager().BroadcastMessage(deathMsg);
                     
                     // Also send player damage message
                     std::string damageMsg = MessageHandler::FormatPlayerDamageMessage(
-                        playerID, damage, enemyId);
+                        playerID, damage, entry.GetID());
                     game->GetNetworkManager().BroadcastMessage(damageMsg);
                 }
                 
@@ -613,8 +625,50 @@ void EnemyManager::CheckPlayerCollisions() {
                 }
             }
         }
+        
+        // Check collisions with triangle enemies
+        for (auto& enemy : triangleEnemies) {
+            if (!enemy.IsAlive()) continue;
+            
+            if (enemy.CheckCollision(remotePlayer.player.GetShape())) {
+                // Determine damage
+                int damage = TRIANGLE_DAMAGE;
+                
+                // Apply damage to player
+                remotePlayer.player.TakeDamage(damage);
+                
+                // Kill enemy on collision
+                enemy.TakeDamage(enemy.GetHealth());
+                
+                // Send death message if we're the host
+                CSteamID localSteamID = SteamUser()->GetSteamID();
+                CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+                
+                if (localSteamID == hostID) {
+                    // Send enemy death message
+                    std::string deathMsg = MessageHandler::FormatEnemyDeathMessage(
+                        enemy.GetID(), "", false, ParsedMessage::EnemyType::Triangle);
+                    game->GetNetworkManager().BroadcastMessage(deathMsg);
+                    
+                    // Also send player damage message
+                    std::string damageMsg = MessageHandler::FormatPlayerDamageMessage(
+                        playerID, damage, enemy.GetID());
+                    game->GetNetworkManager().BroadcastMessage(damageMsg);
+                }
+                
+                // If this is the local player, check if they died
+                std::string localSteamIDStr = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
+                if (playerID == localSteamIDStr && remotePlayer.player.IsDead()) {
+                    // Set respawn timer
+                    remotePlayer.respawnTimer = 3.0f;
+                    
+                    std::cout << "[DEATH] Local player died from triangle enemy collision" << std::endl;
+                }
+            }
+        }
     }
 }
+
 std::unique_ptr<EnemyBase> EnemyManager::CreateEnemy(int id, const sf::Vector2f& position, EnemyType type, int health) {
     switch (type) {
         case EnemyType::Rectangle:
@@ -631,47 +685,44 @@ std::unique_ptr<EnemyBase> EnemyManager::CreateEnemy(int id, const sf::Vector2f&
             return std::make_unique<Enemy>(id, position, ENEMY_SPEED, health);
     }
 }
-void EnemyManager::HandleEnemyHit(int enemyId, int damage, bool killed, const std::string& shooterID) {
+
+void EnemyManager::HandleEnemyHit(int enemyId, int damage, bool killed, const std::string& shooterID, ParsedMessage::EnemyType enemyType) {
     // Determine enemy type and route to appropriate handler
-    if (enemyId >= 10000) { // Triangle IDs start at 10000
-        HandleTriangleEnemyHit(enemyId, damage, killed);
+    if (enemyType == ParsedMessage::EnemyType::Triangle || enemyId >= 10000) { // Triangle (type 1) or IDs start at 10000
+        HandleTriangleEnemyHit(enemyId, damage, killed, shooterID);
     } else {
         // Regular enemy hit handling
-        for (auto& enemy : enemies) {
-            if (enemy.GetID() == enemyId && enemy.IsAlive()) {
-                // Apply damage based on role
-                CSteamID localSteamID = SteamUser()->GetSteamID();
-                CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
-                bool isHost = (localSteamID == hostID);
+        auto it = enemyIdToIndex.find(enemyId);
+        if (it != enemyIdToIndex.end() && it->second < enemies.size() && enemies[it->second].enemy) {
+            auto& entry = enemies[it->second];
+            
+            // Apply damage based on role
+            CSteamID localSteamID = SteamUser()->GetSteamID();
+            CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+            bool isHost = (localSteamID == hostID);
+            
+            if (isHost) {
+                // The host is authoritative for enemy health
+                bool wasKilled = entry.enemy->TakeDamage(damage);
                 
-                if (isHost) {
-                    // The host is authoritative for enemy health
-                    bool wasKilled = enemy.TakeDamage(damage);
-                    
-                    // If killed flag is true but enemy isn't dead yet, force kill
-                    if (killed && !wasKilled) {
-                        enemy.TakeDamage(1000); // Ensure it dies
-                    }
-                    
-                    // Handle shooter rewards if enemy died and this wasn't done yet
-                    if (killed) {
-                        auto& players = playerManager->GetPlayers();
-                        auto it = players.find(shooterID);
-                        if (it != players.end()) {
-                            it->second.money += 10; // Regular enemy reward
-                        }
-                    }
-                } else {
-                    // For clients, apply visual effect and let host be authoritative
-                    if (killed) {
-                        enemy.TakeDamage(enemy.GetHealth()); // Force kill
-                    } else {
-                        // Apply temporary visual damage
-                        enemy.SetHealth(enemy.GetHealth() - damage);
-                        enemy.UpdateVisuals();
-                    }
+                // If killed flag is true but enemy isn't dead yet, force kill
+                if (killed && !wasKilled) {
+                    entry.enemy->TakeDamage(1000); // Ensure it dies
                 }
-                break;
+                
+                // Handle shooter rewards if enemy died and this wasn't done yet
+                if (killed) {
+                    RewardShooter(shooterID, entry.type);
+                }
+            } else {
+                // For clients, apply visual effect and let host be authoritative
+                if (killed) {
+                    entry.enemy->TakeDamage(entry.enemy->GetHealth()); // Force kill
+                } else {
+                    // Apply temporary visual damage
+                    entry.enemy->SetHealth(entry.enemy->GetHealth() - damage);
+                    entry.enemy->UpdateVisuals();
+                }
             }
         }
     }
@@ -763,8 +814,7 @@ void EnemyManager::SyncEnemyPositions() {
         auto regularEnemyData = GetRegularEnemyDataForSync();
         
         if (!regularEnemyData.empty()) {
-            std::string regularMsg = MessageHandler::FormatEnemyPositionsMessage(
-                regularEnemyData, ParsedMessage::EnemyType::Regular);
+            std::string regularMsg = MessageHandler::FormatEnemyPositionsMessage(regularEnemyData);
             game->GetNetworkManager().BroadcastMessage(regularMsg);
         }
     }
@@ -774,8 +824,7 @@ void EnemyManager::SyncEnemyPositions() {
         auto triangleEnemyData = GetTriangleEnemyDataForSync();
         
         if (!triangleEnemyData.empty()) {
-            std::string triangleMsg = MessageHandler::FormatEnemyPositionsMessage(
-                triangleEnemyData, ParsedMessage::EnemyType::Triangle);
+            std::string triangleMsg = MessageHandler::FormatEnemyPositionsMessage(triangleEnemyData);
             game->GetNetworkManager().BroadcastMessage(triangleMsg);
         }
     }
@@ -789,6 +838,7 @@ TriangleEnemy* EnemyManager::GetTriangleEnemy(int id) {
     }
     return nullptr;
 }
+
 std::vector<int> EnemyManager::GetAllTriangleEnemyIds() const {
     std::vector<int> ids;
     ids.reserve(triangleEnemies.size());
@@ -853,7 +903,6 @@ void EnemyManager::ValidateTriangleEnemyList(const std::vector<int>& validIds) {
     }
 }
 
-
 void EnemyManager::UpdateTriangleEnemyHealth(int id, int health) {
     TriangleEnemy* enemy = GetTriangleEnemy(id);
     if (enemy && enemy->IsAlive()) {
@@ -895,7 +944,7 @@ void EnemyManager::UpdateTriangleEnemyPositions(const std::vector<std::tuple<int
     }
 }
 
-void EnemyManager::HandleTriangleEnemyHit(int enemyId, int damage, bool killed) {
+void EnemyManager::HandleTriangleEnemyHit(int enemyId, int damage, bool killed, const std::string& shooterID) {
     TriangleEnemy* enemy = GetTriangleEnemy(enemyId);
     if (!enemy || !enemy->IsAlive()) {
         return;
@@ -912,6 +961,11 @@ void EnemyManager::HandleTriangleEnemyHit(int enemyId, int damage, bool killed) 
         if (killed && enemy->IsAlive()) {
             std::cout << "[HOST] Forcing triangle enemy " << enemyId << " to die due to network sync\n";
             enemy->TakeDamage(1000);
+            
+            // Reward the shooter if provided
+            if (!shooterID.empty()) {
+                RewardShooter(shooterID, EnemyType::Triangle);
+            }
         }
     } else {
         // As client, apply the damage from the network message
@@ -934,15 +988,16 @@ bool EnemyManager::HasTriangleEnemy(int id) const {
     }
     return false;
 }
+
 std::vector<std::tuple<int, sf::Vector2f, int>> EnemyManager::GetRegularEnemyDataForSync() const {
     std::vector<std::tuple<int, sf::Vector2f, int>> enemyData;
     
-    for (const auto& enemy : enemies) {
-        if (enemy.IsAlive()) {
+    for (const auto& entry : enemies) {
+        if (entry.enemy && entry.enemy->IsAlive()) {
             enemyData.emplace_back(
-                enemy.GetID(),
-                enemy.GetPosition(),
-                enemy.GetHealth()
+                entry.GetID(),
+                entry.GetPosition(),
+                entry.GetHealth()
             );
         }
     }
@@ -965,15 +1020,16 @@ std::vector<std::tuple<int, sf::Vector2f, int>> EnemyManager::GetTriangleEnemyDa
     
     return enemyData;
 }
+
 std::vector<std::tuple<int, sf::Vector2f, int, int>> EnemyManager::GetEnemyDataForSync() const {
     std::vector<std::tuple<int, sf::Vector2f, int, int>> enemyData;
     
     for (const auto& entry : enemies) {
         if (entry.enemy && entry.enemy->IsAlive()) {
             enemyData.emplace_back(
-                entry.enemy->GetID(),
-                entry.enemy->GetPosition(),
-                entry.enemy->GetHealth(),
+                entry.GetID(),
+                entry.GetPosition(),
+                entry.GetHealth(),
                 static_cast<int>(entry.type)
             );
         }
@@ -993,9 +1049,9 @@ void EnemyManager::SyncFullEnemyList() {
     
     // Sync regular enemies
     std::vector<int> regularEnemyIds;
-    for (const auto& enemy : enemies) {
-        if (enemy.IsAlive()) {
-            regularEnemyIds.push_back(enemy.GetID());
+    for (const auto& entry : enemies) {
+        if (entry.enemy && entry.enemy->IsAlive()) {
+            regularEnemyIds.push_back(entry.GetID());
         }
     }
     
@@ -1028,7 +1084,7 @@ void EnemyManager::ValidateEnemyList(const std::vector<int>& validIds) {
     // Find enemies that shouldn't exist
     for (auto& entry : enemies) {
         if (entry.enemy) {
-            int id = entry.enemy->GetID();
+            int id = entry.GetID();
             if (validIdSet.find(id) == validIdSet.end()) {
                 toRemove.push_back(id);
             }
@@ -1054,7 +1110,7 @@ std::vector<int> EnemyManager::GetAllEnemyIds() const {
     std::vector<int> ids;
     for (const auto& entry : enemies) {
         if (entry.enemy && entry.enemy->IsAlive()) {
-            ids.push_back(entry.enemy->GetID());
+            ids.push_back(entry.GetID());
         }
     }
     return ids;
@@ -1083,8 +1139,8 @@ EnemyType EnemyManager::GetEnemyType(int id) const {
 int EnemyManager::GetRemainingEnemies() const {
     int count = 0;
     // Count regular enemies
-    for (const auto& enemy : enemies) {
-        if (enemy.IsAlive()) {
+    for (const auto& entry : enemies) {
+        if (entry.enemy && entry.enemy->IsAlive()) {
             count++;
         }
     }
@@ -1096,8 +1152,9 @@ int EnemyManager::GetRemainingEnemies() const {
     }
     return count;
 }
+
 void EnemyManager::UpdateEnemyPositions(const std::vector<std::tuple<int, sf::Vector2f, int>>& positions) {
-    // Process each position update based on enemy type
+    // Process each position update
     for (const auto& posData : positions) {
         int id = std::get<0>(posData);
         sf::Vector2f pos = std::get<1>(posData);
@@ -1127,25 +1184,34 @@ void EnemyManager::UpdateEnemyPositions(const std::vector<std::tuple<int, sf::Ve
             }
         } else {
             // Update regular enemy
-            for (auto& enemy : enemies) {
-                if (enemy.GetID() == id && enemy.IsAlive()) {
-                    // Update position
-                    enemy.GetShape().setPosition(pos);
-                    
-                    // Update health if it's significantly different
-                    int currentHealth = enemy.GetHealth();
-                    if (std::abs(currentHealth - health) > 5) {
-                        // Set health directly
-                        if (health <= 0) {
-                            enemy.TakeDamage(enemy.GetHealth()); // Kill it
-                        } else if (health < currentHealth) {
-                            enemy.TakeDamage(currentHealth - health);
-                        } else if (health > currentHealth) {
-                            enemy.SetHealth(health);
-                        }
-                    }
-                    break;
+            auto it = enemyIdToIndex.find(id);
+            if (it != enemyIdToIndex.end() && it->second < enemies.size() && enemies[it->second].enemy) {
+                auto& entry = enemies[it->second];
+                
+                // Get the correct shape based on type
+                if (entry.type == EnemyType::Rectangle) {
+                    Enemy* rectEnemy = static_cast<Enemy*>(entry.enemy.get());
+                    rectEnemy->GetShape().setPosition(pos);
+                } else if (entry.type == EnemyType::Triangle) {
+                    TriangleEnemy* triEnemy = static_cast<TriangleEnemy*>(entry.enemy.get());
+                    triEnemy->UpdatePosition(pos, true); // true = interpolate
                 }
+                
+                // Update health if it's significantly different
+                int currentHealth = entry.enemy->GetHealth();
+                if (std::abs(currentHealth - health) > 5) {
+                    // Set health directly
+                    if (health <= 0) {
+                        entry.enemy->TakeDamage(entry.enemy->GetHealth()); // Kill it
+                    } else if (health < currentHealth) {
+                        entry.enemy->TakeDamage(currentHealth - health);
+                    } else if (health > currentHealth) {
+                        entry.enemy->SetHealth(health);
+                    }
+                }
+            } else if (health > 0) {
+                // Enemy doesn't exist locally but should - create it
+                AddEnemy(id, pos, EnemyType::Rectangle, health);
             }
         }
     }
@@ -1155,6 +1221,30 @@ void EnemyManager::UpdateEnemyHealth(int id, int health) {
     auto it = enemyIdToIndex.find(id);
     if (it != enemyIdToIndex.end() && it->second < enemies.size() && enemies[it->second].enemy) {
         enemies[it->second].enemy->SetHealth(health);
+    }
+}
+
+void EnemyManager::RewardShooter(const std::string& shooterID, EnemyType enemyType) {
+    auto& players = playerManager->GetPlayers();
+    auto it = players.find(shooterID);
+    if (it != players.end()) {
+        int reward = 0;
+        switch (enemyType) {
+            case EnemyType::Rectangle:
+                reward = 10; // Regular enemy reward
+                break;
+            case EnemyType::Triangle:
+                reward = TRIANGLE_KILL_REWARD; // From config
+                break;
+            default:
+                reward = 10; // Default reward
+        }
+        
+        it->second.money += reward;
+        it->second.kills++;
+        
+        // Update player stats in PlayerManager
+        playerManager->AddOrUpdatePlayer(shooterID, it->second);
     }
 }
 

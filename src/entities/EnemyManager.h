@@ -8,6 +8,7 @@
 #include "Bullet.h"
 #include "../utils/SpatialGrid.h"
 #include "../utils/config.h"
+#include "../utils/MessageHandler.h"  // Add this include for ParsedMessage
 
 #include <SFML/Graphics.hpp>
 #include <vector>
@@ -20,91 +21,142 @@
 #include <thread>
 class Game;
 class PlayerManager;
+
+// Define an entry structure to hold enemy data with type information
+struct EnemyEntry {
+    std::unique_ptr<EnemyBase> enemy;
+    EnemyType type;
+    sf::Vector2f lastSyncedPosition;
+    
+    bool IsAlive() const {
+        return enemy && enemy->IsAlive();
+    }
+    
+    int GetID() const {
+        return enemy ? enemy->GetID() : -1;
+    }
+    
+    sf::Vector2f GetPosition() const {
+        return enemy ? enemy->GetPosition() : sf::Vector2f(0, 0);
+    }
+    
+    int GetHealth() const {
+        return enemy ? enemy->GetHealth() : 0;
+    }
+};
+
 class EnemyManager {
-    public:
-        EnemyManager(Game* game, PlayerManager* playerManager);
-        ~EnemyManager();
-        void ValidateTriangleEnemyList(const std::vector<int>& validIds);
-        
-        
-        void Update(float dt);
-        void Render(sf::RenderWindow& window);
+public:
+    EnemyManager(Game* game, PlayerManager* playerManager);
+    ~EnemyManager();
     
-        // Wave management
-        void StartNextWave();
-        int GetCurrentWave() const;
-        int GetRemainingEnemies() const;
-        bool IsWaveComplete() const;
-        float GetWaveTimer() const;
-        
-        // Synchronization
-        void SyncFullEnemyList();
-        void ValidateEnemyList(const std::vector<int>& activeEnemyIds);
-        
-        // Regular enemies management
-        void AddEnemy(int id, const sf::Vector2f& position);
-        void RemoveEnemy(int id);
-        void SyncEnemyState(int id, const sf::Vector2f& position, int health, bool isDead);
-        void HandleEnemyHit(int enemyId, int damage, bool killed);
-        std::vector<std::tuple<int, sf::Vector2f, int>> GetRegularEnemyDataForSync() const;
-        
-        // Triangle enemies management
-        void SpawnTriangleWave(int count = 50, uint32_t seed = 0);
-        void AddTriangleEnemy(int id, const sf::Vector2f& position);
-        void AddTriangleEnemy(int id, const sf::Vector2f& position, int health);
-        void HandleTriangleEnemyHit(int enemyId, int damage, bool killed);
-        std::vector<std::tuple<int, sf::Vector2f, int>> GetTriangleEnemyDataForSync() const;
-        TriangleEnemy* GetTriangleEnemy(int id);
-        
-        // Common functionality
-        void CheckBulletCollisions(const std::vector<Bullet>& bullets);
-        void CheckPlayerCollisions();
-        void RemoveStaleEnemies(const std::vector<int>& validIds);
-        
-        // Regular enemy specific queries
-        std::vector<int> GetAllEnemyIds() const;
-        bool HasEnemy(int id) const;
-        std::string SerializeEnemies() const;
-        void DeserializeEnemies(const std::string& data);
-        void SyncEnemyPositions();
-        void UpdateEnemyPositions(const std::vector<std::pair<int, sf::Vector2f>>& positions);
-        int GetEnemyHealth(int id) const;
-        void UpdateEnemyHealth(int id, int health);
-        
-        // Triangle enemy specific queries
-        std::vector<int> GetAllTriangleEnemyIds() const;
-        bool HasTriangleEnemy(int id) const;
-        void UpdateTriangleEnemyPositions(const std::vector<std::tuple<int, sf::Vector2f, int>>& positions);
-        int GetTriangleEnemyHealth(int id) const;
-        void UpdateTriangleEnemyHealth(int id, int health);
-        void GenerateEnemiesWithSeed(uint32_t seed, int count);
-        
-    private:
-        Game* game;
-        PlayerManager* playerManager;
-        std::vector<Enemy> enemies;            // Regular enemies
-        std::vector<TriangleEnemy> triangleEnemies; // Triangle enemies
-        
-        int currentWave;
-        float waveTimer;            // Timer between waves
-        float waveCooldown = 2.0f;  // Seconds between waves
-        bool waveActive;
-        int nextEnemyId;            // For regular enemies
-        int triangleNextEnemyId;    // For triangle enemies
-        
-        float enemySyncTimer = 0.0f;
-        static constexpr float ENEMY_SYNC_INTERVAL = 0.1f; // 10 times per second
-        
-        // Random number generation
-        std::mt19937 rng;
-        float fullSyncTimer = 0.0f;
-        const float FULL_SYNC_INTERVAL = 5.0f;
-        
-        // Spawn methods
-        void SpawnRegularWave();
-        sf::Vector2f GetRandomSpawnPosition();
-        sf::Vector2f GetPlayerCenterPosition();
-        sf::Vector2f FindClosestPlayerPosition(const sf::Vector2f& enemyPos);
-    };
+    void Update(float dt);
+    void Render(sf::RenderWindow& window);
     
-    #endif // ENEMY_MANAGER_H
+    // Wave management
+    void StartNextWave();
+    int GetCurrentWave() const { return currentWave; }
+    int GetRemainingEnemies() const;
+    bool IsWaveComplete() const { return !waveActive && waveTimer > 0; }
+    float GetWaveTimer() const { return waveTimer; }
+    
+    // Spawning methods
+    void SpawnWave(int enemyCount, const std::vector<EnemyType>& types = {});
+    void SpawnEnemyBatch(int count);
+    void SpawnTriangleWave(int count = 50, uint32_t seed = 0);
+    
+    // Enemy management
+    void AddEnemy(int id, const sf::Vector2f& position, EnemyType type = EnemyType::Rectangle, int health = TRIANGLE_HEALTH);
+    void RemoveEnemy(int id);
+    
+    // Triangle-specific methods (for transition compatibility)
+    void AddTriangleEnemy(int id, const sf::Vector2f& position);
+    void AddTriangleEnemy(int id, const sf::Vector2f& position, int health);
+    TriangleEnemy* GetTriangleEnemy(int id);
+    
+    // Collision detection
+    void CheckBulletCollisions(const std::vector<Bullet>& bullets);
+    void CheckPlayerCollisions();
+    
+    // Network synchronization
+    void SyncEnemyPositions();
+    void SyncFullEnemyList();
+    void ValidateEnemyList(const std::vector<int>& validIds);
+    void ValidateTriangleEnemyList(const std::vector<int>& validIds);
+    void UpdateEnemyPositions(const std::vector<std::tuple<int, sf::Vector2f, int>>& positions);
+    void UpdateTriangleEnemyPositions(const std::vector<std::tuple<int, sf::Vector2f, int>>& positions);
+    
+    // Enemy data access
+    std::vector<int> GetAllEnemyIds() const;
+    std::vector<int> GetAllTriangleEnemyIds() const;
+    bool HasEnemy(int id) const;
+    bool HasTriangleEnemy(int id) const;
+    int GetEnemyHealth(int id) const;
+    int GetTriangleEnemyHealth(int id) const;
+    EnemyType GetEnemyType(int id) const;
+    
+    // Health management
+    void UpdateEnemyHealth(int id, int health);
+    void UpdateTriangleEnemyHealth(int id, int health);
+    
+    // Hit handling with enemy type support
+    void HandleEnemyHit(int enemyId, int damage, bool killed, const std::string& shooterID, ParsedMessage::EnemyType enemyType);
+    void HandleTriangleEnemyHit(int enemyId, int damage, bool killed, const std::string& shooterID = "");
+    
+    // Serialization for save/load
+    std::string SerializeEnemies() const;
+    void DeserializeEnemies(const std::string& data);
+    
+    // Data retrieval for network sync
+    std::vector<std::tuple<int, sf::Vector2f, int>> GetRegularEnemyDataForSync() const;
+    std::vector<std::tuple<int, sf::Vector2f, int>> GetTriangleEnemyDataForSync() const;
+    std::vector<std::tuple<int, sf::Vector2f, int, int>> GetEnemyDataForSync() const;
+
+private:
+    Game* game;
+    PlayerManager* playerManager;
+    std::vector<EnemyEntry> enemies;  // Unified container for all enemy types
+    std::vector<TriangleEnemy> triangleEnemies; // Keep separate container during transition
+    
+    // ID mapping for faster lookup
+    std::unordered_map<int, size_t> enemyIdToIndex;
+    
+    // Wave management
+    int currentWave;
+    float waveTimer;
+    float waveCooldown = 3.0f;
+    bool waveActive;
+    int nextEnemyId;
+    int triangleNextEnemyId;  // Start at 10000 to avoid conflicts
+    
+    // Gradual spawning
+    bool isSpawningWave = false;
+    int remainingEnemiestoSpawn = 0;
+    float spawnTimer = 0.0f;
+    std::vector<EnemyType> spawnTypes;
+    
+    // Synchronization timers
+    float enemySyncTimer = 0.0f;
+    static constexpr float ENEMY_SYNC_INTERVAL = 0.1f;
+    float fullSyncTimer = 0.0f;
+    static constexpr float FULL_SYNC_INTERVAL = 5.0f;
+    
+    // Random number generation
+    std::mt19937 rng;
+    
+    // Spatial partitioning for collision optimization
+    SpatialGrid spatialGrid;
+    
+    // Helper methods
+    void SpawnRegularWave();
+    sf::Vector2f GetRandomSpawnPosition();
+    sf::Vector2f GetPlayerCenterPosition();
+    sf::Vector2f FindClosestPlayerPosition(const sf::Vector2f& enemyPos);
+    void UpdateSpatialGrid();
+    std::unique_ptr<EnemyBase> CreateEnemy(int id, const sf::Vector2f& position, EnemyType type, int health = TRIANGLE_HEALTH);
+    
+    // Reward helper
+    void RewardShooter(const std::string& shooterID, EnemyType enemyType);
+};
+
+#endif // ENEMY_MANAGER_H
