@@ -34,8 +34,7 @@ void PlayerManager::Update(Game* game) {
                 if (rp.respawnTimer <= 0.0f) {
                     std::cout << "[PM] Respawn timer expired for " << pair.first << "\n";
                     
-                    // Set respawn position to origin
-                    rp.player.SetRespawnPosition(sf::Vector2f(0.f, 0.f));
+                 
                     
                     // Call respawn
                     RespawnPlayer(pair.first);
@@ -454,6 +453,9 @@ void PlayerManager::RespawnPlayer(const std::string& playerID) {
         int oldHealth = it->second.player.GetHealth();
         bool wasDead = it->second.player.IsDead();
         
+        // Get the current saved respawn position before calling respawn
+        sf::Vector2f respawnPos = it->second.player.GetPosition();  // Use current position as fallback
+        
         // Call respawn
         it->second.player.Respawn();
         
@@ -461,11 +463,10 @@ void PlayerManager::RespawnPlayer(const std::string& playerID) {
         int newHealth = it->second.player.GetHealth();
         bool isDeadNow = it->second.player.IsDead();
         
-     
-        
         // If this is the local player, notify the network of respawn
         if (normalizedID == normalizedLocalID) {
-            sf::Vector2f respawnPos = it->second.player.GetPosition();
+            // Use the actual respawn position that was used
+            sf::Vector2f usedRespawnPos = it->second.player.GetPosition();
             
             // Check if we're the host
             CSteamID localSteamID = SteamUser()->GetSteamID();
@@ -473,17 +474,19 @@ void PlayerManager::RespawnPlayer(const std::string& playerID) {
             
             if (localSteamID == hostID) {
                 // We are the host, broadcast to all clients
-                std::string respawnMsg = MessageHandler::FormatPlayerRespawnMessage(normalizedID, respawnPos);
+                std::string respawnMsg = MessageHandler::FormatPlayerRespawnMessage(normalizedID, usedRespawnPos);
                 if (game->GetNetworkManager().BroadcastMessage(respawnMsg)) {
-                    std::cout << "[PM] Broadcast respawn message for local player\n";
+                    std::cout << "[PM] Broadcast respawn message for local player at position ("
+                              << usedRespawnPos.x << "," << usedRespawnPos.y << ")\n";
                 } else {
                     std::cout << "[PM] Failed to broadcast respawn message\n";
                 }
             } else {
                 // We are a client, send to host
-                std::string respawnMsg = MessageHandler::FormatPlayerRespawnMessage(normalizedID, respawnPos);
+                std::string respawnMsg = MessageHandler::FormatPlayerRespawnMessage(normalizedID, usedRespawnPos);
                 if (game->GetNetworkManager().SendMessage(hostID, respawnMsg)) {
-                    std::cout << "[PM] Sent respawn message to host\n";
+                    std::cout << "[PM] Sent respawn message to host at position ("
+                              << usedRespawnPos.x << "," << usedRespawnPos.y << ")\n";
                 } else {
                     std::cout << "[PM] Failed to send respawn message to host\n";
                 }

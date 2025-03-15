@@ -364,21 +364,18 @@ void ClientNetwork::ProcessPlayerRespawnMessage(const ParsedMessage& parsed) {
         int oldHealth = player.player.GetHealth();
         bool wasDead = player.player.IsDead();
         
-        // Set respawn position and call respawn
+        // Set respawn position to the position received in message
         player.player.SetRespawnPosition(parsed.position);
         player.player.Respawn();
         
-        // Check health after respawn
-        int newHealth = player.player.GetHealth();
-        bool isDeadNow = player.player.IsDead();
-        
+        // Log the position for debugging
         std::cout << "[CLIENT] Player " << normalizedID 
-                  << " respawned. Was dead: " << (wasDead ? "yes" : "no") 
-                  << ", Health: " << oldHealth << " -> " << newHealth 
-                  << ", Is dead now: " << (isDeadNow ? "yes" : "no") << "\n";
+                  << " respawned at position (" << parsed.position.x << "," << parsed.position.y << ")"
+                  << " Was dead: " << (wasDead ? "yes" : "no") 
+                  << ", Health: " << oldHealth << " -> " << player.player.GetHealth() << "\n";
                   
         // If health is not 100 after respawn, force it
-        if (newHealth < 100) {
+        if (player.player.GetHealth() < 100) {
             std::cout << "[CLIENT] WARNING: Player health not fully restored after respawn, forcing to 100\n";
             player.player.TakeDamage(-100);  // Hack to add health
         }
