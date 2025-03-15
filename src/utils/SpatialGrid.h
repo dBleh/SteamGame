@@ -85,51 +85,52 @@ public:
     }
     
     // Update enemy position in the grid efficiently
-    void UpdateEnemyPosition(EnemyBase* enemy, const sf::Vector2f& oldPosition) {
-        if (!enemy) return;
-        
-        // Calculate old cell
-        int oldCellX = static_cast<int>(std::floor(oldPosition.x / cellSize));
-        int oldCellY = static_cast<int>(std::floor(oldPosition.y / cellSize));
-        
-        // Calculate new cell based on current position
-        sf::Vector2f newPosition = enemy->GetPosition();
-        int newCellX = static_cast<int>(std::floor(newPosition.x / cellSize));
-        int newCellY = static_cast<int>(std::floor(newPosition.y / cellSize));
-        
-        // If cell hasn't changed, nothing to do
-        if (oldCellX == newCellX && oldCellY == newCellY) return;
-        
-        // Ensure bounds for old cell
-        oldCellX = std::max(0, std::min(gridWidth - 1, oldCellX));
-        oldCellY = std::max(0, std::min(gridHeight - 1, oldCellY));
-        
-        // Calculate old cell index
-        int oldCellIndex = oldCellY * gridWidth + oldCellX;
-        
-        // Remove from old cell
-        if (oldCellIndex >= 0 && oldCellIndex < cells.size()) {
-            auto& oldCellVec = cells[oldCellIndex];
-            oldCellVec.erase(
-                std::remove(oldCellVec.begin(), oldCellVec.end(), enemy),
-                oldCellVec.end()
-            );
-        }
-        
-        // Ensure bounds for new cell
-        newCellX = std::max(0, std::min(gridWidth - 1, newCellX));
-        newCellY = std::max(0, std::min(gridHeight - 1, newCellY));
-        
-        // Calculate new cell index
-        int newCellIndex = newCellY * gridWidth + newCellX;
-        
-        // Add to new cell
-        if (newCellIndex >= 0 && newCellIndex < cells.size()) {
-            cells[newCellIndex].push_back(enemy);
-            // Update the tracking map
-            enemyCellIndices[enemy] = newCellIndex;
-        }
+    // Update enemy position in the grid efficiently
+void UpdateEnemyPosition(EnemyBase* enemy, const sf::Vector2f& oldPosition) {
+    if (!enemy) return;
+    
+    // Calculate old cell
+    int oldCellX = static_cast<int>(std::floor(oldPosition.x / cellSize));
+    int oldCellY = static_cast<int>(std::floor(oldPosition.y / cellSize));
+    
+    // Calculate new cell based on current position
+    sf::Vector2f newPosition = enemy->GetPosition();
+    int newCellX = static_cast<int>(std::floor(newPosition.x / cellSize));
+    int newCellY = static_cast<int>(std::floor(newPosition.y / cellSize));
+    
+    // If cell hasn't changed, nothing to do
+    if (oldCellX == newCellX && oldCellY == newCellY) return;
+    
+    // Ensure bounds for old cell
+    oldCellX = std::max(0, std::min(gridWidth - 1, oldCellX));
+    oldCellY = std::max(0, std::min(gridHeight - 1, oldCellY));
+    
+    // Calculate old cell index
+    int oldCellIndex = oldCellY * gridWidth + oldCellX;
+    
+    // Remove from old cell
+    if (oldCellIndex >= 0 && oldCellIndex < cells.size()) {
+        auto& oldCellVec = cells[oldCellIndex];
+        oldCellVec.erase(
+            std::remove(oldCellVec.begin(), oldCellVec.end(), enemy),
+            oldCellVec.end()
+        );
     }
+    
+    // Ensure bounds for new cell
+    newCellX = std::max(0, std::min(gridWidth - 1, newCellX));
+    newCellY = std::max(0, std::min(gridHeight - 1, newCellY));
+    
+    // Calculate new cell index
+    int newCellIndex = newCellY * gridWidth + newCellX;
+    
+    // Add to new cell
+    if (newCellIndex >= 0 && newCellIndex < cells.size()) {
+        cells[newCellIndex].push_back(enemy);
+        // Update the tracking map
+        enemyCellIndices[enemy] = newCellIndex;
+    }
+}
     
     // Get enemies near a position within a radius
     std::vector<EnemyBase*> GetNearbyEnemies(const sf::Vector2f& position, float radius) {
