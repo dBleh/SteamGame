@@ -450,6 +450,17 @@ void HostNetwork::ProcessEnemyValidationRequestMessage(const ParsedMessage& pars
     EnemyManager* enemyManager = playingState->GetEnemyManager();
     if (!enemyManager) return;
     
+    // Add rate limiting for validation responses
+    static auto lastValidationResponse = std::chrono::steady_clock::now() - std::chrono::seconds(10);
+    auto now = std::chrono::steady_clock::now();
+    float timeSinceLast = std::chrono::duration<float>(now - lastValidationResponse).count();
+    
+    if (timeSinceLast < 1.0f) {
+        std::cout << "[HOST] Ignoring validation request - too soon after last response\n";
+        return;
+    }
+    lastValidationResponse = now;
+    
     std::cout << "[HOST] Received enemy validation request, sending full list" << std::endl;
     
     // Send with slight delay to ensure it goes after other messages

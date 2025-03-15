@@ -834,7 +834,7 @@ void EnemyManager::SyncEnemyPositions() {
     }
     
     // IMPORTANT: Split enemy updates into small batches to avoid packet size issues
-    const int BATCH_SIZE = 5; // Send only 5 enemies per message
+    const int BATCH_SIZE = 15; // Send only 5 enemies per message
     
     // Batch regular enemies
     if (!enemies.empty()) {
