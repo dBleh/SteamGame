@@ -633,27 +633,34 @@ void EnemyManager::CheckPlayerCollisions() {
                 // Apply damage to player
                 remotePlayer.player.TakeDamage(damage);
                 
-                // Kill enemy on collision
-                entry.enemy->TakeDamage(entry.enemy->GetHealth());
-                
-                // Remove from spatial grid if in it
-                spatialGrid.RemoveEnemy(entry.enemy.get());
-                
-                // Send death message if we're the host
+                // Check if we're the host
                 CSteamID localSteamID = SteamUser()->GetSteamID();
                 CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+                bool isHost = (localSteamID == hostID);
                 
-                if (localSteamID == hostID) {
-                    // Send enemy death message
+                // Only host should actually kill the enemy and send messages
+                if (isHost) {
+                    // Kill enemy on collision
+                    entry.enemy->TakeDamage(entry.enemy->GetHealth());
+                    
+                    // Remove from spatial grid if in it
+                    spatialGrid.RemoveEnemy(entry.enemy.get());
+                    
+                    // Send enemy death message - broadcast twice for reliability
                     std::string deathMsg = MessageHandler::FormatEnemyDeathMessage(
                         entry.GetID(), "", false, 
                         static_cast<ParsedMessage::EnemyType>(static_cast<int>(entry.type)));
                     game->GetNetworkManager().BroadcastMessage(deathMsg);
+                    game->GetNetworkManager().BroadcastMessage(deathMsg); // Send twice
                     
                     // Also send player damage message
                     std::string damageMsg = MessageHandler::FormatPlayerDamageMessage(
                         playerID, damage, entry.GetID());
                     game->GetNetworkManager().BroadcastMessage(damageMsg);
+                } else {
+                    // For clients, don't kill the enemy locally - let host tell us
+                    // Just show visual effect
+                    entry.enemy->UpdateVisuals();
                 }
                 
                 // If this is the local player, check if they died
@@ -678,23 +685,30 @@ void EnemyManager::CheckPlayerCollisions() {
                 // Apply damage to player
                 remotePlayer.player.TakeDamage(damage);
                 
-                // Kill enemy on collision
-                enemy.TakeDamage(enemy.GetHealth());
-                
-                // Send death message if we're the host
+                // Check if we're the host
                 CSteamID localSteamID = SteamUser()->GetSteamID();
                 CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+                bool isHost = (localSteamID == hostID);
                 
-                if (localSteamID == hostID) {
-                    // Send enemy death message
+                // Only host should actually kill the enemy and send messages
+                if (isHost) {
+                    // Kill enemy on collision
+                    enemy.TakeDamage(enemy.GetHealth());
+                    
+                    // Send enemy death message - broadcast twice for reliability
                     std::string deathMsg = MessageHandler::FormatEnemyDeathMessage(
                         enemy.GetID(), "", false, ParsedMessage::EnemyType::Triangle);
                     game->GetNetworkManager().BroadcastMessage(deathMsg);
+                    game->GetNetworkManager().BroadcastMessage(deathMsg); // Send twice
                     
                     // Also send player damage message
                     std::string damageMsg = MessageHandler::FormatPlayerDamageMessage(
                         playerID, damage, enemy.GetID());
                     game->GetNetworkManager().BroadcastMessage(damageMsg);
+                } else {
+                    // For clients, don't kill the enemy locally - let host tell us
+                    // Just show visual effect
+                    enemy.UpdateVisuals();
                 }
                 
                 // If this is the local player, check if they died
