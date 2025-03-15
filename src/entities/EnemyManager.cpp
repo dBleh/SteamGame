@@ -49,6 +49,14 @@ void EnemyManager::Update(float dt) {
     
     if (beforeSize != afterSize) {
         std::cout << "Removed " << (beforeSize - afterSize) << " dead regular enemies" << std::endl;
+        
+        // Rebuild the ID to index map after removing enemies
+        enemyIdToIndex.clear();
+        for (size_t i = 0; i < enemies.size(); i++) {
+            if (enemies[i].enemy) {
+                enemyIdToIndex[enemies[i].GetID()] = i;
+            }
+        }
     }
     
     // Remove dead triangle enemies
@@ -240,10 +248,11 @@ void EnemyManager::AddTriangleEnemy(int id, const sf::Vector2f& position, int he
     for (auto& enemy : triangleEnemies) {
         if (enemy.GetID() == id) {
             // Damage it to set correct health (reverse calculation)
-            int damage = 40 - health; // 40 is default health
+            int damage = static_cast<int>(TRIANGLE_HEALTH - health); // Add explicit cast to fix warning
             if (damage > 0) {
                 enemy.TakeDamage(damage);
             }
+            enemy.UpdateVisuals(); // Force update visuals
             break;
         }
     }
@@ -302,7 +311,7 @@ void EnemyManager::SpawnTriangleWave(int count, uint32_t seed) {
         triangleEnemies.emplace_back(enemyId, pos);
         
         // Add to batch data
-        batchData.emplace_back(enemyId, pos, 40); // Default health is 40
+        batchData.emplace_back(enemyId, pos, TRIANGLE_HEALTH); // Use config health value
         
         // If batch is full or this is the last enemy, send batch
         if (batchData.size() >= 20 || i == count - 1) {
@@ -399,7 +408,7 @@ void EnemyManager::SpawnEnemyBatch(int count) {
         batchData.emplace_back(
             enemyId, 
             position, 
-            TRIANGLE_HEALTH // Default health from config
+            ENEMY_HEALTH // Use correct health from config
         );
     }
     
@@ -410,7 +419,7 @@ void EnemyManager::SpawnEnemyBatch(int count) {
         
         if (localSteamID == hostID) {
             std::string batchMsg = MessageHandler::FormatEnemyBatchSpawnMessage(
-                batchData, static_cast<ParsedMessage::EnemyType>(1)); // 0 = Regular type
+                batchData, ParsedMessage::EnemyType::Regular); // 0 = Regular type
             game->GetNetworkManager().BroadcastMessage(batchMsg);
         }
     }
@@ -492,7 +501,7 @@ void EnemyManager::CheckBulletCollisions(const std::vector<Bullet>& bullets) {
                 
                 if (entry.type == EnemyType::Rectangle) {
                     Enemy* rectEnemy = static_cast<Enemy*>(entry.enemy.get());
-                    collided = rectEnemy->GetShape().getGlobalBounds().intersects(bullet.GetShape().getGlobalBounds());
+                    collided = rectEnemy->CheckBulletCollision(bullet.GetPosition(), 4.0f);
                 } else if (entry.type == EnemyType::Triangle) {
                     TriangleEnemy* triEnemy = static_cast<TriangleEnemy*>(entry.enemy.get());
                     collided = triEnemy->CheckBulletCollision(bullet.GetPosition(), 4.0f);
@@ -507,6 +516,7 @@ void EnemyManager::CheckBulletCollisions(const std::vector<Bullet>& bullets) {
                     if (isHost) {
                         // ONLY THE HOST APPLIES ACTUAL DAMAGE
                         bool killed = entry.enemy->TakeDamage(20); // Each bullet does 20 damage
+                        entry.enemy->UpdateVisuals(); // Force update visuals after damage
                         
                         // Host immediately broadcasts hit message
                         std::string msg = MessageHandler::FormatEnemyHitMessage(
@@ -519,7 +529,10 @@ void EnemyManager::CheckBulletCollisions(const std::vector<Bullet>& bullets) {
                             RewardShooter(bullet.GetShooterID(), entry.type);
                         }
                     } else {
-                        // CLIENT ONLY APPLIES VISUAL EFFECT - NO DAMAGE
+                        // CLIENT ONLY APPLIES VISUAL EFFECT - NO ACTUAL DAMAGE
+                        // But we can temporarily update visuals for feedback
+                        entry.enemy->UpdateVisuals();
+                        
                         // Send hit message to host
                         std::string msg = MessageHandler::FormatEnemyHitMessage(
                             entry.GetID(), 20, false, bullet.GetShooterID(), 
@@ -550,6 +563,7 @@ void EnemyManager::CheckBulletCollisions(const std::vector<Bullet>& bullets) {
                     if (isHost) {
                         // ONLY THE HOST APPLIES ACTUAL DAMAGE
                         bool killed = enemy.TakeDamage(20); // Each bullet does 20 damage
+                        enemy.UpdateVisuals(); // Force update visuals
                         
                         // Host immediately broadcasts hit message
                         std::string msg = MessageHandler::FormatEnemyHitMessage(
@@ -562,6 +576,9 @@ void EnemyManager::CheckBulletCollisions(const std::vector<Bullet>& bullets) {
                         }
                     } else {
                         // CLIENT ONLY APPLIES VISUAL EFFECT - NO DAMAGE
+                        // But we can temporarily update visuals for feedback
+                        enemy.UpdateVisuals();
+                        
                         // Send hit message to host
                         std::string msg = MessageHandler::FormatEnemyHitMessage(
                             enemy.GetID(), 20, false, bullet.GetShooterID(), ParsedMessage::EnemyType::Triangle);
@@ -602,7 +619,7 @@ void EnemyManager::CheckPlayerCollisions() {
             bool collision = false;
             if (entry.type == EnemyType::Rectangle) {
                 Enemy* rectEnemy = static_cast<Enemy*>(entry.enemy.get());
-                collision = rectEnemy->GetShape().getGlobalBounds().intersects(remotePlayer.player.GetShape().getGlobalBounds());
+                collision = rectEnemy->CheckCollision(remotePlayer.player.GetShape());
             } else if (entry.type == EnemyType::Triangle) {
                 TriangleEnemy* triEnemy = static_cast<TriangleEnemy*>(entry.enemy.get());
                 collision = triEnemy->CheckCollision(remotePlayer.player.GetShape());
@@ -729,6 +746,9 @@ void EnemyManager::HandleEnemyHit(int enemyId, int damage, bool killed, const st
                 // The host is authoritative for enemy health
                 bool wasKilled = entry.enemy->TakeDamage(damage);
                 
+                // Force update visuals after damage
+                entry.enemy->UpdateVisuals();
+                
                 // If killed flag is true but enemy isn't dead yet, force kill
                 if (killed && !wasKilled) {
                     entry.enemy->TakeDamage(1000); // Ensure it dies
@@ -743,8 +763,11 @@ void EnemyManager::HandleEnemyHit(int enemyId, int damage, bool killed, const st
                 if (killed) {
                     entry.enemy->TakeDamage(entry.enemy->GetHealth()); // Force kill
                 } else {
-                    // Apply temporary visual damage
-                    entry.enemy->SetHealth(entry.enemy->GetHealth() - damage);
+                    // Apply damage for visual feedback only
+                    int currentHealth = entry.enemy->GetHealth();
+                    entry.enemy->SetHealth(currentHealth - damage);
+                    
+                    // Force update visuals after health change
                     entry.enemy->UpdateVisuals();
                 }
             }
@@ -834,7 +857,7 @@ void EnemyManager::SyncEnemyPositions() {
     }
     
     // IMPORTANT: Split enemy updates into small batches to avoid packet size issues
-    const int BATCH_SIZE = 15; // Send only 5 enemies per message
+    const int BATCH_SIZE = 15; // Send only 15 enemies per message
     
     // Batch regular enemies
     if (!enemies.empty()) {
@@ -966,6 +989,8 @@ void EnemyManager::UpdateTriangleEnemyHealth(int id, int health) {
             // Can only reduce health, not increase it
             enemy->TakeDamage(currentHealth - health);
         }
+        // Always force update visuals
+        enemy->UpdateVisuals();
     }
 }
 
@@ -989,6 +1014,8 @@ void EnemyManager::UpdateTriangleEnemyPositions(const std::vector<std::tuple<int
                 } else if (health < enemy->GetHealth()) {
                     enemy->TakeDamage(enemy->GetHealth() - health);
                 }
+                // Force update visuals
+                enemy->UpdateVisuals();
                 // Note: we can't increase health, so if server health is higher,
                 // we'll just wait for it to sync naturally over time
             }
@@ -1022,6 +1049,9 @@ void EnemyManager::HandleTriangleEnemyHit(int enemyId, int damage, bool killed, 
                 RewardShooter(shooterID, EnemyType::Triangle);
             }
         }
+        
+        // Force update visuals
+        enemy->UpdateVisuals();
     } else {
         // As client, apply the damage from the network message
         // This is our authoritative source of enemy health
@@ -1032,6 +1062,9 @@ void EnemyManager::HandleTriangleEnemyHit(int enemyId, int damage, bool killed, 
         } else {
             enemy->TakeDamage(damage);
         }
+        
+        // Force update visuals
+        enemy->UpdateVisuals();
     }
 }
 
@@ -1349,7 +1382,10 @@ void EnemyManager::UpdateEnemyPositions(const std::vector<std::tuple<int, sf::Ve
                     // Get the correct shape based on type
                     if (entry.type == EnemyType::Rectangle) {
                         Enemy* rectEnemy = static_cast<Enemy*>(entry.enemy.get());
-                        rectEnemy->GetShape().setPosition(pos);
+                        rectEnemy->UpdatePosition(pos, true); // Use the new interpolation method
+                        
+                        // Update base class position as well to be safe
+                        entry.enemy->SetPosition(rectEnemy->GetPosition());
                     } else if (entry.type == EnemyType::Triangle) {
                         TriangleEnemy* triEnemy = static_cast<TriangleEnemy*>(entry.enemy.get());
                         triEnemy->UpdatePosition(pos, true); // true = interpolate
@@ -1366,6 +1402,9 @@ void EnemyManager::UpdateEnemyPositions(const std::vector<std::tuple<int, sf::Ve
                         } else if (health > currentHealth) {
                             entry.enemy->SetHealth(health);
                         }
+                        
+                        // Force update visuals after health change
+                        entry.enemy->UpdateVisuals();
                     }
                     successCount++;
                 } else if (health > 0) {
@@ -1391,6 +1430,8 @@ void EnemyManager::UpdateEnemyHealth(int id, int health) {
     auto it = enemyIdToIndex.find(id);
     if (it != enemyIdToIndex.end() && it->second < enemies.size() && enemies[it->second].enemy) {
         enemies[it->second].enemy->SetHealth(health);
+        // Force update visuals after health change
+        enemies[it->second].enemy->UpdateVisuals();
     }
 }
 

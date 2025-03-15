@@ -46,6 +46,9 @@ public:
         UpdateVisuals();
     }
     
+    // Add new method for setting position
+    void SetPosition(const sf::Vector2f& newPosition) { position = newPosition; }
+    
 protected:
     int id;
     sf::Vector2f position;

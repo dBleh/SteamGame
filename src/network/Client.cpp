@@ -395,15 +395,24 @@ void ClientNetwork::ProcessEnemySpawnMessage(const ParsedMessage& parsed) {
     EnemyManager* enemyManager = playingState->GetEnemyManager();
     if (!enemyManager) return;
     
+    // Determine health to use - either from the message or use appropriate default
+    
+    
+    int health = (parsed.enemyType == ParsedMessage::EnemyType::Triangle) ? 
+            TRIANGLE_HEALTH : ENEMY_HEALTH;
+    
+    
     // Add the enemy based on type
     if (parsed.enemyType == ParsedMessage::EnemyType::Triangle) {
-        enemyManager->AddTriangleEnemy(parsed.enemyId, parsed.position);
+        enemyManager->AddTriangleEnemy(parsed.enemyId, parsed.position, TRIANGLE_HEALTH);
         std::cout << "[CLIENT] Added triangle enemy #" << parsed.enemyId 
-                  << " at (" << parsed.position.x << "," << parsed.position.y << ")\n";
+                  << " at (" << parsed.position.x << "," << parsed.position.y 
+                  << ") with health: " << health << "\n";
     } else {
-        enemyManager->AddEnemy(parsed.enemyId, parsed.position, EnemyType::Rectangle);
+        enemyManager->AddEnemy(parsed.enemyId, parsed.position, EnemyType::Rectangle, ENEMY_HEALTH);
         std::cout << "[CLIENT] Added regular enemy #" << parsed.enemyId 
-                  << " at (" << parsed.position.x << "," << parsed.position.y << ")\n";
+                  << " at (" << parsed.position.x << "," << parsed.position.y 
+                  << ") with health: " << health << "\n";
     }
 }
 

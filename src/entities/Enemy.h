@@ -25,6 +25,9 @@ public:
     sf::RectangleShape& GetShape() { return shape; }
     const sf::RectangleShape& GetShape() const { return shape; }
     
+    // Add position update method with interpolation
+    void UpdatePosition(const sf::Vector2f& newPosition, bool interpolate = true);
+    
 private:
     sf::RectangleShape shape;   // Visual representation
     

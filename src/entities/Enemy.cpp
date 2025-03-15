@@ -15,6 +15,9 @@ Enemy::Enemy(int id, const sf::Vector2f& position, float speed, int health)
     
     // Set the initial position
     shape.setPosition(position);
+    
+    // Initialize visuals based on health
+    UpdateVisuals();
 }
 bool Enemy::CheckBulletCollision(const sf::Vector2f& bulletPos, float bulletRadius) {
     if (isDead) return false;
@@ -94,4 +97,26 @@ Enemy Enemy::Deserialize(const std::string& data) {
     }
     
     return enemy;
+}
+
+// Add position update method with interpolation
+void Enemy::UpdatePosition(const sf::Vector2f& newPosition, bool interpolate) {
+    if (isDead) return;
+    
+    if (interpolate) {
+        // Smoothly interpolate to the new position (for client-side)
+        sf::Vector2f currentPos = shape.getPosition();
+        sf::Vector2f targetPos = newPosition;
+        
+        // Move 25% of the way to the target (adjust as needed for smoothness)
+        sf::Vector2f interpolatedPos = currentPos + (targetPos - currentPos) * 0.25f;
+        shape.setPosition(interpolatedPos);
+    }
+    else {
+        // Directly set position (for server-side or when correction is needed)
+        shape.setPosition(newPosition);
+    }
+    
+    // Update the base class position
+    position = shape.getPosition();
 }
