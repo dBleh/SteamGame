@@ -129,11 +129,11 @@ void EnemyManager::Update(float dt) {
             // Update the enemy
             entry.enemy->Update(dt, targetPos);
             
-            // Update the enemy's position in the spatial grid if it moved significantly
+            // Update the enemy's position in the spatial grid if it moved
             sf::Vector2f newPos = entry.GetPosition();
             sf::Vector2f delta = newPos - oldPos;
             float moveDist = delta.x * delta.x + delta.y * delta.y;
-            if (moveDist > 25.0f) { // Only update if moved more than 5 units
+            if (moveDist > 1.0f) { // Lower threshold to catch more movement
                 spatialGrid.UpdateEnemyPosition(entry.enemy.get(), oldPos);
             }
         }

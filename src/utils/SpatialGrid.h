@@ -100,15 +100,12 @@ public:
         // If cell hasn't changed, nothing to do
         if (oldCellX == newCellX && oldCellY == newCellY) return;
         
-        // Ensure bounds for both old and new cells
+        // Ensure bounds for old cell
         oldCellX = std::max(0, std::min(gridWidth - 1, oldCellX));
         oldCellY = std::max(0, std::min(gridHeight - 1, oldCellY));
-        newCellX = std::max(0, std::min(gridWidth - 1, newCellX));
-        newCellY = std::max(0, std::min(gridHeight - 1, newCellY));
         
-        // Calculate cell indices
+        // Calculate old cell index
         int oldCellIndex = oldCellY * gridWidth + oldCellX;
-        int newCellIndex = newCellY * gridWidth + newCellX;
         
         // Remove from old cell
         if (oldCellIndex >= 0 && oldCellIndex < cells.size()) {
@@ -119,9 +116,17 @@ public:
             );
         }
         
+        // Ensure bounds for new cell
+        newCellX = std::max(0, std::min(gridWidth - 1, newCellX));
+        newCellY = std::max(0, std::min(gridHeight - 1, newCellY));
+        
+        // Calculate new cell index
+        int newCellIndex = newCellY * gridWidth + newCellX;
+        
         // Add to new cell
         if (newCellIndex >= 0 && newCellIndex < cells.size()) {
             cells[newCellIndex].push_back(enemy);
+            // Update the tracking map
             enemyCellIndices[enemy] = newCellIndex;
         }
     }
