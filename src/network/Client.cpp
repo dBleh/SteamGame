@@ -251,21 +251,71 @@ void ClientNetwork::SendReadyStatus(bool isReady) {
 void ClientNetwork::Update() {
     auto now = std::chrono::steady_clock::now();
     float elapsed = std::chrono::duration<float>(now - lastSendTime).count();
+    
     if (elapsed >= SEND_INTERVAL) {
         auto& localPlayer = playerManager->GetLocalPlayer().player;
         SendMovementUpdate(localPlayer.GetPosition());
         lastSendTime = now;
     }
+    
     if (pendingConnectionMessage) {
         if (game->GetNetworkManager().SendMessage(hostID, pendingMessage)) {
             std::cout << "[CLIENT] Pending connection message sent successfully.\n";
             pendingConnectionMessage = false;
         }
     }
+    
     if (!pendingReadyMessage.empty()) {
         if (game->GetNetworkManager().SendMessage(hostID, pendingReadyMessage)) {
             std::cout << "[CLIENT] Pending ready status sent: " << pendingReadyMessage << "\n";
             pendingReadyMessage.clear();
+        }
+    }
+    
+    // Handle scheduled validation requests with rate limiting
+    if (m_validationRequestTimer > 0) {
+        m_validationRequestTimer -= elapsed;
+        if (m_validationRequestTimer <= 0) {
+            // Check if enough time has passed since the last validation (at least 3 seconds)
+            float timeSinceLast = std::chrono::duration<float>(now - m_lastValidationTime).count();
+            
+            if (timeSinceLast >= 3.0f) {
+                // Send validation request
+                std::string validationRequest = MessageHandler::FormatEnemyValidationRequestMessage();
+                if (game->GetNetworkManager().SendMessage(hostID, validationRequest)) {
+                    std::cout << "[CLIENT] Sent scheduled validation request\n";
+                    m_lastValidationTime = now;
+                }
+            } else {
+                std::cout << "[CLIENT] Skipped validation request - too soon after previous (" 
+                         << timeSinceLast << "s)\n";
+            }
+            
+            // Mark request as handled
+            m_validationRequestTimer = -1.0f;
+        }
+    }
+    
+    // Add periodic validation check but with strict rate limiting
+    m_periodicValidationTimer -= elapsed;
+    
+    if (m_periodicValidationTimer <= 0) {
+        // Reset timer - check every 30 seconds (much less frequent than before)
+        m_periodicValidationTimer = 30.0f;
+        
+        // Only request validation if we haven't requested in the last 5 seconds
+        float timeSinceLast = std::chrono::duration<float>(now - m_lastValidationTime).count();
+        
+        if (timeSinceLast >= 5.0f) {
+            std::cout << "[CLIENT] Performing periodic ghost enemy check\n";
+            
+            // Request validation data from host
+            std::string validationRequest = MessageHandler::FormatEnemyValidationRequestMessage();
+            if (game->GetNetworkManager().SendMessage(hostID, validationRequest)) {
+                m_lastValidationTime = now;
+            }
+        } else {
+            std::cout << "[CLIENT] Skipped periodic validation - too soon after previous\n";
         }
     }
 }
@@ -519,21 +569,26 @@ void ClientNetwork::ProcessWaveStartMessage(const ParsedMessage& parsed) {
     // We need to access this through the wave member in EnemyManager
     // For now, we rely on server-provided enemies instead
     
-    // Wait a brief moment before requesting enemy data
-    std::thread([this]() {
-        // Wait a bit to allow host to finish spawning enemies
-        sf::sleep(sf::milliseconds(300));
+    // Instead of creating a detached thread, set a timer for a single validation request
+    // This prevents excessive validation requests
+    static float validationRequestTimer = 0.5f; // Wait 0.5 seconds after wave start
+    
+    // Store the validation request time in a static variable to prevent multiple requests
+    static auto lastValidationTime = std::chrono::steady_clock::now() - std::chrono::seconds(10);
+    auto now = std::chrono::steady_clock::now();
+    
+    // Only request validation if sufficient time has passed since last request (2 seconds minimum)
+    if (std::chrono::duration<float>(now - lastValidationTime).count() > 2.0f) {
+        // Set up a request to happen a moment after wave start
+        validationRequestTimer = 0.5f;
         
-        // Request a full enemy validation/sync from the host
-        std::string validationRequest = MessageHandler::FormatEnemyValidationRequestMessage();
-        game->GetNetworkManager().SendMessage(hostID, validationRequest);
-        std::cout << "[CLIENT] Requested full enemy sync after wave start\n";
+        // Update last validation time
+        lastValidationTime = now;
         
-        // Wait a moment and request again for reliability
-        sf::sleep(sf::milliseconds(500));
-        game->GetNetworkManager().SendMessage(hostID, validationRequest);
-        std::cout << "[CLIENT] Sent second enemy sync request for reliability\n";
-    }).detach();
+        std::cout << "[CLIENT] Scheduled validation request after wave start\n";
+    } else {
+        std::cout << "[CLIENT] Skipping validation request (too soon after previous request)\n";
+    }
 }
 
 void ClientNetwork::ProcessWaveCompleteMessage(const ParsedMessage& parsed) {

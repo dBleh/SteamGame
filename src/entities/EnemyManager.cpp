@@ -1094,6 +1094,21 @@ std::vector<std::tuple<int, sf::Vector2f, int, int>> EnemyManager::GetEnemyDataF
 }
 
 void EnemyManager::SyncFullEnemyList() {
+    // Static variable to track the last sync time
+    static auto lastFullSyncTime = std::chrono::steady_clock::now() - std::chrono::seconds(10);
+    auto now = std::chrono::steady_clock::now();
+    
+    // Limit full syncs to once every 2 seconds max to prevent flooding
+    float timeSinceLast = std::chrono::duration<float>(now - lastFullSyncTime).count();
+    if (timeSinceLast < 2.0f) {
+        std::cout << "[HOST] Skipping full sync - too soon after last sync (" 
+                 << timeSinceLast << "s)\n";
+        return;
+    }
+    
+    // Update last sync time
+    lastFullSyncTime = now;
+    
     CSteamID localSteamID = SteamUser()->GetSteamID();
     CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
     
@@ -1129,12 +1144,15 @@ void EnemyManager::SyncFullEnemyList() {
         game->GetNetworkManager().BroadcastMessage(validationMsg);
         
         // Small delay to ensure validation message is processed first
-        sf::sleep(sf::milliseconds(50));
+        sf::sleep(sf::milliseconds(20));
         
-        // Now send batches of enemy data
-        for (size_t i = 0; i < regularEnemyData.size(); i += BATCH_SIZE) {
+        // Now send batches of enemy data - but only if there aren't too many
+        // For large numbers, only send some of them to avoid flooding
+        size_t maxEnemies = std::min(regularEnemyData.size(), static_cast<size_t>(20));
+        
+        for (size_t i = 0; i < maxEnemies; i += BATCH_SIZE) {
             std::vector<std::tuple<int, sf::Vector2f, int>> batch;
-            size_t batchEnd = std::min(i + BATCH_SIZE, regularEnemyData.size());
+            size_t batchEnd = std::min(i + BATCH_SIZE, maxEnemies);
             
             for (size_t j = i; j < batchEnd; j++) {
                 batch.push_back(regularEnemyData[j]);
@@ -1145,18 +1163,18 @@ void EnemyManager::SyncFullEnemyList() {
                 
             game->GetNetworkManager().BroadcastMessage(regularMsg);
             
-            // Add delay between batches for network reliability
-            sf::sleep(sf::milliseconds(20));
+            // Add smaller delay between batches
+            sf::sleep(sf::milliseconds(10));
         }
         
-        std::cout << "[HOST] Synced " << regularEnemyData.size() << " regular enemies in batches of " 
-                  << BATCH_SIZE << std::endl;
+        std::cout << "[HOST] Synced " << maxEnemies << " of " << regularEnemyData.size() 
+                 << " regular enemies in batches of " << BATCH_SIZE << std::endl;
     } else {
         std::cout << "[HOST] No regular enemies to sync in full list" << std::endl;
     }
     
     // Small delay between regular and triangle enemy batches
-    sf::sleep(sf::milliseconds(50));
+    sf::sleep(sf::milliseconds(20));
     
     // Get triangle enemy data with position and health
     std::vector<std::tuple<int, sf::Vector2f, int>> triangleEnemyData;
@@ -1182,12 +1200,15 @@ void EnemyManager::SyncFullEnemyList() {
         game->GetNetworkManager().BroadcastMessage(validationMsg);
         
         // Small delay to ensure validation message is processed first
-        sf::sleep(sf::milliseconds(50));
+        sf::sleep(sf::milliseconds(20));
         
-        // Now send batches of triangle enemy data
-        for (size_t i = 0; i < triangleEnemyData.size(); i += BATCH_SIZE) {
+        // Now send batches of triangle enemy data - but only if there aren't too many
+        // For large numbers, only send some of them to avoid flooding
+        size_t maxEnemies = std::min(triangleEnemyData.size(), static_cast<size_t>(20));
+        
+        for (size_t i = 0; i < maxEnemies; i += BATCH_SIZE) {
             std::vector<std::tuple<int, sf::Vector2f, int>> batch;
-            size_t batchEnd = std::min(i + BATCH_SIZE, triangleEnemyData.size());
+            size_t batchEnd = std::min(i + BATCH_SIZE, maxEnemies);
             
             for (size_t j = i; j < batchEnd; j++) {
                 batch.push_back(triangleEnemyData[j]);
@@ -1197,12 +1218,12 @@ void EnemyManager::SyncFullEnemyList() {
                 batch, ParsedMessage::EnemyType::Triangle);
             game->GetNetworkManager().BroadcastMessage(triangleMsg);
             
-            // Add delay between batches for network reliability
-            sf::sleep(sf::milliseconds(20));
+            // Add smaller delay between batches
+            sf::sleep(sf::milliseconds(10));
         }
         
-        std::cout << "[HOST] Synced " << triangleEnemyData.size() << " triangle enemies in batches of " 
-                  << BATCH_SIZE << std::endl;
+        std::cout << "[HOST] Synced " << maxEnemies << " of " << triangleEnemyData.size() 
+                 << " triangle enemies in batches of " << BATCH_SIZE << std::endl;
     }
 }
 

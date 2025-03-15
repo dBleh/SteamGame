@@ -60,6 +60,9 @@ private:
     std::string pendingReadyMessage;
     std::unordered_map<std::string, RemotePlayer> remotePlayers;
     static constexpr float SEND_INTERVAL = 0.1f;
+    float m_validationRequestTimer = -1.0f;
+    std::chrono::steady_clock::time_point m_lastValidationTime = std::chrono::steady_clock::now();
+    float m_periodicValidationTimer = 10.0f;
 };
 
 #endif // CLIENT_H
