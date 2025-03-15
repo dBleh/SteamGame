@@ -456,7 +456,32 @@ void HostNetwork::ProcessEnemyValidationRequestMessage(const ParsedMessage& pars
     // This is a simple way to improve the timing without complex task scheduling
     sf::sleep(sf::milliseconds(50));
     
-    // Force a full sync
+    // Get all regular enemy IDs for validation
+    std::vector<int> regularIds = enemyManager->GetAllEnemyIds();
+    
+    // Send regular enemy validation list first
+    std::string regularMsg = MessageHandler::FormatEnemyValidationMessage(regularIds);
+    game->GetNetworkManager().BroadcastMessage(regularMsg);
+    
+    std::cout << "[HOST] Sent validation list with " << regularIds.size() << " regular enemies" << std::endl;
+    
+    // Add a delay between messages
+    sf::sleep(sf::milliseconds(50));
+    
+    // Get all triangle enemy IDs for validation
+    std::vector<int> triangleIds = enemyManager->GetAllTriangleEnemyIds();
+    
+    // Send triangle enemy validation list
+    std::string triangleMsg = MessageHandler::FormatEnemyValidationMessage(triangleIds);
+    game->GetNetworkManager().BroadcastMessage(triangleMsg);
+    
+    std::cout << "[HOST] Sent validation list with " << triangleIds.size() << " triangle enemies" << std::endl;
+    
+    // Add a delay before position updates
+    sf::sleep(sf::milliseconds(50));
+    
+    // Now send actual position data in small batches
+    // We'll use the SyncFullEnemyList method we've already improved
     enemyManager->SyncFullEnemyList();
 }
 

@@ -360,12 +360,29 @@ void ClientNetwork::ProcessEnemyBatchSpawnMessage(const ParsedMessage& parsed) {
     if (!enemyManager) return;
     
     // Process each enemy in the batch
+    std::cout << "[CLIENT] Processing batch spawn with " << parsed.enemyPositions.size() << " enemies (type: " 
+              << (parsed.enemyType == ParsedMessage::EnemyType::Triangle ? "Triangle" : "Regular") << ")\n";
+    
+    int successCount = 0;
+    int updatedCount = 0;
+    
     for (size_t i = 0; i < parsed.enemyPositions.size(); ++i) {
         int id = parsed.enemyPositions[i].first;
         sf::Vector2f position = parsed.enemyPositions[i].second;
         
         // Ensure we get the correct health value
-        int health = (i < parsed.enemyHealths.size()) ? parsed.enemyHealths[i].second : 0;
+        int health = 0;
+        if (i < parsed.enemyHealths.size()) {
+            health = parsed.enemyHealths[i].second;
+        } else {
+            // Search for the health value in the enemyHealths array by matching ID
+            for (const auto& healthPair : parsed.enemyHealths) {
+                if (healthPair.first == id) {
+                    health = healthPair.second;
+                    break;
+                }
+            }
+        }
         
         // Use appropriate default health if not provided
         if (health <= 0) {
@@ -373,19 +390,42 @@ void ClientNetwork::ProcessEnemyBatchSpawnMessage(const ParsedMessage& parsed) {
                 TRIANGLE_HEALTH : ENEMY_HEALTH;
         }
         
-        // Add the enemy based on type with explicit health value
+        // Check if this enemy already exists
+        bool exists = false;
         if (parsed.enemyType == ParsedMessage::EnemyType::Triangle) {
-            enemyManager->AddTriangleEnemy(id, position, health);
-            std::cout << "[CLIENT] Added triangle enemy #" << id 
-                      << " at (" << position.x << "," << position.y 
-                      << ") with health: " << health << "\n";
+            exists = enemyManager->HasTriangleEnemy(id);
         } else {
-            enemyManager->AddEnemy(id, position, EnemyType::Rectangle, health);
-            std::cout << "[CLIENT] Added regular enemy #" << id 
-                      << " at (" << position.x << "," << position.y 
-                      << ") with health: " << health << "\n";
+            exists = enemyManager->HasEnemy(id);
+        }
+        
+        if (exists) {
+            // Update existing enemy's health and position
+            if (parsed.enemyType == ParsedMessage::EnemyType::Triangle) {
+                enemyManager->UpdateTriangleEnemyHealth(id, health);
+                // We'll update positions through the regular position update mechanism
+            } else {
+                enemyManager->UpdateEnemyHealth(id, health);
+            }
+            updatedCount++;
+        } else {
+            // Add the enemy based on type with explicit health value
+            if (parsed.enemyType == ParsedMessage::EnemyType::Triangle) {
+                enemyManager->AddTriangleEnemy(id, position, health);
+                std::cout << "[CLIENT] Added triangle enemy #" << id 
+                          << " at (" << position.x << "," << position.y 
+                          << ") with health: " << health << "\n";
+            } else {
+                enemyManager->AddEnemy(id, position, EnemyType::Rectangle, health);
+                std::cout << "[CLIENT] Added regular enemy #" << id 
+                          << " at (" << position.x << "," << position.y 
+                          << ") with health: " << health << "\n";
+            }
+            successCount++;
         }
     }
+    
+    std::cout << "[CLIENT] Batch spawn complete: " << successCount << " new enemies, " 
+              << updatedCount << " updated enemies\n";
 }
 
 
@@ -475,10 +515,25 @@ void ClientNetwork::ProcessWaveStartMessage(const ParsedMessage& parsed) {
     // Clear any remaining enemies as a precaution
     enemyManager->ClearAllEnemies();
     
-    // Request a full enemy validation/sync from the host
-    std::string validationRequest = MessageHandler::FormatEnemyValidationRequestMessage();
-    game->GetNetworkManager().SendMessage(hostID, validationRequest);
-    std::cout << "[CLIENT] Requested full enemy sync after wave start\n";
+    // Set current wave number
+    // We need to access this through the wave member in EnemyManager
+    // For now, we rely on server-provided enemies instead
+    
+    // Wait a brief moment before requesting enemy data
+    std::thread([this]() {
+        // Wait a bit to allow host to finish spawning enemies
+        sf::sleep(sf::milliseconds(300));
+        
+        // Request a full enemy validation/sync from the host
+        std::string validationRequest = MessageHandler::FormatEnemyValidationRequestMessage();
+        game->GetNetworkManager().SendMessage(hostID, validationRequest);
+        std::cout << "[CLIENT] Requested full enemy sync after wave start\n";
+        
+        // Wait a moment and request again for reliability
+        sf::sleep(sf::milliseconds(500));
+        game->GetNetworkManager().SendMessage(hostID, validationRequest);
+        std::cout << "[CLIENT] Sent second enemy sync request for reliability\n";
+    }).detach();
 }
 
 void ClientNetwork::ProcessWaveCompleteMessage(const ParsedMessage& parsed) {
@@ -545,14 +600,77 @@ void ClientNetwork::ProcessEnemyValidationMessage(const ParsedMessage& parsed) {
     EnemyManager* enemyManager = playingState->GetEnemyManager();
     if (!enemyManager) return;
     
+    // Store IDs before validation (for debug)
+    std::vector<int> beforeIds;
+    if (parsed.enemyType == ParsedMessage::EnemyType::Triangle) {
+        beforeIds = enemyManager->GetAllTriangleEnemyIds();
+    } else {
+        beforeIds = enemyManager->GetAllEnemyIds();
+    }
+    
     // Validate enemy list based on type
     if (parsed.enemyType == ParsedMessage::EnemyType::Triangle) {
         enemyManager->ValidateTriangleEnemyList(parsed.validEnemyIds);
-        std::cout << "[CLIENT] Processed triangle enemy validation with " 
-                 << parsed.validEnemyIds.size() << " enemies" << std::endl;
+        
+        // Compare before and after for debug
+        std::vector<int> afterIds = enemyManager->GetAllTriangleEnemyIds();
+        std::cout << "[CLIENT] Processed triangle enemy validation. Before: " 
+                 << beforeIds.size() << " enemies, After: " << afterIds.size() 
+                 << " enemies" << std::endl;
+                 
+        // Look for removed ghost enemies
+        int removedCount = 0;
+        for (int id : beforeIds) {
+            bool stillExists = false;
+            for (int validId : afterIds) {
+                if (id == validId) {
+                    stillExists = true;
+                    break;
+                }
+            }
+            if (!stillExists) {
+                std::cout << "[CLIENT] Removed ghost triangle enemy: " << id << std::endl;
+                removedCount++;
+            }
+        }
+        
+        if (removedCount > 0) {
+            std::cout << "[CLIENT] Removed " << removedCount << " ghost triangle enemies" << std::endl;
+        }
     } else {
         enemyManager->ValidateEnemyList(parsed.validEnemyIds);
-        std::cout << "[CLIENT] Processed regular enemy validation with " 
-                 << parsed.validEnemyIds.size() << " enemies" << std::endl;
+        
+        // Compare before and after for debug
+        std::vector<int> afterIds = enemyManager->GetAllEnemyIds();
+        std::cout << "[CLIENT] Processed regular enemy validation. Before: " 
+                 << beforeIds.size() << " enemies, After: " << afterIds.size() 
+                 << " enemies" << std::endl;
+                 
+        // Look for removed ghost enemies
+        int removedCount = 0;
+        for (int id : beforeIds) {
+            bool stillExists = false;
+            for (int validId : afterIds) {
+                if (id == validId) {
+                    stillExists = true;
+                    break;
+                }
+            }
+            if (!stillExists) {
+                std::cout << "[CLIENT] Removed ghost regular enemy: " << id << std::endl;
+                removedCount++;
+            }
+        }
+        
+        if (removedCount > 0) {
+            std::cout << "[CLIENT] Removed " << removedCount << " ghost regular enemies" << std::endl;
+        }
+    }
+    
+    // Request a position update after validation
+    if (!parsed.validEnemyIds.empty()) {
+        std::cout << "[CLIENT] Requesting position update after enemy validation" << std::endl;
+        std::string validationRequest = MessageHandler::FormatEnemyValidationRequestMessage();
+        game->GetNetworkManager().SendMessage(hostID, validationRequest);
     }
 }

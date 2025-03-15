@@ -663,16 +663,32 @@ void PlayingState::StartNextWave() {
         std::cout << "[HOST] Starting next wave" << std::endl;
         
         try {
+            // First, make sure all existing enemies are cleared
+            enemyManager->ClearAllEnemies();
+            
+            // Wait a moment to ensure clients have time to process the clear
+            sf::sleep(sf::milliseconds(100));
+            
             // Start the next wave
             enemyManager->StartNextWave();
             
             // Broadcast the wave start to all clients
             std::string waveMsg = MessageHandler::FormatWaveStartMessage(
                 enemyManager->GetCurrentWave());
+                
+            // Send the message twice for reliability
+            game->GetNetworkManager().BroadcastMessage(waveMsg);
+            sf::sleep(sf::milliseconds(20));
             game->GetNetworkManager().BroadcastMessage(waveMsg);
             
             std::cout << "[HOST] Next enemy wave started: " 
                       << enemyManager->GetCurrentWave() << std::endl;
+                      
+            // Give a delay before sending the enemy validation
+            sf::sleep(sf::milliseconds(200));
+            
+            // Force a full enemy sync shortly after wave start
+            enemyManager->SyncFullEnemyList();
         } catch (const std::exception& e) {
             std::cerr << "[ERROR] Failed to start next wave: " << e.what() << std::endl;
         }

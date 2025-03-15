@@ -833,23 +833,54 @@ void EnemyManager::SyncEnemyPositions() {
         return;
     }
     
-    // Sync regular enemies with explicit health values
+    // IMPORTANT: Split enemy updates into small batches to avoid packet size issues
+    const int BATCH_SIZE = 5; // Send only 5 enemies per message
+    
+    // Batch regular enemies
     if (!enemies.empty()) {
         auto regularEnemyData = GetRegularEnemyDataForSync();
         
-        if (!regularEnemyData.empty()) {
-            std::string regularMsg = MessageHandler::FormatEnemyPositionsMessage(regularEnemyData);
-            game->GetNetworkManager().BroadcastMessage(regularMsg);
+        // Process regular enemies in small batches
+        for (size_t i = 0; i < regularEnemyData.size(); i += BATCH_SIZE) {
+            // Create a batch with at most BATCH_SIZE enemies
+            std::vector<std::tuple<int, sf::Vector2f, int>> batch;
+            size_t batchEnd = std::min(i + BATCH_SIZE, regularEnemyData.size());
+            
+            for (size_t j = i; j < batchEnd; j++) {
+                batch.push_back(regularEnemyData[j]);
+            }
+            
+            if (!batch.empty()) {
+                std::string batchMsg = MessageHandler::FormatEnemyPositionsMessage(batch);
+                game->GetNetworkManager().BroadcastMessage(batchMsg);
+                
+                // Add a very small delay between batches to avoid network congestion
+                sf::sleep(sf::milliseconds(5));
+            }
         }
     }
     
-    // Sync triangle enemies with explicit health values
+    // Batch triangle enemies with same approach
     if (!triangleEnemies.empty()) {
         auto triangleEnemyData = GetTriangleEnemyDataForSync();
         
-        if (!triangleEnemyData.empty()) {
-            std::string triangleMsg = MessageHandler::FormatEnemyPositionsMessage(triangleEnemyData);
-            game->GetNetworkManager().BroadcastMessage(triangleMsg);
+        // Process triangle enemies in small batches
+        for (size_t i = 0; i < triangleEnemyData.size(); i += BATCH_SIZE) {
+            // Create a batch with at most BATCH_SIZE enemies
+            std::vector<std::tuple<int, sf::Vector2f, int>> batch;
+            size_t batchEnd = std::min(i + BATCH_SIZE, triangleEnemyData.size());
+            
+            for (size_t j = i; j < batchEnd; j++) {
+                batch.push_back(triangleEnemyData[j]);
+            }
+            
+            if (!batch.empty()) {
+                std::string triangleMsg = MessageHandler::FormatEnemyPositionsMessage(batch);
+                game->GetNetworkManager().BroadcastMessage(triangleMsg);
+                
+                // Add a very small delay between batches
+                sf::sleep(sf::milliseconds(5));
+            }
         }
     }
 }
@@ -1071,7 +1102,9 @@ void EnemyManager::SyncFullEnemyList() {
         return;
     }
     
-    // For regular enemies, use EBATCH format for more reliable sync
+    // Use smaller batch sizes for reliability
+    const int BATCH_SIZE = 4; // Smaller batch size for full sync
+    
     // Get regular enemy data with position and health
     std::vector<std::tuple<int, sf::Vector2f, int>> regularEnemyData;
     for (const auto& entry : enemies) {
@@ -1084,18 +1117,46 @@ void EnemyManager::SyncFullEnemyList() {
         }
     }
     
-    // Send regular enemy batch spawn message
+    // Send regular enemy batch spawn messages in small batches
     if (!regularEnemyData.empty()) {
-        std::string regularMsg = MessageHandler::FormatEnemyBatchSpawnMessage(
-            regularEnemyData, ParsedMessage::EnemyType::Regular);
-            
-        // Send multiple times for reliability
-        game->GetNetworkManager().BroadcastMessage(regularMsg);
+        // First send validation list with just IDs (smaller packet)
+        std::vector<int> regularIds;
+        for (const auto& data : regularEnemyData) {
+            regularIds.push_back(std::get<0>(data));
+        }
         
-        std::cout << "[HOST] Synced " << regularEnemyData.size() << " regular enemies in full list sync" << std::endl;
+        std::string validationMsg = MessageHandler::FormatEnemyValidationMessage(regularIds);
+        game->GetNetworkManager().BroadcastMessage(validationMsg);
+        
+        // Small delay to ensure validation message is processed first
+        sf::sleep(sf::milliseconds(50));
+        
+        // Now send batches of enemy data
+        for (size_t i = 0; i < regularEnemyData.size(); i += BATCH_SIZE) {
+            std::vector<std::tuple<int, sf::Vector2f, int>> batch;
+            size_t batchEnd = std::min(i + BATCH_SIZE, regularEnemyData.size());
+            
+            for (size_t j = i; j < batchEnd; j++) {
+                batch.push_back(regularEnemyData[j]);
+            }
+            
+            std::string regularMsg = MessageHandler::FormatEnemyBatchSpawnMessage(
+                batch, ParsedMessage::EnemyType::Regular);
+                
+            game->GetNetworkManager().BroadcastMessage(regularMsg);
+            
+            // Add delay between batches for network reliability
+            sf::sleep(sf::milliseconds(20));
+        }
+        
+        std::cout << "[HOST] Synced " << regularEnemyData.size() << " regular enemies in batches of " 
+                  << BATCH_SIZE << std::endl;
     } else {
         std::cout << "[HOST] No regular enemies to sync in full list" << std::endl;
     }
+    
+    // Small delay between regular and triangle enemy batches
+    sf::sleep(sf::milliseconds(50));
     
     // Get triangle enemy data with position and health
     std::vector<std::tuple<int, sf::Vector2f, int>> triangleEnemyData;
@@ -1109,13 +1170,39 @@ void EnemyManager::SyncFullEnemyList() {
         }
     }
     
-    // Send triangle enemy batch spawn message
+    // Send triangle enemy batch spawn messages in small batches
     if (!triangleEnemyData.empty()) {
-        std::string triangleMsg = MessageHandler::FormatEnemyBatchSpawnMessage(
-            triangleEnemyData, ParsedMessage::EnemyType::Triangle);
-        game->GetNetworkManager().BroadcastMessage(triangleMsg);
+        // First send validation list with just IDs (smaller packet)
+        std::vector<int> triangleIds;
+        for (const auto& data : triangleEnemyData) {
+            triangleIds.push_back(std::get<0>(data));
+        }
         
-        std::cout << "[HOST] Synced " << triangleEnemyData.size() << " triangle enemies in full list sync" << std::endl;
+        std::string validationMsg = MessageHandler::FormatEnemyValidationMessage(triangleIds);
+        game->GetNetworkManager().BroadcastMessage(validationMsg);
+        
+        // Small delay to ensure validation message is processed first
+        sf::sleep(sf::milliseconds(50));
+        
+        // Now send batches of triangle enemy data
+        for (size_t i = 0; i < triangleEnemyData.size(); i += BATCH_SIZE) {
+            std::vector<std::tuple<int, sf::Vector2f, int>> batch;
+            size_t batchEnd = std::min(i + BATCH_SIZE, triangleEnemyData.size());
+            
+            for (size_t j = i; j < batchEnd; j++) {
+                batch.push_back(triangleEnemyData[j]);
+            }
+            
+            std::string triangleMsg = MessageHandler::FormatEnemyBatchSpawnMessage(
+                batch, ParsedMessage::EnemyType::Triangle);
+            game->GetNetworkManager().BroadcastMessage(triangleMsg);
+            
+            // Add delay between batches for network reliability
+            sf::sleep(sf::milliseconds(20));
+        }
+        
+        std::cout << "[HOST] Synced " << triangleEnemyData.size() << " triangle enemies in batches of " 
+                  << BATCH_SIZE << std::endl;
     }
 }
 
@@ -1197,66 +1284,85 @@ int EnemyManager::GetRemainingEnemies() const {
 }
 
 void EnemyManager::UpdateEnemyPositions(const std::vector<std::tuple<int, sf::Vector2f, int>>& positions) {
-    // Process each position update
+    // Process each position update with better error handling
+    int successCount = 0;
+    int errorCount = 0;
+    
     for (const auto& posData : positions) {
-        int id = std::get<0>(posData);
-        sf::Vector2f pos = std::get<1>(posData);
-        int health = std::get<2>(posData);
-        
-        // Determine if this is a triangle or regular enemy
-        if (id >= 10000) { // Triangle IDs start at 10000
-            // Update triangle enemy
-            TriangleEnemy* enemy = GetTriangleEnemy(id);
-            if (enemy && enemy->IsAlive()) {
-                // Update position with interpolation
-                enemy->UpdatePosition(pos, true); // true = use interpolation
-                
-                // Update health if it's significantly different
-                int currentHealth = enemy->GetHealth();
-                if (std::abs(currentHealth - health) > 5) {
-                    // Set health directly
-                    if (health <= 0) {
-                        enemy->TakeDamage(enemy->GetHealth()); // Kill it
-                    } else if (health < currentHealth) {
-                        enemy->TakeDamage(currentHealth - health);
+        try {
+            int id = std::get<0>(posData);
+            sf::Vector2f pos = std::get<1>(posData);
+            int health = std::get<2>(posData);
+            
+            // Determine if this is a triangle or regular enemy
+            if (id >= 10000) { // Triangle IDs start at 10000
+                // Update triangle enemy
+                TriangleEnemy* enemy = GetTriangleEnemy(id);
+                if (enemy && enemy->IsAlive()) {
+                    // Update position with interpolation
+                    enemy->UpdatePosition(pos, true); // true = use interpolation
+                    
+                    // Update health if it's significantly different
+                    int currentHealth = enemy->GetHealth();
+                    if (std::abs(currentHealth - health) > 5) {
+                        // Set health directly
+                        if (health <= 0) {
+                            enemy->TakeDamage(enemy->GetHealth()); // Kill it
+                        } else if (health < currentHealth) {
+                            enemy->TakeDamage(currentHealth - health);
+                        }
                     }
+                    successCount++;
+                } else if (!enemy && health > 0) {
+                    // Enemy doesn't exist locally but should - create it
+                    AddTriangleEnemy(id, pos, health);
+                    std::cout << "[EM] Created missing triangle enemy #" << id << " during position update\n";
+                    successCount++;
                 }
-            } else if (!enemy && health > 0) {
-                // Enemy doesn't exist locally but should - create it
-                AddTriangleEnemy(id, pos, health);
-            }
-        } else {
-            // Update regular enemy
-            auto it = enemyIdToIndex.find(id);
-            if (it != enemyIdToIndex.end() && it->second < enemies.size() && enemies[it->second].enemy) {
-                auto& entry = enemies[it->second];
-                
-                // Get the correct shape based on type
-                if (entry.type == EnemyType::Rectangle) {
-                    Enemy* rectEnemy = static_cast<Enemy*>(entry.enemy.get());
-                    rectEnemy->GetShape().setPosition(pos);
-                } else if (entry.type == EnemyType::Triangle) {
-                    TriangleEnemy* triEnemy = static_cast<TriangleEnemy*>(entry.enemy.get());
-                    triEnemy->UpdatePosition(pos, true); // true = interpolate
-                }
-                
-                // Update health if it's significantly different
-                int currentHealth = entry.enemy->GetHealth();
-                if (std::abs(currentHealth - health) > 5) {
-                    // Set health directly
-                    if (health <= 0) {
-                        entry.enemy->TakeDamage(entry.enemy->GetHealth()); // Kill it
-                    } else if (health < currentHealth) {
-                        entry.enemy->TakeDamage(currentHealth - health);
-                    } else if (health > currentHealth) {
-                        entry.enemy->SetHealth(health);
+            } else {
+                // Update regular enemy
+                auto it = enemyIdToIndex.find(id);
+                if (it != enemyIdToIndex.end() && it->second < enemies.size() && enemies[it->second].enemy) {
+                    auto& entry = enemies[it->second];
+                    
+                    // Get the correct shape based on type
+                    if (entry.type == EnemyType::Rectangle) {
+                        Enemy* rectEnemy = static_cast<Enemy*>(entry.enemy.get());
+                        rectEnemy->GetShape().setPosition(pos);
+                    } else if (entry.type == EnemyType::Triangle) {
+                        TriangleEnemy* triEnemy = static_cast<TriangleEnemy*>(entry.enemy.get());
+                        triEnemy->UpdatePosition(pos, true); // true = interpolate
                     }
+                    
+                    // Update health if it's significantly different
+                    int currentHealth = entry.enemy->GetHealth();
+                    if (std::abs(currentHealth - health) > 5) {
+                        // Set health directly
+                        if (health <= 0) {
+                            entry.enemy->TakeDamage(entry.enemy->GetHealth()); // Kill it
+                        } else if (health < currentHealth) {
+                            entry.enemy->TakeDamage(currentHealth - health);
+                        } else if (health > currentHealth) {
+                            entry.enemy->SetHealth(health);
+                        }
+                    }
+                    successCount++;
+                } else if (health > 0) {
+                    // Enemy doesn't exist locally but should - create it
+                    AddEnemy(id, pos, EnemyType::Rectangle, health);
+                    std::cout << "[EM] Created missing regular enemy #" << id << " during position update\n";
+                    successCount++;
                 }
-            } else if (health > 0) {
-                // Enemy doesn't exist locally but should - create it
-                AddEnemy(id, pos, EnemyType::Rectangle, health);
             }
+        } catch (const std::exception& e) {
+            std::cerr << "[ERROR] Exception in UpdateEnemyPositions: " << e.what() << std::endl;
+            errorCount++;
         }
+    }
+    
+    if (errorCount > 0) {
+        std::cout << "[EM] Position updates: " << successCount << " successful, " 
+                  << errorCount << " errors\n";
     }
 }
 
