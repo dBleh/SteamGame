@@ -8,6 +8,7 @@
 #include <functional>
 #include "../utils/SteamHelpers.h"
 #include "../utils/MessageHandler.h"
+#include "../utils/Config.h"
 
 
 class Game;

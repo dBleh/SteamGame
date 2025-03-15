@@ -9,6 +9,7 @@
 #include "../utils/SteamHelpers.h"
 #include "../entities/PlayerManager.h"
 #include "../entities/EnemyManager.h"
+
 class Game;
 class EnemyManager;
 class PlayingState;
@@ -33,19 +34,12 @@ private:
     void ProcessPlayerDeathMessage(const ParsedMessage& parsed);
     void ProcessPlayerRespawnMessage(const ParsedMessage& parsed);
     
-    // Enemy-related message handlers
+    // Enemy-related message handlers - unified for all enemy types
     void ProcessEnemyHitMessage(const ParsedMessage& parsed);
     void ProcessEnemyDeathMessage(const ParsedMessage& parsed);
     void ProcessWaveStartMessage(const ParsedMessage& parsed);
     void ProcessWaveCompleteMessage(const ParsedMessage& parsed);
     void ProcessEnemyValidationRequestMessage(const ParsedMessage& parsed);
-
-    void ProcessTriangleEnemySpawnMessage(const ParsedMessage& parsed);
-void ProcessTriangleEnemyHitMessage(const ParsedMessage& parsed);
-void ProcessTriangleEnemyDeathMessage(const ParsedMessage& parsed);
-void ProcessTriangleEnemyPositionsMessage(const ParsedMessage& parsed);
-void ProcessTriangleEnemyFullListMessage(const ParsedMessage& parsed);
-void ProcessTriangleEnemyBatchSpawnMessage(const ParsedMessage& parsed);
 
     Game* game;
     PlayerManager* playerManager;

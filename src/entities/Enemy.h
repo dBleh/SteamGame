@@ -1,36 +1,36 @@
 #ifndef ENEMY_H
 #define ENEMY_H
 
+#include "EnemyBase.h"
+#include "../utils/config.h"
 #include <SFML/Graphics.hpp>
 #include <string>
 #include <cmath>
 
-class Enemy {
+class Enemy : public EnemyBase {
 public:
-    Enemy(int id, const sf::Vector2f& position, float speed = 60.f, int health = 40);
+    // Use config.h constants for default values
+    Enemy(int id, const sf::Vector2f& position, float speed = ENEMY_SPEED, int health = TRIANGLE_HEALTH);
     
-    void Update(float dt, const sf::Vector2f& targetPosition);
-    bool TakeDamage(int amount);
-    bool CheckCollision(const sf::RectangleShape& playerShape);
-    
-    sf::RectangleShape& GetShape();
-    const sf::RectangleShape& GetShape() const;
-    sf::Vector2f GetPosition() const;
-    bool IsAlive() const;
-    int GetID() const;
-    void SetHealth(int newHealth) { health = newHealth; }
-    void UpdateVisuals();
-    // Serialization for network
-    std::string Serialize() const;
+    // Implementation of base class virtual methods
+    void Update(float dt, const sf::Vector2f& targetPosition) override;
+    bool CheckCollision(const sf::RectangleShape& playerShape) const override;
+    void UpdateVisuals() override;
+    std::string Serialize() const override;
+    bool CheckBulletCollision(const sf::Vector2f& bulletPos, float bulletRadius);
+    // Static deserialize method
     static Enemy Deserialize(const std::string& data);
-    int GetHealth() const { return health; }
+    
+    // Additional methods specific to rectangular enemy
+    sf::RectangleShape& GetShape() { return shape; }
+    const sf::RectangleShape& GetShape() const { return shape; }
+    
 private:
-    int id;                     // Unique ID for this enemy
     sf::RectangleShape shape;   // Visual representation
-    float movementSpeed;        // Speed in pixels per second
-    int health;                 // Current health
-    bool isDead;                // Is the enemy dead?
-    sf::Color color;            // Enemy color
+    
+    // Constants for this enemy type
+    static constexpr float ENEMY_SIZE = 40.0f;
+    static constexpr float ENEMY_ORIGIN = 20.0f; // Half of ENEMY_SIZE
 };
 
 #endif // ENEMY_H

@@ -9,6 +9,7 @@
 std::unordered_map<std::string, std::vector<std::string>> MessageHandler::chunkStorage;
 std::unordered_map<std::string, std::string> MessageHandler::chunkTypes;
 std::unordered_map<std::string, int> MessageHandler::chunkCounts;
+
 std::string MessageHandler::FormatConnectionMessage(const std::string& steamID, const std::string& steamName, const sf::Color& color, bool isReady, bool isHost) {
     std::ostringstream oss;
     oss << "C|" << steamID << "|" << steamName << "|" << static_cast<int>(color.r) << "," 
@@ -22,6 +23,7 @@ std::string MessageHandler::FormatMovementMessage(const std::string& steamID, co
     oss << "M|" << steamID << "|" << position.x << "," << position.y;
     return oss.str();
 }
+
 std::vector<std::string> MessageHandler::ChunkMessage(const std::string& message, const std::string& messageType) {
     std::vector<std::string> chunks;
     
@@ -121,6 +123,7 @@ void MessageHandler::ClearChunks(const std::string& chunkId) {
     chunkTypes.erase(chunkId);
     chunkCounts.erase(chunkId);
 }
+
 std::string MessageHandler::FormatChatMessage(const std::string& steamID, const std::string& message) {
     std::ostringstream oss;
     oss << "T|" << steamID << "|" << message;
@@ -149,12 +152,12 @@ std::string MessageHandler::FormatBulletMessage(const std::string& shooterID, co
     return oss.str();
 }
 
-
 std::string MessageHandler::FormatPlayerDeathMessage(const std::string& playerID, const std::string& killerID) {
     std::ostringstream oss;
     oss << "D|" << playerID << "|" << killerID;
     return oss.str();
 }
+
 std::string MessageHandler::FormatEnemyValidationMessage(const std::vector<int>& enemyIds) {
     std::ostringstream oss;
     oss << "EV|" << enemyIds.size();
@@ -165,6 +168,7 @@ std::string MessageHandler::FormatEnemyValidationMessage(const std::vector<int>&
     
     return oss.str();
 }
+
 std::string MessageHandler::FormatPlayerRespawnMessage(const std::string& playerID, const sf::Vector2f& position) {
     std::ostringstream oss;
     oss << "RS|" << playerID << "|" << position.x << "," << position.y;
@@ -182,6 +186,7 @@ std::string MessageHandler::FormatEnemySpawnMessage(int enemyId, const sf::Vecto
     oss << "ES|" << enemyId << "|" << position.x << "," << position.y;
     return oss.str();
 }
+
 std::string MessageHandler::FormatEnemyPositionsMessage(const std::vector<std::pair<int, sf::Vector2f>>& enemyPositions) {
     std::ostringstream oss;
     oss << "EP|" << enemyPositions.size();
@@ -212,6 +217,7 @@ std::string MessageHandler::FormatEnemyPositionsMessage(const std::vector<std::t
     
     return oss.str();
 }
+
 std::string MessageHandler::FormatEnemyHitMessage(int enemyId, int damage, bool killed, const std::string& shooterID) {
     std::ostringstream oss;
     oss << "EH|" << enemyId << "|" << damage << "|" << (killed ? "1" : "0") << "|" << shooterID;
@@ -246,134 +252,15 @@ std::string MessageHandler::FormatEnemyValidationRequestMessage() {
     return "EVR|";  // Simple message, no additional data needed
 }
 
-// Triangle enemy message formatting implementations
-std::string MessageHandler::FormatTriangleEnemySpawnMessage(int enemyId, const sf::Vector2f& position) {
+std::string MessageHandler::FormatTriangleWaveStartMessage(uint32_t seed, int enemyCount) {
     std::ostringstream oss;
-    oss << "TRIANGLE_SPAWN|" << enemyId << "|" 
-        << position.x << "|" << position.y;
+    oss << "TWS|" << seed << "|" << enemyCount;
     return oss.str();
 }
 
-std::string MessageHandler::FormatTriangleEnemyPositionsMessage(const std::vector<std::tuple<int, sf::Vector2f, int>>& enemyData) {
-    if (enemyData.empty()) {
-        return "TRIANGLE_POS|0";
-    }
-    
-    std::ostringstream oss;
-    oss << "TRIANGLE_POS|" << enemyData.size();
-    
-    for (const auto& data : enemyData) {
-        int id = std::get<0>(data);
-        sf::Vector2f pos = std::get<1>(data);
-        int health = std::get<2>(data);
-        
-        // Quantize position values to 1 decimal place to save bandwidth
-        int quantizedX = static_cast<int>(pos.x * 10);
-        int quantizedY = static_cast<int>(pos.y * 10);
-        
-        oss << "|" << id << "," 
-            << quantizedX << "," 
-            << quantizedY << "," 
-            << health;
-    }
-    
-    return oss.str();
-}
-
-std::string MessageHandler::FormatTriangleEnemyHitMessage(int enemyId, int damage, bool killed, const std::string& shooterID) {
-    std::ostringstream oss;
-    oss << "TRIANGLE_HIT|" << enemyId << "|" 
-        << damage << "|" << (killed ? "1" : "0") << "|" << shooterID;
-    return oss.str();
-}
-
-std::string MessageHandler::FormatTriangleEnemyDeathMessage(int enemyId, const std::string& killerID, bool rewardKill) {
-    std::ostringstream oss;
-    oss << "TRIANGLE_DEATH|" << enemyId << "|" 
-        << killerID << "|" << (rewardKill ? "1" : "0");
-    return oss.str();
-}
-
-std::string MessageHandler::FormatTriangleEnemyBatchSpawnMessage(const std::vector<std::tuple<int, sf::Vector2f, int>>& spawnData) {
-    if (spawnData.empty()) {
-        return "TRIANGLE_BATCH_SPAWN|0";
-    }
-    
-    std::ostringstream oss;
-    oss << "TRIANGLE_BATCH_SPAWN|" << spawnData.size();
-    
-    for (const auto& data : spawnData) {
-        int id = std::get<0>(data);
-        sf::Vector2f pos = std::get<1>(data);
-        int health = std::get<2>(data);
-        
-        // Quantize position values
-        int quantizedX = static_cast<int>(pos.x * 10);
-        int quantizedY = static_cast<int>(pos.y * 10);
-        
-        oss << "|" << id << "," 
-            << quantizedX << "," 
-            << quantizedY << "," 
-            << health;
-    }
-    
-    return oss.str();
-}
-
-std::string MessageHandler::FormatTriangleEnemyFullListMessage(const std::vector<int>& validIds) {
-    if (validIds.empty()) {
-        return "TRIANGLE_FULL_LIST|0";
-    }
-    
-    std::ostringstream oss;
-    oss << "TRIANGLE_FULL_LIST|" << validIds.size();
-    
-    for (int id : validIds) {
-        oss << "|" << id;
-    }
-    
-    return oss.str();
-}
-
-// Parse message implementations for triangle enemies
-ParsedMessage MessageHandler::ParseTriangleEnemySpawnMessage(const std::string& message) {
-    ParsedMessage result;
-    result.type = MessageType::TriangleEnemySpawn;
-    
-    std::istringstream ss(message);
-    std::string token;
-    
-    // Skip "TRIANGLE_SPAWN" token
-    std::getline(ss, token, '|');
-    
-    // Parse enemy ID
-    std::getline(ss, token, '|');
-    try {
-        result.enemyId = std::stoi(token);
-    } catch (...) {
-        result.enemyId = 0;
-    }
-    
-    // Parse position
-    std::getline(ss, token, '|');
-    float x = 0.f;
-    try {
-        x = std::stof(token);
-    } catch (...) {}
-    
-    std::getline(ss, token, '|');
-    float y = 0.f;
-    try {
-        y = std::stof(token);
-    } catch (...) {}
-    
-    result.position = sf::Vector2f(x, y);
-    
-    return result;
-}
 ParsedMessage MessageHandler::ParseTriangleWaveStartMessage(const std::string& message) {
     ParsedMessage result;
-    result.type = MessageType::TriangleWaveStart; // Add this to your MessageType enum
+    result.type = MessageType::TriangleWaveStart;
     
     std::istringstream ss(message);
     std::string token;
@@ -398,273 +285,6 @@ ParsedMessage MessageHandler::ParseTriangleWaveStartMessage(const std::string& m
     }
     
     return result;
-}
-
-ParsedMessage MessageHandler::ParseTriangleEnemyHitMessage(const std::string& message) {
-    ParsedMessage result;
-    result.type = MessageType::TriangleEnemyHit;
-    
-    std::istringstream ss(message);
-    std::string token;
-    
-    // Skip "TRIANGLE_HIT" token
-    std::getline(ss, token, '|');
-    
-    // Parse enemy ID
-    std::getline(ss, token, '|');
-    try {
-        result.enemyId = std::stoi(token);
-    } catch (...) {
-        result.enemyId = 0;
-    }
-    
-    // Parse damage
-    std::getline(ss, token, '|');
-    try {
-        result.damage = std::stoi(token);
-    } catch (...) {
-        result.damage = 0;
-    }
-    
-    // Parse if killed
-    std::getline(ss, token, '|');
-    result.killed = (token == "1");
-    
-    // Parse shooter ID
-    std::getline(ss, token, '|');
-    result.steamID = token;
-    
-    return result;
-}
-
-ParsedMessage MessageHandler::ParseTriangleEnemyDeathMessage(const std::string& message) {
-    ParsedMessage result;
-    result.type = MessageType::TriangleEnemyDeath;
-    
-    std::istringstream ss(message);
-    std::string token;
-    
-    // Skip "TRIANGLE_DEATH" token
-    std::getline(ss, token, '|');
-    
-    // Parse enemy ID
-    std::getline(ss, token, '|');
-    try {
-        result.enemyId = std::stoi(token);
-    } catch (...) {
-        result.enemyId = 0;
-    }
-    
-    // Parse killer ID
-    std::getline(ss, token, '|');
-    result.killerID = token;
-    
-    // Parse reward kill
-    std::getline(ss, token, '|');
-    result.rewardKill = (token == "1");
-    
-    return result;
-}
-
-ParsedMessage MessageHandler::ParseTriangleEnemyPositionsMessage(const std::string& message) {
-    ParsedMessage result;
-    result.type = MessageType::TriangleEnemyPositions;
-    
-    std::istringstream ss(message);
-    std::string token;
-    
-    // Skip "TRIANGLE_POS" token
-    std::getline(ss, token, '|');
-    
-    // Parse count
-    std::getline(ss, token, '|');
-    int count = 0;
-    try {
-        count = std::stoi(token);
-    } catch (...) {}
-    
-    // Parse positions
-    for (int i = 0; i < count; i++) {
-        std::getline(ss, token, '|');
-        std::istringstream posStream(token);
-        std::string posToken;
-        
-        // Parse ID
-        std::getline(posStream, posToken, ',');
-        int id = 0;
-        try {
-            id = std::stoi(posToken);
-        } catch (...) {}
-        
-        // Parse X coordinate (dequantize)
-        std::getline(posStream, posToken, ',');
-        int quantizedX = 0;
-        try {
-            quantizedX = std::stoi(posToken);
-        } catch (...) {}
-        float x = quantizedX / 10.0f;
-        
-        // Parse Y coordinate (dequantize)
-        std::getline(posStream, posToken, ',');
-        int quantizedY = 0;
-        try {
-            quantizedY = std::stoi(posToken);
-        } catch (...) {}
-        float y = quantizedY / 10.0f;
-        
-        // Parse health
-        std::getline(posStream, posToken, ',');
-        int health = 40; // Default health
-        try {
-            health = std::stoi(posToken);
-        } catch (...) {}
-        
-        // Add to positions and health
-        result.triangleEnemyPositions.emplace_back(id, sf::Vector2f(x, y), health);
-        result.triangleEnemyHealths.emplace_back(id, health);
-    }
-    
-    return result;
-}
-
-ParsedMessage MessageHandler::ParseTriangleEnemyBatchSpawnMessage(const std::string& message) {
-    ParsedMessage result;
-    result.type = MessageType::TriangleEnemyBatchSpawn;
-    
-    std::istringstream ss(message);
-    std::string token;
-    
-    // Skip "TRIANGLE_BATCH_SPAWN" token
-    std::getline(ss, token, '|');
-    
-    // Parse count
-    std::getline(ss, token, '|');
-    int count = 0;
-    try {
-        count = std::stoi(token);
-    } catch (...) {}
-    
-    // Parse enemy data
-    for (int i = 0; i < count; i++) {
-        std::getline(ss, token, '|');
-        std::istringstream enemyStream(token);
-        std::string enemyToken;
-        
-        // Parse ID
-        std::getline(enemyStream, enemyToken, ',');
-        int id = 0;
-        try {
-            id = std::stoi(enemyToken);
-        } catch (...) {}
-        
-        // Parse X coordinate (dequantize)
-        std::getline(enemyStream, enemyToken, ',');
-        int quantizedX = 0;
-        try {
-            quantizedX = std::stoi(enemyToken);
-        } catch (...) {}
-        float x = quantizedX / 10.0f;
-        
-        // Parse Y coordinate (dequantize)
-        std::getline(enemyStream, enemyToken, ',');
-        int quantizedY = 0;
-        try {
-            quantizedY = std::stoi(enemyToken);
-        } catch (...) {}
-        float y = quantizedY / 10.0f;
-        
-        // Parse health
-        std::getline(enemyStream, enemyToken, ',');
-        int health = 40; // Default health
-        try {
-            health = std::stoi(enemyToken);
-        } catch (...) {}
-        
-        // Add to spawn data
-        result.triangleEnemyPositions.emplace_back(id, sf::Vector2f(x, y), health);
-    }
-    
-    return result;
-}
-
-ParsedMessage MessageHandler::ParseTriangleEnemyFullListMessage(const std::string& message) {
-    ParsedMessage result;
-    result.type = MessageType::TriangleEnemyFullList;
-    
-    std::istringstream ss(message);
-    std::string token;
-    
-    // Skip "TRIANGLE_FULL_LIST" token
-    std::getline(ss, token, '|');
-    
-    // Parse count
-    std::getline(ss, token, '|');
-    int count = 0;
-    try {
-        count = std::stoi(token);
-    } catch (...) {}
-    
-    // Parse valid IDs
-    for (int i = 0; i < count; i++) {
-        std::getline(ss, token, '|');
-        int id = 0;
-        try {
-            id = std::stoi(token);
-        } catch (...) {}
-        
-        result.triangleValidEnemyIds.push_back(id);
-    }
-    
-    return result;
-}
-ParsedMessage MessageHandler::ParseMinimalTriangleSpawnMessage(const std::string& message) {
-    ParsedMessage result;
-    result.type = MessageType::TriangleEnemySpawn;
-    
-    std::istringstream ss(message);
-    std::string token;
-    
-    // Skip "TS" token
-    std::getline(ss, token, '|');
-    
-    // Parse enemy ID
-    std::getline(ss, token, '|');
-    try {
-        result.enemyId = std::stoi(token);
-    } catch (...) {
-        result.enemyId = 0;
-    }
-    
-    // Parse position x
-    std::getline(ss, token, '|');
-    float x = 0.f;
-    try {
-        x = static_cast<float>(std::stoi(token));
-    } catch (...) {}
-    
-    // Parse position y
-    std::getline(ss, token, '|');
-    float y = 0.f;
-    try {
-        y = static_cast<float>(std::stoi(token));
-    } catch (...) {}
-    
-    result.position = sf::Vector2f(x, y);
-    
-    return result;
-}
-std::string MessageHandler::FormatMinimalTriangleSpawnMessage(int enemyId, const sf::Vector2f& position) {
-    // Use shorter format code and compact number formatting
-    std::ostringstream oss;
-    oss << "TS|" << enemyId << "|" 
-        << static_cast<int>(position.x) << "|" 
-        << static_cast<int>(position.y);
-    return oss.str();
-}
-std::string MessageHandler::FormatTriangleWaveStartMessage(uint32_t seed, int enemyCount) {
-    std::ostringstream oss;
-    oss << "TWS|" << seed << "|" << enemyCount;
-    return oss.str();
 }
 
 ParsedMessage MessageHandler::ParseMessage(const std::string& msg) {
@@ -767,7 +387,7 @@ ParsedMessage MessageHandler::ParseMessage(const std::string& msg) {
     } else if (parts[0] == "WC" && parts.size() >= 2) {
         parsed.type = MessageType::WaveComplete;
         parsed.waveNumber = std::stoi(parts[1]);
-    }else if (parts[0] == "EP" && parts.size() >= 2) {
+    } else if (parts[0] == "EP" && parts.size() >= 2) {
         parsed.type = MessageType::EnemyPositions;
         int numEnemies = std::stoi(parts[1]);
         
@@ -802,38 +422,18 @@ ParsedMessage MessageHandler::ParseMessage(const std::string& msg) {
                 }
             }
         }
-    }else if (parts[0] == "EV" && parts.size() >= 2) {
+    } else if (parts[0] == "EV" && parts.size() >= 2) {
         parsed.type = MessageType::EnemyValidation;
         int numEnemies = std::stoi(parts[1]);
         
         for (int i = 0; i < numEnemies && i + 2 < parts.size(); ++i) {
             parsed.validEnemyIds.push_back(std::stoi(parts[i + 2]));
         }
-    }
-    else if (parts[0] == "EVR") {
+    } else if (parts[0] == "EVR") {
         parsed.type = MessageType::EnemyValidationRequest;
-    }else if (parts[0] == "TRIANGLE_SPAWN") {
-        return ParseTriangleEnemySpawnMessage(msg);
-    }
-    else if (parts[0] == "TRIANGLE_HIT") {
-        return ParseTriangleEnemyHitMessage(msg);
-    }
-    else if (parts[0] == "TRIANGLE_DEATH") {
-        return ParseTriangleEnemyDeathMessage(msg);
-    }
-    else if (parts[0] == "TRIANGLE_POS") {
-        return ParseTriangleEnemyPositionsMessage(msg);
-    }
-    else if (parts[0] == "TRIANGLE_BATCH_SPAWN") {
-        return ParseTriangleEnemyBatchSpawnMessage(msg);
-    }
-    else if (parts[0] == "TRIANGLE_FULL_LIST") {
-        return ParseTriangleEnemyFullListMessage(msg);
-    }else if (parts[0] == "TS") {
-        return ParseMinimalTriangleSpawnMessage(msg);
-    }else if (parts[0] == "TWS") {
+    } else if (parts[0] == "TWS") {
         return ParseTriangleWaveStartMessage(msg);
-    }else if (parts[0] == "CHUNK_START" && parts.size() >= 4) {
+    } else if (parts[0] == "CHUNK_START" && parts.size() >= 4) {
         parsed.type = MessageType::ChunkStart;
         parsed.chunkType = parts[1];
         parsed.totalChunks = std::stoi(parts[2]);
@@ -844,8 +444,7 @@ ParsedMessage MessageHandler::ParseMessage(const std::string& msg) {
         chunkStorage[parsed.chunkId].resize(parsed.totalChunks);
         chunkTypes[parsed.chunkId] = parsed.chunkType;
         chunkCounts[parsed.chunkId] = parsed.totalChunks;
-    }
-    else if (parts[0] == "CHUNK_PART" && parts.size() >= 4) {
+    } else if (parts[0] == "CHUNK_PART" && parts.size() >= 4) {
         parsed.type = MessageType::ChunkPart;
         parsed.chunkId = parts[1];
         parsed.chunkNum = std::stoi(parts[2]);
@@ -859,8 +458,7 @@ ParsedMessage MessageHandler::ParseMessage(const std::string& msg) {
         
         // Store the chunk
         AddChunk(parsed.chunkId, parsed.chunkNum, chunkData);
-    }
-    else if (parts[0] == "CHUNK_END" && parts.size() >= 2) {
+    } else if (parts[0] == "CHUNK_END" && parts.size() >= 2) {
         parsed.type = MessageType::ChunkEnd;
         parsed.chunkId = parts[1];
         

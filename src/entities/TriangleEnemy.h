@@ -1,38 +1,35 @@
-#pragma once
+#ifndef TRIANGLE_ENEMY_H
+#define TRIANGLE_ENEMY_H
 
+#include "EnemyBase.h"
+#include "../utils/config.h"
 #include <SFML/Graphics.hpp>
 #include <string>
-#include <unordered_set>
-// Lightweight triangle enemy implementation optimized for network performance
-class TriangleEnemy {
+
+// Triangle enemy implementation optimized for network performance
+class TriangleEnemy : public EnemyBase {
 public:
-    TriangleEnemy(int id, const sf::Vector2f& position, float speed = 60.f, int health = 40);
+    // Use config.h constants for default values
+    TriangleEnemy(int id, const sf::Vector2f& position, float speed = ENEMY_SPEED * 1.2f, int health = TRIANGLE_HEALTH);
     
-    // Core update method - minimized to essential operations
-    void Update(float dt, const sf::Vector2f& targetPosition);
+    // Implementation of base class virtual methods
+    void Update(float dt, const sf::Vector2f& targetPosition) override;
+    bool CheckCollision(const sf::RectangleShape& playerShape) const override;
+    void UpdateVisuals() override;
+    std::string Serialize() const override;
     
-    // Network optimization - returns true if enemy was killed
-    bool TakeDamage(int amount);
-    
-    // Collision detection with player
-    bool CheckCollision(const sf::RectangleShape& playerShape);
-    
-    // Collision detection with bullet
+    // Specialized collision detection with bullet
     bool CheckBulletCollision(const sf::Vector2f& bulletPos, float bulletRadius);
     
-    // Basic accessors
+    // Static deserialize method
+    static TriangleEnemy Deserialize(const std::string& data);
+    
+    // Additional methods specific to triangle enemy
     const sf::ConvexShape& GetShape() const { return shape; }
-    sf::Vector2f GetPosition() const { return shape.getPosition(); }
-    bool IsAlive() const { return !isDead; }
-    int GetID() const { return id; }
-    int GetHealth() const { return health; }
+    sf::ConvexShape& GetShape() { return shape; }
     
     // Direction vector for movement optimization
     sf::Vector2f GetDirection() const { return direction; }
-    
-    // Network serialization - compact format
-    std::string Serialize() const;
-    static TriangleEnemy Deserialize(const std::string& data);
     
     // Optimized delta position for network sync
     sf::Vector2f GetPositionDelta(const sf::Vector2f& lastSyncedPosition) const;
@@ -40,18 +37,22 @@ public:
     // Update position from network data
     void UpdatePosition(const sf::Vector2f& newPosition, bool interpolate = true);
     
+    // Damage dealt by this enemy
+    static constexpr int GetDamage() { return TRIANGLE_DAMAGE; }
+    
+    // Money reward for killing this enemy
+    static constexpr int GetKillReward() { return TRIANGLE_KILL_REWARD; }
+    
 private:
-    int id;
     sf::ConvexShape shape; // Triangle shape
-    float movementSpeed;
-    int health;
-    bool isDead;
     sf::Vector2f direction; // Cached direction vector
     sf::Vector2f lastPosition; // For delta calculations
     
-    // Visual updates based on health
-    void UpdateVisuals();
+    // Constants for this enemy type
+    static constexpr float TRIANGLE_SIZE = 15.f;
     
     // Initialize triangle shape
     void InitializeShape(const sf::Vector2f& position);
 };
+
+#endif // TRIANGLE_ENEMY_H

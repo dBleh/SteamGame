@@ -193,6 +193,7 @@ void NetworkManager::JoinLobbyFromNetwork(CSteamID lobby) {
 
 // In NetworkManager.cpp - Modify the OnLobbyCreated method
 
+// In NetworkManager.cpp - OnLobbyCreated method
 void NetworkManager::OnLobbyCreated(LobbyCreated_t* pParam) {
     if (pParam->m_eResult != k_EResultOK) {
         std::cerr << "[LOBBY] Failed to create lobby. EResult=" << pParam->m_eResult << "\n";
@@ -218,16 +219,18 @@ void NetworkManager::OnLobbyCreated(LobbyCreated_t* pParam) {
     m_connectedClients[myID] = true;
     
     std::cout << "[LOBBY] Created lobby " << m_currentLobbyID.ConvertToUint64() << std::endl;
-    std::cout << "[LOBBY] Metadata - Name: " << SteamMatchmaking()->GetLobbyData(m_currentLobbyID, "name")
-              << ", GameID: " << SteamMatchmaking()->GetLobbyData(m_currentLobbyID, "game_id")
-              << ", Host: " << SteamMatchmaking()->GetLobbyData(m_currentLobbyID, "host_steam_id") << "\n";
-              
-    // CRUCIAL FIX: Directly change to Lobby state here instead of calling back to LobbyCreationState
-    game->SetCurrentState(GameState::Lobby);
+    
+    // IMPORTANT: Check if the game isn't already transitioning to another state
+    if (game->GetCurrentState() == GameState::LobbyCreation) {
+        game->SetCurrentState(GameState::Lobby);
+    }
 }
 // Improve the ResetLobbyState method in NetworkManager.cpp
 void NetworkManager::ResetLobbyState() {
     std::cout << "[NETWORK] Beginning lobby state reset..." << std::endl;
+    
+    // Clear message handler first to prevent callbacks to deleted objects
+    messageHandler = nullptr;
     
     // Print current state before reset
     std::cout << "[NETWORK] Current lobby ID before reset: " 

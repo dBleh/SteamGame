@@ -3,7 +3,7 @@
 #include <cmath>
 
 TriangleEnemy::TriangleEnemy(int id, const sf::Vector2f& position, float speed, int health)
-    : id(id), movementSpeed(speed), health(health), isDead(false), direction(0.f, 0.f), lastPosition(position)
+    : EnemyBase(id, position, speed, health), direction(0.f, 0.f), lastPosition(position)
 {
     InitializeShape(position);
 }
@@ -12,12 +12,11 @@ void TriangleEnemy::InitializeShape(const sf::Vector2f& position)
 {
     // Create an equilateral triangle
     shape.setPointCount(3);
-    float size = 15.f; // Base size for triangle
     
     // Define triangle points
-    shape.setPoint(0, sf::Vector2f(0, -size));         // Top
-    shape.setPoint(1, sf::Vector2f(-size, size));      // Bottom left
-    shape.setPoint(2, sf::Vector2f(size, size));       // Bottom right
+    shape.setPoint(0, sf::Vector2f(0, -TRIANGLE_SIZE));         // Top
+    shape.setPoint(1, sf::Vector2f(-TRIANGLE_SIZE, TRIANGLE_SIZE));      // Bottom left
+    shape.setPoint(2, sf::Vector2f(TRIANGLE_SIZE, TRIANGLE_SIZE));       // Bottom right
     
     // Set position and visual properties
     shape.setPosition(position);
@@ -47,28 +46,15 @@ void TriangleEnemy::Update(float dt, const sf::Vector2f& targetPosition)
     sf::Vector2f movement = direction * movementSpeed * dt;
     shape.move(movement);
     
+    // Update the base class position
+    position = shape.getPosition();
+    
     // Update rotation to face direction of movement
     float angle = std::atan2(direction.y, direction.x) * 180 / 3.14159f;
     shape.setRotation(angle + 90.f); // Adjust to make triangle point forward
 }
 
-bool TriangleEnemy::TakeDamage(int amount)
-{
-    if (isDead) return false;
-    
-    health -= amount;
-    if (health <= 0) {
-        health = 0;
-        isDead = true;
-        return true; // Was killed
-    }
-    
-    UpdateVisuals();
-    return false; // Still alive
-}
-
-
-bool TriangleEnemy::CheckCollision(const sf::RectangleShape& playerShape) {
+bool TriangleEnemy::CheckCollision(const sf::RectangleShape& playerShape) const {
     if (isDead) return false;
     
     // Get the global bounds of both shapes
@@ -78,6 +64,7 @@ bool TriangleEnemy::CheckCollision(const sf::RectangleShape& playerShape) {
     // Check for intersection
     return enemyBounds.intersects(playerBounds);
 }
+
 bool TriangleEnemy::CheckBulletCollision(const sf::Vector2f& bulletPos, float bulletRadius)
 {
     if (isDead) return false;
@@ -92,16 +79,13 @@ bool TriangleEnemy::CheckBulletCollision(const sf::Vector2f& bulletPos, float bu
     float distance = std::sqrt(dx * dx + dy * dy);
     
     // Approximate triangle as a circle for faster collision checks
-    // More precise collision can be implemented if needed
-    float triangleRadius = 15.f; // Same as size in InitializeShape
-    
-    return distance < (triangleRadius + bulletRadius);
+    return distance < (TRIANGLE_SIZE + bulletRadius);
 }
 
 void TriangleEnemy::UpdateVisuals()
 {
     // Visual feedback based on health
-    int healthPercent = health * 100 / 40; // Assuming max health is 40
+    int healthPercent = health * 100 / TRIANGLE_HEALTH; // Using config value for max health
     
     // Adjust color based on health (from red to darker red as health decreases)
     sf::Color color = sf::Color(255, 
@@ -147,8 +131,8 @@ TriangleEnemy TriangleEnemy::Deserialize(const std::string& data)
     std::getline(ss, token, '|');
     int health = std::stoi(token);
     
-    // Create enemy with parsed data
-    TriangleEnemy enemy(id, sf::Vector2f(posX, posY), 60.f, health);
+    // Create enemy with parsed data using config-defined values
+    TriangleEnemy enemy(id, sf::Vector2f(posX, posY), ENEMY_SPEED * 1.2f, health);
     
     // Parse isDead
     std::getline(ss, token, '|');
@@ -191,4 +175,7 @@ void TriangleEnemy::UpdatePosition(const sf::Vector2f& newPosition, bool interpo
         // Directly set position (for server-side or when correction is needed)
         shape.setPosition(newPosition);
     }
+    
+    // Update the base class position
+    position = shape.getPosition();
 }

@@ -135,10 +135,35 @@ void TriangleEnemyManager::SpawnWave(int enemyCount) {
     // Seed the RNG for the wave
     GenerateEnemiesWithSeed(seed, enemyCount);
 }
+// Modified SpawnEnemyBatch method using the config constants
+
 void TriangleEnemyManager::SpawnEnemyBatch(int count) {
-    // Generate random positions for new enemies
-    std::uniform_real_distribution<float> xDist(100.f, 2900.f);
-    std::uniform_real_distribution<float> yDist(100.f, 2900.f);
+    // Get average position of all players to use as spawn center
+    sf::Vector2f centerPos(0.f, 0.f);
+    int playerCount = 0;
+    
+    auto& players = playerManager->GetPlayers();
+    for (const auto& pair : players) {
+        if (!pair.second.player.IsDead()) {
+            centerPos += pair.second.player.GetPosition();
+            playerCount++;
+        }
+    }
+    
+    if (playerCount > 0) {
+        centerPos /= static_cast<float>(playerCount);
+    } else {
+        // If no players alive, use origin as center
+        centerPos = sf::Vector2f(0.f, 0.f);
+    }
+    
+    // Use the constants from Config.h
+    float minDistance = TRIANGLE_MIN_SPAWN_DISTANCE;
+    float maxDistance = TRIANGLE_MAX_SPAWN_DISTANCE;
+    
+    // Setup random distributions for spawn position
+    std::uniform_real_distribution<float> distanceDist(minDistance, maxDistance);
+    std::uniform_real_distribution<float> angleDist(0.f, 2.f * 3.14159f); // Full 360 degrees in radians
     
     // Don't spawn more than we need
     int batchCount = std::min(count, remainingEnemiestoSpawn);
@@ -155,10 +180,18 @@ void TriangleEnemyManager::SpawnEnemyBatch(int count) {
     
     // Spawn the batch
     for (int i = 0; i < batchCount; i++) {
-        sf::Vector2f position(xDist(seedGenerator), yDist(seedGenerator));
+        // Generate spawn position using distance/angle from center (polar coordinates)
+        float distance = distanceDist(seedGenerator);
+        float angle = angleDist(seedGenerator);
         
-        // Create new enemy
-        auto enemy = std::make_unique<TriangleEnemy>(nextEnemyId, position);
+        // Convert polar to cartesian coordinates
+        float x = centerPos.x + distance * std::cos(angle);
+        float y = centerPos.y + distance * std::sin(angle);
+        
+        sf::Vector2f position(x, y);
+        
+        // Create new enemy with health from config
+        auto enemy = std::make_unique<TriangleEnemy>(nextEnemyId, position, ENEMY_SPEED, TRIANGLE_HEALTH);
         TriangleEnemy* enemyPtr = enemy.get();
         
         // Add to containers
@@ -175,7 +208,7 @@ void TriangleEnemyManager::SpawnEnemyBatch(int count) {
         lastSyncedPositions[enemyPtr->GetID()] = position;
         
         // Add to batch data
-        batchData.emplace_back(nextEnemyId, position, 40); // 40 is default health
+        batchData.emplace_back(nextEnemyId, position, TRIANGLE_HEALTH);
         
         // Increment ID for next enemy
         nextEnemyId++;
@@ -229,10 +262,18 @@ void TriangleEnemyManager::AddEnemy(int id, const sf::Vector2f& position, int he
 int TriangleEnemyManager::GetNextEnemyId() const {
     return nextEnemyId;
 }
+// Update the CheckBulletCollisions method to use the config constant for rewards
+
 void TriangleEnemyManager::CheckBulletCollisions(const std::vector<Bullet>& bullets) {
+    // Get pointers to bullets that collided for later removal
+    std::vector<size_t> bulletsToRemove;
+    bulletsToRemove.reserve(bullets.size());
+    
     // Check each bullet against nearby enemies using spatial partitioning
-    for (const auto& bullet : bullets) {
-        // Use IsExpired() instead of IsActive()
+    for (size_t bulletIndex = 0; bulletIndex < bullets.size(); bulletIndex++) {
+        const Bullet& bullet = bullets[bulletIndex];
+        
+        // Skip expired bullets
         if (bullet.IsExpired()) continue;
         
         sf::Vector2f bulletPos = bullet.GetPosition();
@@ -243,16 +284,38 @@ void TriangleEnemyManager::CheckBulletCollisions(const std::vector<Bullet>& bull
         // Get enemies near the bullet
         auto nearbyEnemies = spatialGrid.GetEnemiesNearPosition(bulletPos, bulletRadius + 20.f);
         
+        bool bulletHit = false;
+        
         // Check collisions
         for (TriangleEnemy* enemy : nearbyEnemies) {
             if (enemy && enemy->IsAlive() && enemy->CheckBulletCollision(bulletPos, bulletRadius)) {
-                // Apply damage with fixed damage amount (20 is the standard in your EnemyManager)
+                // Apply damage with fixed damage amount (20 is the standard)
                 bool killed = enemy->TakeDamage(20);
+                
+                // Mark the bullet for removal
+                bulletsToRemove.push_back(bulletIndex);
+                bulletHit = true;
                 
                 // Handle kill
                 if (killed) {
                     // Remove from spatial grid
                     spatialGrid.RemoveEnemy(enemy);
+                    
+                    // Award money to the shooter using the config constant
+                    std::string shooterID = bullet.GetShooterID();
+                    auto& players = playerManager->GetPlayers();
+                    
+                    // Find the shooter in the player list
+                    auto shooterIt = players.find(shooterID);
+                    if (shooterIt != players.end()) {
+                        // Add money from config and increment kill count
+                        shooterIt->second.money += TRIANGLE_KILL_REWARD;
+                        playerManager->IncrementPlayerKills(shooterID);
+                        
+                        std::cout << "[REWARD] Player " << shooterID 
+                                  << " earned " << TRIANGLE_KILL_REWARD 
+                                  << " money for killing triangle enemy" << std::endl;
+                    }
                 }
                 
                 // Send hit message
@@ -264,11 +327,26 @@ void TriangleEnemyManager::CheckBulletCollisions(const std::vector<Bullet>& bull
                     std::string hitMsg = MessageHandler::FormatTriangleEnemyHitMessage(
                         enemy->GetID(), 20, killed, bullet.GetShooterID());
                     game->GetNetworkManager().BroadcastMessage(hitMsg);
+                    
+                    // If killed, also send death message with reward
+                    if (killed) {
+                        std::string deathMsg = MessageHandler::FormatTriangleEnemyDeathMessage(
+                            enemy->GetID(), bullet.GetShooterID(), true);  // With reward
+                        game->GetNetworkManager().BroadcastMessage(deathMsg);
+                    }
                 }
                 
                 break; // Bullet can only hit one enemy
             }
         }
+        
+        // If bullet hit something, no need to check further enemies
+        if (bulletHit) continue;
+    }
+    
+    // Remove bullets that hit enemies
+    if (!bulletsToRemove.empty()) {
+        playerManager->RemoveBullets(bulletsToRemove);
     }
 }
 
@@ -300,14 +378,15 @@ sf::Vector2f TriangleEnemyManager::FindClosestPlayerPosition(const sf::Vector2f&
     
     return closestPos;
 }
+// Update the CheckPlayerCollisions method to use the config constants
+
 void TriangleEnemyManager::CheckPlayerCollisions() {
     // Get player shapes and positions from player manager
-    // Use a non-const reference to players since we need to modify them
     auto& players = playerManager->GetPlayers();
     
-    for (auto& playerPair : players) {  // Non-const iterating variable
+    for (auto& playerPair : players) {
         const std::string& playerID = playerPair.first;
-        RemotePlayer& remotePlayer = playerPair.second;  // Now we can get a non-const reference
+        RemotePlayer& remotePlayer = playerPair.second;
         
         // Skip dead players
         if (remotePlayer.player.IsDead()) continue;
@@ -320,8 +399,11 @@ void TriangleEnemyManager::CheckPlayerCollisions() {
         // Check collisions
         for (TriangleEnemy* enemy : nearbyEnemies) {
             if (enemy && enemy->IsAlive() && enemy->CheckCollision(remotePlayer.player.GetShape())) {
-                // Apply damage to player
-                remotePlayer.player.TakeDamage(10); // Example damage value
+                // Apply damage to player using the config constant
+                remotePlayer.player.TakeDamage(TRIANGLE_DAMAGE);
+                
+                std::cout << "[COLLISION] Player " << playerID << " took " << TRIANGLE_DAMAGE 
+                          << " damage from triangle enemy " << enemy->GetID() << std::endl;
                 
                 // Kill enemy on collision
                 enemy->TakeDamage(enemy->GetHealth());
@@ -334,14 +416,24 @@ void TriangleEnemyManager::CheckPlayerCollisions() {
                 CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
                 
                 if (localSteamID == hostID) {
+                    // Send triangle enemy death message
                     std::string deathMsg = MessageHandler::FormatTriangleEnemyDeathMessage(
-                        enemy->GetID(), playerID, false);
+                        enemy->GetID(), "", false);  // No killer, no reward
                     game->GetNetworkManager().BroadcastMessage(deathMsg);
                     
                     // Also send player damage message
                     std::string damageMsg = MessageHandler::FormatPlayerDamageMessage(
-                        playerID, 10, enemy->GetID());
+                        playerID, TRIANGLE_DAMAGE, enemy->GetID());
                     game->GetNetworkManager().BroadcastMessage(damageMsg);
+                }
+                
+                // If this is the local player, check if they died
+                std::string localSteamIDStr = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
+                if (playerID == localSteamIDStr && remotePlayer.player.IsDead()) {
+                    // Set respawn timer
+                    remotePlayer.respawnTimer = 3.0f;
+                    
+                    std::cout << "[DEATH] Local player died from triangle enemy collision" << std::endl;
                 }
             }
         }
@@ -596,8 +688,19 @@ void TriangleEnemyManager::UpdateEnemyHealth(int enemyId, int health)
 
 size_t TriangleEnemyManager::GetEnemyCount() const
 {
-    return spatialGrid.GetEnemyCount();
+    // Count only living enemies directly from the enemies vector
+    size_t liveCount = 0;
+    
+    for (const auto& enemy : enemies) {
+        if (enemy && enemy->IsAlive()) {
+            liveCount++;
+        }
+    }
+    
+    return liveCount;
 }
+
+// 
 
 TriangleEnemy* TriangleEnemyManager::GetEnemy(int enemyId)
 {

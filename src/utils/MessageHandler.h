@@ -3,13 +3,11 @@
 
 #include <string>
 #include <SFML/Graphics.hpp>
-#include "MessageHandler_TriangleEnemies.h"
 #include "../utils/SteamHelpers.h"
 class Game;
 class EnemyManager;
 class PlayingState;
-
-static const size_t MAX_PACKET_SIZE = 900; 
+ 
 enum class MessageType {
     Connection,
     Movement,
@@ -28,12 +26,7 @@ enum class MessageType {
     EnemyPositions,
     EnemyValidation,
     EnemyValidationRequest,
-    TriangleEnemySpawn,
-    TriangleEnemyHit,
-    TriangleEnemyPositions,
-    TriangleEnemyDeath,
-    TriangleEnemyBatchSpawn,
-    TriangleEnemyFullList,
+    // Combined message types for all enemy types
     TriangleWaveStart,
     ChunkStart,
     ChunkPart,
@@ -83,10 +76,15 @@ public:
     static std::string FormatPlayerDeathMessage(const std::string& playerID, const std::string& killerID);
     static std::string FormatPlayerRespawnMessage(const std::string& playerID, const sf::Vector2f& position);
     static std::string FormatStartGameMessage(const std::string& hostID);
+    
+    // Unified enemy position messages for all enemy types
     static std::string FormatEnemyPositionsMessage(const std::vector<std::pair<int, sf::Vector2f>>& enemyPositions);
     static std::string FormatEnemyPositionsMessage(const std::vector<std::tuple<int, sf::Vector2f, int>>& enemyData);
+    
+    // Triangle wave start format
     static std::string FormatTriangleWaveStartMessage(uint32_t seed, int enemyCount);
-    // Enemy-related messages
+    
+    // Generic enemy messages for all types
     static std::string FormatEnemySpawnMessage(int enemyId, const sf::Vector2f& position);
     static std::string FormatEnemyHitMessage(int enemyId, int damage, bool killed, const std::string& shooterID);
     static std::string FormatEnemyDeathMessage(int enemyId, const std::string& killerID, bool rewardKill);
@@ -95,36 +93,11 @@ public:
     static std::string FormatWaveCompleteMessage(int waveNumber);
     static std::string FormatEnemyValidationMessage(const std::vector<int>& enemyIds);
     static std::string FormatEnemyValidationRequestMessage();
+    
+    // Message parsing methods
     static ParsedMessage ParseTriangleWaveStartMessage(const std::string& message);
 
-    
-    static std::string FormatTriangleEnemySpawnMessage(int enemyId, const sf::Vector2f& position);
-
-    // Efficient serialization of multiple enemy positions
-    // Uses delta compression and quantization to minimize bandwidth
-    static std::string FormatTriangleEnemyPositionsMessage(const std::vector<std::tuple<int, sf::Vector2f, int>>& enemyData);
-    
-    // Message for when a triangle enemy takes damage
-    static std::string FormatTriangleEnemyHitMessage(int enemyId, int damage, bool killed, const std::string& shooterID);
-    
-    // Message for when a triangle enemy dies
-    static std::string FormatTriangleEnemyDeathMessage(int enemyId, const std::string& killerID, bool rewardKill);
-    
-    // Batch spawn message to efficiently communicate multiple spawns at once
-    static std::string FormatTriangleEnemyBatchSpawnMessage(const std::vector<std::tuple<int, sf::Vector2f, int>>& spawnData);
-    
-    // Full enemy list message for synchronization
-    static std::string FormatTriangleEnemyFullListMessage(const std::vector<int>& validIds);
-    
-    // Parsing functions declarations - need to be static
-    static ParsedMessage ParseTriangleEnemySpawnMessage(const std::string& message);
-    static ParsedMessage ParseTriangleEnemyHitMessage(const std::string& message);
-    static ParsedMessage ParseTriangleEnemyDeathMessage(const std::string& message);
-    static ParsedMessage ParseTriangleEnemyPositionsMessage(const std::string& message);
-    static ParsedMessage ParseTriangleEnemyBatchSpawnMessage(const std::string& message);
-    static ParsedMessage ParseTriangleEnemyFullListMessage(const std::string& message);
-    static std::string FormatMinimalTriangleSpawnMessage(int enemyId, const sf::Vector2f& position);
-
+    // Chunking methods for large messages
     static std::vector<std::string> ChunkMessage(const std::string& message, const std::string& messageType);
     static std::string FormatChunkStartMessage(const std::string& messageType, int totalChunks, const std::string& chunkId);
     static std::string FormatChunkPartMessage(const std::string& chunkId, int chunkNum, const std::string& chunkData);
@@ -136,13 +109,12 @@ public:
     static std::string GetReconstructedMessage(const std::string& chunkId);
     static void ClearChunks(const std::string& chunkId);
 
-// Parsing function for minimal triangle spawn message
-    static ParsedMessage ParseMinimalTriangleSpawnMessage(const std::string& message);
+    // Chunk storage
     static std::unordered_map<std::string, std::vector<std::string>> chunkStorage;
     static std::unordered_map<std::string, std::string> chunkTypes;
     static std::unordered_map<std::string, int> chunkCounts;
 
-
+    // Main message parser
     static ParsedMessage ParseMessage(const std::string& msg);
 };
 

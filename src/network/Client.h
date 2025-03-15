@@ -40,19 +40,12 @@ private:
     void ProcessEnemyValidationMessage(const ParsedMessage& parsed);
     void ProcessTriangleWaveStartMessage(const ParsedMessage& parsed);
 
-    // Enemy-related message handlers
+    // Enemy-related message handlers - unified for all enemy types
     void ProcessEnemySpawnMessage(const ParsedMessage& parsed);
     void ProcessEnemyHitMessage(const ParsedMessage& parsed);
     void ProcessEnemyDeathMessage(const ParsedMessage& parsed);
     void ProcessWaveStartMessage(const ParsedMessage& parsed);
     void ProcessWaveCompleteMessage(const ParsedMessage& parsed);
-
-    void ProcessTriangleEnemySpawnMessage(const ParsedMessage& parsed);
-    void ProcessTriangleEnemyHitMessage(const ParsedMessage& parsed);
-    void ProcessTriangleEnemyDeathMessage(const ParsedMessage& parsed);
-    void ProcessTriangleEnemyPositionsMessage(const ParsedMessage& parsed);
-    void ProcessTriangleEnemyFullListMessage(const ParsedMessage& parsed);
-    void ProcessTriangleEnemyBatchSpawnMessage(const ParsedMessage& parsed);
 
     Game* game;
     std::chrono::steady_clock::time_point lastSendTime;

@@ -18,6 +18,7 @@ class PlayingState;
 class EnemyManager;
 class HostNetwork;
 class ClientNetwork;
+
 /**
  * @brief Hash functor for CSteamID.
  *
@@ -52,6 +53,7 @@ struct RemotePlayer {
     int money = 0;
 };
 
+// Helper function to get the PlayingState from Game
 // This is declared in the header but defined in a separate cpp file
 // to prevent multiple definition errors
 PlayingState* GetPlayingState(Game* game);

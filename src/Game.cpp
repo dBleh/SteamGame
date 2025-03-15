@@ -124,11 +124,18 @@ void Game::Run() {
     }
 }
 
+// In Game.cpp - modify the SetCurrentState method:
 void Game::SetCurrentState(GameState newState) {
     // Don't do anything if we're already in the requested state
     if (currentState == newState) {
         std::cout << "[GAME] Already in state " << static_cast<int>(newState) << ", ignoring transition request.\n";
         return;
+    }
+    // First clear the message handler to prevent callbacks to deleted objects
+    if ((currentState == GameState::Lobby || currentState == GameState::Playing) && 
+        newState == GameState::MainMenu) {
+        // Clear message handler first before any objects are destroyed
+        networkManager->SetMessageHandler(nullptr);
     }
     
     // If we're leaving a lobby state to go to the main menu
@@ -155,11 +162,11 @@ void Game::SetCurrentState(GameState newState) {
     
     // Handle exiting the current state if needed
     if (state && currentState != newState) {
-        // Call Exit() method if it exists on the current state
+        // Allow the state to clean up resources before transitioning
         if (auto exitableState = dynamic_cast<LobbyCreationState*>(state.get())) {
             exitableState->Exit();
         } else if (auto lobbyState = dynamic_cast<LobbyState*>(state.get())) {
-            // Do any LobbyState cleanup
+            // Clear any references that could cause use-after-free
         }
     }
     

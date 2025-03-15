@@ -23,10 +23,14 @@ public:
     
     // Added callback for when lobby creation fails
     void onLobbyCreationFailed();
+    void CreateLobby();
 
 private:
     void ProcessEvents(const sf::Event& event);
-    void CreateLobby(const std::string& lobbyName);
+
+    bool isInputActive = false;
+    float messageTimer = 0.0f;
+    std::string previousStatusText = "";
     
     // Flag to track if lobby creation is in progress
     bool m_creationInProgress;

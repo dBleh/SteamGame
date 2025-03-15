@@ -9,9 +9,9 @@
 
 class Game;
 class PlayerManager;
-class TriangleEnemyManager;
 class PlayerRenderer;
 class EnemyManager;
+class TriangleEnemyManager;
 class HostNetwork;
 class ClientNetwork;
 
@@ -26,8 +26,11 @@ public:
     bool IsFullyLoaded();
     
     // Getter for EnemyManager
-    EnemyManager* GetEnemyManager() { return enemyManager.get(); }
-    TriangleEnemyManager* GetTriangleEnemyManager() { return triangleEnemyManager.get(); }
+    EnemyManager* GetEnemyManager();
+    
+    // This method is kept for backward compatibility but returns nullptr
+    // as all enemies are now handled by the unified EnemyManager
+    TriangleEnemyManager* GetTriangleEnemyManager();
 
 private:
     void AttemptShoot(int mouseX, int mouseY);
@@ -36,8 +39,9 @@ private:
     void UpdateLeaderboard();
     void UpdateWaveInfo();
     void StartFirstWave();
+    void StartNextWave();
+    bool AreAllEnemiesDefeated();
     
-    std::unique_ptr<TriangleEnemyManager> triangleEnemyManager;
     std::unique_ptr<PlayerManager> playerManager;
     std::unique_ptr<PlayerRenderer> playerRenderer;
     std::unique_ptr<EnemyManager> enemyManager;
@@ -46,9 +50,6 @@ private:
     sf::Text menuTitle;
     sf::RectangleShape continueButton;
     sf::Text continueButtonText;
-
-    // Additional cursor element
-    sf::CircleShape middleCircle;
 
     // Methods for handling button hovers
     void updateButtonHoverState(sf::RectangleShape& button, const sf::Vector2f& mousePos, bool& isHovered);
@@ -65,12 +66,6 @@ private:
     sf::RectangleShape menuBackground;
     sf::RectangleShape returnButton;
     sf::Text returnButtonText;
-    
-    // Custom cursor shapes
-    sf::CircleShape cursorOuterCircle;
-    sf::CircleShape cursorCenterDot;
-    sf::RectangleShape cursorHorizontalLine;
-    sf::RectangleShape cursorVerticalLine;
     
     // Cursor locking
     bool cursorLocked;
