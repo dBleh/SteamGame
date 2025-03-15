@@ -1586,110 +1586,82 @@ int EnemyManager::GetRemainingEnemies() const {
     return count;
 }
 
-void EnemyManager::UpdateEnemyPositions(const std::vector<std::tuple<int, sf::Vector2f, int>>& positions) {
-    // Process each position update with better error handling
-    int successCount = 0;
-    int errorCount = 0;
-    
-    for (const auto& posData : positions) {
-        try {
-            int id = std::get<0>(posData);
-            sf::Vector2f pos = std::get<1>(posData);
-            int health = std::get<2>(posData);
-            
-            // Determine if this is a triangle or regular enemy
-            if (id >= 10000) { // Triangle IDs start at 10000
-                // Update triangle enemy
-                TriangleEnemy* enemy = GetTriangleEnemy(id);
-                if (enemy && enemy->IsAlive()) {
-                    // Store the current position for interpolation calculations
-                    sf::Vector2f oldPos = enemy->GetPosition();
+void EnemyManager::UpdateEnemyPositions(const std::vector<std::tuple<int, sf::Vector2f, int>>& positionData) {
+    for (const auto& data : positionData) {
+        int id = std::get<0>(data);
+        sf::Vector2f newPosition = std::get<1>(data);
+        int health = std::get<2>(data);
+        
+        // First check if this is a triangle enemy (IDs >= 10000)
+        if (id >= 10000) {
+            for (auto& enemy : triangleEnemies) {
+                if (enemy.GetID() == id) {
+                    // Calculate distance for significant movement detection
+                    float distance = std::sqrt(
+                        std::pow(enemy.GetPosition().x - newPosition.x, 2) +
+                        std::pow(enemy.GetPosition().y - newPosition.y, 2)
+                    );
                     
-                    // Calculate distance to new position (for network jitter detection)
-                    float distSquared = std::pow(oldPos.x - pos.x, 2) + std::pow(oldPos.y - pos.y, 2);
+                    // Use interpolation for significant movement
+                    if (distance > 5.0f) {
+                        enemy.SetTargetPosition(newPosition);
+                    } 
+                    // Direct update for minor adjustments
+                    else if (distance > 0.1f) {
+                        enemy.UpdatePosition(newPosition, false);
+                    }
                     
-                    // If position change is too large (teleporting), snap directly
-                    // Otherwise use interpolation
-                    bool useInterpolation = (distSquared < 90000.0f); // 300^2 - max reasonable movement
-                    
-                    // Update position with smoother interpolation
-                    enemy->UpdatePosition(pos, useInterpolation);
-                    
-                    // Update health if it's significantly different
-                    int currentHealth = enemy->GetHealth();
-                    if (std::abs(currentHealth - health) > 5) {
-                        // Set health directly
+                    // Update health if needed
+                    if (std::abs(enemy.GetHealth() - health) > 5) {
                         if (health <= 0) {
-                            enemy->TakeDamage(enemy->GetHealth()); // Kill it
-                        } else if (health < currentHealth) {
-                            enemy->TakeDamage(currentHealth - health);
+                            enemy.TakeDamage(enemy.GetHealth()); // Kill it
+                        } else if (health < enemy.GetHealth()) {
+                            enemy.TakeDamage(enemy.GetHealth() - health);
                         }
-                    }
-                    successCount++;
-                } else if (!enemy && health > 0) {
-                    // Enemy doesn't exist locally but should - create it
-                    AddTriangleEnemy(id, pos, health);
-                    successCount++;
-                }
-            } else {
-                // Update regular enemy
-                auto it = enemyIdToIndex.find(id);
-                if (it != enemyIdToIndex.end() && it->second < enemies.size() && enemies[it->second].enemy) {
-                    auto& entry = enemies[it->second];
-                    
-                    // Store the current position for interpolation calculations
-                    sf::Vector2f oldPos = entry.GetPosition();
-                    
-                    // Calculate distance to new position (for network jitter detection)
-                    float distSquared = std::pow(oldPos.x - pos.x, 2) + std::pow(oldPos.y - pos.y, 2);
-                    
-                    // If position change is too large (teleporting), snap directly
-                    // Otherwise use interpolation
-                    bool useInterpolation = (distSquared < 90000.0f); // 300^2 - max reasonable movement
-                    
-                    // Get the correct shape based on type
-                    if (entry.type == EnemyType::Rectangle) {
-                        Enemy* rectEnemy = static_cast<Enemy*>(entry.enemy.get());
-                        rectEnemy->UpdatePosition(pos, useInterpolation);
-                        
-                        // Update base class position as well to be safe
-                        entry.enemy->SetPosition(rectEnemy->GetPosition());
-                    } else if (entry.type == EnemyType::Triangle) {
-                        TriangleEnemy* triEnemy = static_cast<TriangleEnemy*>(entry.enemy.get());
-                        triEnemy->UpdatePosition(pos, useInterpolation);
+                        enemy.UpdateVisuals();
                     }
                     
-                    // Update health if it's significantly different
-                    int currentHealth = entry.enemy->GetHealth();
-                    if (std::abs(currentHealth - health) > 5) {
-                        // Set health directly
-                        if (health <= 0) {
-                            entry.enemy->TakeDamage(entry.enemy->GetHealth()); // Kill it
-                        } else if (health < currentHealth) {
-                            entry.enemy->TakeDamage(currentHealth - health);
-                        } else if (health > currentHealth) {
-                            entry.enemy->SetHealth(health);
-                        }
-                        
-                        // Force update visuals after health change
-                        entry.enemy->UpdateVisuals();
-                    }
-                    successCount++;
-                } else if (health > 0) {
-                    // Enemy doesn't exist locally but should - create it
-                    AddEnemy(id, pos, EnemyType::Rectangle, health);
-                    successCount++;
+                    break;
                 }
             }
-        } catch (const std::exception& e) {
-            std::cerr << "[ERROR] Exception in UpdateEnemyPositions: " << e.what() << std::endl;
-            errorCount++;
+        } 
+        // Otherwise it's a regular enemy
+        else {
+            // Find the enemy in our vector
+            auto it = enemyIdToIndex.find(id);
+            if (it != enemyIdToIndex.end() && it->second < enemies.size() && enemies[it->second].enemy) {
+                auto& entry = enemies[it->second];
+                
+                // Calculate distance for significant movement detection
+                float distance = std::sqrt(
+                    std::pow(entry.GetPosition().x - newPosition.x, 2) +
+                    std::pow(entry.GetPosition().y - newPosition.y, 2)
+                );
+                
+                // Use interpolation for significant movement
+                if (distance > 5.0f) {
+                    // Cast to Enemy* to access specific methods
+                    Enemy* enemy = static_cast<Enemy*>(entry.enemy.get());
+                    enemy->SetTargetPosition(newPosition);
+                } 
+                // Direct update for minor adjustments
+                else if (distance > 0.1f) {
+                    entry.enemy->SetPosition(newPosition);
+                }
+                
+                // Update health if significantly different
+                if (std::abs(entry.GetHealth() - health) > 5) {
+                    if (health <= 0) {
+                        entry.enemy->TakeDamage(entry.GetHealth()); // Kill it
+                    } else if (health < entry.GetHealth()) {
+                        entry.enemy->TakeDamage(entry.GetHealth() - health);
+                    } else {
+                        entry.enemy->SetHealth(health);
+                    }
+                    entry.enemy->UpdateVisuals();
+                }
+            }
         }
-    }
-    
-    if (errorCount > 0) {
-        std::cout << "[EM] Position updates: " << successCount << " successful, " 
-                  << errorCount << " errors\n";
     }
 }
 

@@ -39,7 +39,12 @@ public:
     
     // Damage dealt by this enemy
     static constexpr int GetDamage() { return TRIANGLE_DAMAGE; }
+    void SetTargetPosition(const sf::Vector2f& target);
+    void UpdateInterpolation(float dt);
     
+    // Accessor methods
+    sf::Vector2f GetTargetPosition() const { return m_targetPosition; }
+    bool HasTargetPosition() const { return m_hasTargetPosition; }
     // Money reward for killing this enemy
     static constexpr int GetKillReward() { return TRIANGLE_KILL_REWARD; }
     sf::Vector2f GetLastPosition() const { return lastPosition; }
@@ -48,6 +53,10 @@ private:
     sf::ConvexShape shape; // Triangle shape
     sf::Vector2f direction; // Cached direction vector
     sf::Vector2f lastPosition; // For delta calculations
+    sf::Vector2f m_targetPosition;
+    sf::Vector2f m_currentPosition;
+    float m_interpolationFactor;
+    bool m_hasTargetPosition;
     
     // Constants for this enemy type
     

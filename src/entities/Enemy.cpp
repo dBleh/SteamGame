@@ -36,6 +36,39 @@ bool Enemy::CheckBulletCollision(const sf::Vector2f& bulletPos, float bulletRadi
     
     return distSquared <= (bulletRadius * bulletRadius);
 }
+void Enemy::SetTargetPosition(const sf::Vector2f& target) {
+    m_currentPosition = position; // Store current position as starting point
+    m_targetPosition = target;    // Set the target to move toward
+    m_interpolationFactor = 0.0f; // Reset interpolation progress
+    m_hasTargetPosition = true;   // Enable interpolation
+}
+
+void Enemy::UpdateInterpolation(float dt) {
+    // Only interpolate if we have a target
+    if (m_hasTargetPosition) {
+        // Increase interpolation factor based on time
+        m_interpolationFactor += dt * 5.0f; // Adjust speed multiplier as needed
+        
+        // Cap at 1.0
+        if (m_interpolationFactor > 1.0f) {
+            m_interpolationFactor = 1.0f;
+            
+            // If we've reached the target (or very close), complete the movement
+            float distance = std::sqrt(
+                std::pow(position.x - m_targetPosition.x, 2) + 
+                std::pow(position.y - m_targetPosition.y, 2)
+            );
+            
+            if (distance < 0.1f) {
+                position = m_targetPosition;  // Snap to exact position
+                m_hasTargetPosition = false;  // Interpolation complete
+            }
+        }
+        
+        // Smoothly interpolate between current and target position
+        position = m_currentPosition + (m_targetPosition - m_currentPosition) * m_interpolationFactor;
+    }
+}
 void Enemy::Update(float dt, const sf::Vector2f& targetPosition) {
     if (isDead) return;
     
@@ -48,7 +81,7 @@ void Enemy::Update(float dt, const sf::Vector2f& targetPosition) {
     if (length > 0) {
         direction /= length;
     }
-    
+    UpdateInterpolation(dt);
     // Move towards target
     shape.move(direction * movementSpeed * dt);
     

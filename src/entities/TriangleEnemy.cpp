@@ -46,7 +46,7 @@ void TriangleEnemy::Update(float dt, const sf::Vector2f& targetPosition)
     // Move toward target
     sf::Vector2f movement = direction * movementSpeed * dt;
     shape.move(movement);
-    
+    UpdateInterpolation(dt);
     // Update the base class position
     position = shape.getPosition();
     
@@ -66,7 +66,39 @@ void TriangleEnemy::Update(float dt, const sf::Vector2f& targetPosition)
     float newAngle = currentAngle + angleDiff * 0.1f;
     shape.setRotation(newAngle);
 }
+// In TriangleEnemy.cpp
+void TriangleEnemy::SetTargetPosition(const sf::Vector2f& target) {
+    m_currentPosition = position; // Store current position as starting point
+    m_targetPosition = target;    // Set the target to move toward
+    m_interpolationFactor = 0.0f; // Reset interpolation progress
+    m_hasTargetPosition = true;   // Enable interpolation
+}
 
+void TriangleEnemy::UpdateInterpolation(float dt) {
+    // Only interpolate if we have a target
+    if (m_hasTargetPosition) {
+        // Increase interpolation factor based on time
+        m_interpolationFactor += dt * 5.0f;
+        
+        // Cap at 1.0
+        if (m_interpolationFactor > 1.0f) {
+            m_interpolationFactor = 1.0f;
+            
+            float distance = std::sqrt(
+                std::pow(position.x - m_targetPosition.x, 2) + 
+                std::pow(position.y - m_targetPosition.y, 2)
+            );
+            
+            if (distance < 0.1f) {
+                position = m_targetPosition;
+                m_hasTargetPosition = false;
+            }
+        }
+        
+        // Smoothly interpolate position
+        position = m_currentPosition + (m_targetPosition - m_currentPosition) * m_interpolationFactor;
+    }
+}
 bool TriangleEnemy::CheckCollision(const sf::RectangleShape& playerShape) const {
     if (isDead) return false;
     

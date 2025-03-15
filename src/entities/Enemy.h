@@ -27,10 +27,18 @@ public:
     
     // Add position update method with interpolation
     void UpdatePosition(const sf::Vector2f& newPosition, bool interpolate = true);
+    void SetTargetPosition(const sf::Vector2f& target);
+    void UpdateInterpolation(float dt);
     
+    // Accessor methods
+    sf::Vector2f GetTargetPosition() const { return m_targetPosition; }
+    bool HasTargetPosition() const { return m_hasTargetPosition; }
 private:
     sf::RectangleShape shape;   // Visual representation
-    
+    sf::Vector2f m_targetPosition;       // Position to interpolate toward
+    sf::Vector2f m_currentPosition;      // Starting position for interpolation
+    float m_interpolationFactor;         // 0.0 to 1.0 interpolation progress
+    bool m_hasTargetPosition;   
     // Constants for this enemy type
 };
 
