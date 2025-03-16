@@ -393,17 +393,63 @@ void PlayingState::Update(float dt) {
             if (myID != hostID && clientNetwork) {
                 std::cout << "[CLIENT] Requesting initial enemy validation\n";
                 
+                // First, clear all existing enemies to avoid duplicates
+                if (enemyManager) {
+                    enemyManager->ClearAllEnemies();
+                }
+                
                 // Request validation from host
                 std::string validationMsg = MessageHandler::FormatEnemyValidationRequestMessage();
                 game->GetNetworkManager().SendMessage(hostID, validationMsg);
                 
-                // Force-remove any enemies at origin
-                if (enemyManager) {
-                    enemyManager->ClearAllEnemies();
-                }
+                // Set up the multi-stage sync process
+                initialSyncStage = 1;
+                initialSyncTimer = 0.2f; // Wait a short time before next stage
             }
         }
     }
+    
+    // Handle multi-stage initial sync
+    if (initialSyncStage > 0) {
+        initialSyncTimer -= dt;
+        if (initialSyncTimer <= 0.0f) {
+            // Identify if we're a client
+            CSteamID myID = SteamUser()->GetSteamID();
+            CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+            
+            if (myID != hostID && clientNetwork) {
+                if (initialSyncStage == 1) {
+                    // Second stage: request detailed positions after ID validation
+                    std::cout << "[CLIENT] Initial sync stage 2: requesting position details\n";
+                    
+                    // Request another validation to ensure we get positions too
+                    std::string validationMsg = MessageHandler::FormatEnemyValidationRequestMessage();
+                    game->GetNetworkManager().SendMessage(hostID, validationMsg);
+                    
+                    // Setup next stage
+                    initialSyncStage = 2;
+                    initialSyncTimer = 0.5f; // Wait longer for positions to arrive
+                }
+                else if (initialSyncStage == 2) {
+                    // Final verification stage
+                    std::cout << "[CLIENT] Initial sync stage 3: final verification\n";
+                    
+                    // One last validation to catch any missed enemies
+                    std::string validationMsg = MessageHandler::FormatEnemyValidationRequestMessage();
+                    game->GetNetworkManager().SendMessage(hostID, validationMsg);
+                    
+                    // Complete the process
+                    initialSyncStage = 0;
+                    std::cout << "[CLIENT] Initial sync process completed\n";
+                }
+            }
+            else {
+                // If we somehow get here as host, just exit the process
+                initialSyncStage = 0;
+            }
+        }
+    }
+    
     
     if (!playerLoaded) {
         loadingTimer += dt;

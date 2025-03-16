@@ -419,7 +419,6 @@ void EnemyManager::AddTriangleEnemy(int id, const sf::Vector2f& position, int he
         triangleNextEnemyId = id + 1;
     }
 }
-
 sf::Vector2f EnemyManager::GetPlayerCenterPosition() {
     sf::Vector2f centerPos(0.0f, 0.0f);
     int playerCount = 0;
@@ -1259,6 +1258,8 @@ void EnemyManager::SyncEnemyPositions() {
     
     // Send triangle enemy positions
     if (!triangleData.empty()) {
+        // Add small delay to avoid network congestion
+        sf::sleep(sf::milliseconds(5));
         std::string batchMsg = MessageHandler::FormatEnemyPositionsMessage(triangleData);
         game->GetNetworkManager().BroadcastMessage(batchMsg);
     }

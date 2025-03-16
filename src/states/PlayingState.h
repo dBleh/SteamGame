@@ -56,7 +56,8 @@ private:
     bool connectionSent;
     bool mouseHeld;
     float shootTimer;
-
+    int initialSyncStage = 0;
+    float initialSyncTimer = 0.0f;
     bool showEscapeMenu;
     sf::RectangleShape menuBackground;
     sf::RectangleShape returnButton;
