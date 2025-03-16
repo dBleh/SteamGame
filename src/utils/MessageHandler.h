@@ -30,7 +30,8 @@ enum class MessageType {
     TriangleWaveStart,
     ChunkStart,
     ChunkPart,
-    ChunkEnd
+    ChunkEnd,
+    EnemyClear 
 };
 
 struct ParsedMessage {
@@ -110,7 +111,7 @@ public:
     static std::string FormatEnemyValidationMessage(const std::vector<int>& enemyIds);
     static std::string FormatEnemyFullListMessage(const std::vector<int>& enemyIds, int enemyType = 0);
     static std::string FormatEnemyValidationRequestMessage();
-    
+    static std::string FormatEnemyClearMessage();
     // Message parsing methods
     static ParsedMessage ParseTriangleWaveStartMessage(const std::string& message);
 

@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include <vector>
 #include <chrono>
+#include <thread>
 #include <SFML/Graphics.hpp>
 #include "../utils/MessageHandler.h"
 #include "../entities/Player.h"

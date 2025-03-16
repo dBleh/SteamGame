@@ -59,6 +59,24 @@ void HostNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
         case MessageType::PlayerRespawn:
             ProcessPlayerRespawnMessage(parsed);
             break;
+        case MessageType::EnemyClear:
+            std::cout << "[HOST] Received enemy clear message" << std::endl;
+            {
+                // Get the PlayingState and its unified EnemyManager
+                PlayingState* playingState = GetPlayingState(game);
+                if (playingState) {
+                    EnemyManager* enemyManager = playingState->GetEnemyManager();
+                    if (enemyManager) {
+                        // Clear all enemies
+                        enemyManager->ClearAllEnemies();
+                        
+                        // Broadcast to all clients to ensure everyone is in sync
+                        std::string clearMsg = MessageHandler::FormatEnemyClearMessage();
+                        game->GetNetworkManager().BroadcastMessage(clearMsg);
+                    }
+                }
+            }
+            break;
         case MessageType::EnemyValidationRequest:
             ProcessEnemyValidationRequestMessage(parsed);
             break;

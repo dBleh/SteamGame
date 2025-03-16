@@ -404,14 +404,37 @@ void PlayerManager::CheckBulletCollisions() {
     }
 }
 
+// Replace the PlayerDied method in PlayerManager.cpp to fix respawn issues
 void PlayerManager::PlayerDied(const std::string& playerID, const std::string& killerID) {
-
+    // Lookup player in map
+    auto it = players.find(playerID);
+    if (it == players.end()) {
+        std::cout << "[ERROR] PlayerDied called for non-existent player ID: " << playerID << std::endl;
+        return;
+    }
+    
+    // Make sure player isn't already dead to avoid double-processing
+    if (it->second.player.IsDead()) {
+        std::cout << "[INFO] PlayerDied called for already dead player: " << playerID << std::endl;
+        return;
+    }
+    
+    // Save current position as respawn position before death
+    sf::Vector2f currentPos = it->second.player.GetPosition();
+    it->second.player.SetRespawnPosition(currentPos);
+    
+    // Apply the damage to kill the player and set their state to dead
+    it->second.player.TakeDamage(100);
     
     // Schedule respawn after 3 seconds
-    players[playerID].respawnTimer = 3.0f;
+    it->second.respawnTimer = 3.0f;
     
     // If this is the local player, notify the network
     if (playerID == localPlayerID) {
+        std::cout << "[DEATH] Local player died at position (" 
+                  << currentPos.x << "," << currentPos.y 
+                  << "), respawn position set to same location" << std::endl;
+        
         // Check if we're the host by comparing with the lobby owner
         CSteamID localSteamID = SteamUser()->GetSteamID();
         CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());

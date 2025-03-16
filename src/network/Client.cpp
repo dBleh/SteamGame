@@ -70,6 +70,24 @@ void ClientNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
         case MessageType::EnemyValidation:
             ProcessEnemyValidationMessage(parsed);
             break;
+        case MessageType::EnemyClear:
+            std::cout << "[CLIENT] Received enemy clear message from host" << std::endl;
+            {
+                // Get the PlayingState and its unified EnemyManager
+                PlayingState* playingState = GetPlayingState(game);
+                if (playingState) {
+                    EnemyManager* enemyManager = playingState->GetEnemyManager();
+                    if (enemyManager) {
+                        // Clear all enemies on the client side
+                        enemyManager->ClearAllEnemies();
+                        
+                        // Set a flag to request validation after a short delay
+                        m_validationRequestTimer = 0.5f;
+                    }
+                }
+            }
+            break;
+        
         case MessageType::StartGame:
             std::cout << "[CLIENT] Received start game message, changing to Playing state" << std::endl;
             if (game->GetCurrentState() != GameState::Playing) {
@@ -483,17 +501,67 @@ void ClientNetwork::Update() {
     }
 }
 
+// Replace the ProcessPlayerDeathMessage in Client.cpp
 void ClientNetwork::ProcessPlayerDeathMessage(const ParsedMessage& parsed) {
-    auto& players = playerManager->GetPlayers();
-    if (players.find(parsed.steamID) != players.end()) {
-        RemotePlayer& player = players[parsed.steamID];
-        player.player.TakeDamage(100); // Kill the player
-        player.respawnTimer = 3.0f;    // Set respawn timer
+    // Normalize player ID for consistency
+    std::string normalizedID = parsed.steamID;
+    try {
+        uint64_t idNum = std::stoull(parsed.steamID);
+        normalizedID = std::to_string(idNum);
+    } catch (const std::exception& e) {
+        std::cout << "[CLIENT] Error normalizing player ID in ProcessPlayerDeathMessage: " << e.what() << "\n";
+        normalizedID = parsed.steamID; // Use original on error
     }
     
-    // Increment the killer's kill count
-    if (players.find(parsed.killerID) != players.end()) {
-        playerManager->IncrementPlayerKills(parsed.killerID);
+    auto& players = playerManager->GetPlayers();
+    auto it = players.find(normalizedID);
+    
+    if (it != players.end()) {
+        RemotePlayer& player = it->second;
+        
+        // Save current position as respawn position before killing
+        sf::Vector2f currentPos = player.player.GetPosition();
+        player.player.SetRespawnPosition(currentPos);
+        
+        // Kill the player
+        player.player.TakeDamage(100);
+        
+        // Set respawn timer
+        player.respawnTimer = 3.0f;
+        
+        std::cout << "[CLIENT] Player " << normalizedID 
+                  << " died at position (" << currentPos.x << "," << currentPos.y 
+                  << "), respawn position set to same location" << std::endl;
+    }
+    
+    // Increment the killer's kill count if they exist
+    if (!parsed.killerID.empty()) {
+        std::string normalizedKillerID = parsed.killerID;
+        try {
+            uint64_t killerIdNum = std::stoull(parsed.killerID);
+            normalizedKillerID = std::to_string(killerIdNum);
+        } catch (const std::exception& e) {
+            normalizedKillerID = parsed.killerID; // Use original on error
+        }
+        
+        auto killerIt = players.find(normalizedKillerID);
+        if (killerIt != players.end()) {
+            playerManager->IncrementPlayerKills(normalizedKillerID);
+        }
+    }
+    
+    // Get local player ID for comparison
+    std::string localPlayerID = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
+    
+    // If a player dies, force a validation request to clean up any potential ghost enemies
+    // that might appear during the transition
+    if (normalizedID == localPlayerID) {
+        // Local player died, schedule a validation request after 1 second
+        std::cout << "[CLIENT] Local player died, will request validation after 1 second\n";
+        m_validationRequestTimer = 1.0f;
+    } else {
+        // Another player died, schedule a validation request after 0.5 seconds
+        m_validationRequestTimer = 0.5f;
     }
 }
 

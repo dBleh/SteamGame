@@ -324,11 +324,27 @@ void EnemyManager::SpawnRegularWave() {
     }
 }
 
+
+// Replace the AddTriangleEnemy methods in EnemyManager.cpp
 void EnemyManager::AddTriangleEnemy(int id, const sf::Vector2f& position) {
+    // Strict ghost prevention at origin
+    if (std::abs(position.x) < 1.0f && std::abs(position.y) < 1.0f) {
+        std::cout << "[CLIENT] Prevented ghost triangle creation at origin: ID " << id << "\n";
+        return;
+    }
+    
+    // Additional check for very close to origin (likely ghosts)
+    if (std::abs(position.x) < 10.0f && std::abs(position.y) < 10.0f) {
+        std::cout << "[CLIENT] Prevented suspicious ghost triangle near origin: ID " << id << "\n";
+        return;
+    }
+    
     // Check if triangle enemy already exists
     for (auto& enemy : triangleEnemies) {
         if (enemy.GetID() == id) {
-            return; // Already exists
+            // Instead of returning, update the existing enemy's position
+            enemy.SetTargetPosition(position);
+            return;
         }
     }
     
@@ -342,21 +358,54 @@ void EnemyManager::AddTriangleEnemy(int id, const sf::Vector2f& position) {
 }
 
 void EnemyManager::AddTriangleEnemy(int id, const sf::Vector2f& position, int health) {
+    // Strict ghost prevention at origin
+    if (std::abs(position.x) < 1.0f && std::abs(position.y) < 1.0f) {
+        std::cout << "[CLIENT] Prevented ghost triangle creation at origin: ID " << id << "\n";
+        return;
+    }
+    
+    // Additional check for very close to origin (likely ghosts)
+    if (std::abs(position.x) < 10.0f && std::abs(position.y) < 10.0f) {
+        // Only allow if health makes sense
+        if (health <= 0 || health > TRIANGLE_HEALTH) {
+            std::cout << "[CLIENT] Prevented suspicious ghost triangle near origin: ID " << id << "\n";
+            return;
+        }
+    }
+    
     // Check if triangle enemy already exists
     for (auto& enemy : triangleEnemies) {
         if (enemy.GetID() == id) {
-            return; // Already exists
+            // Update existing enemy's health and position
+            int currentHealth = enemy.GetHealth();
+            
+            // Only allow reducing health, not increasing it
+            if (health < currentHealth) {
+                enemy.TakeDamage(currentHealth - health);
+            }
+            
+            // Update position with smooth transition
+            enemy.SetTargetPosition(position);
+            
+            // Force update visuals
+            enemy.UpdateVisuals();
+            return;
         }
+    }
+    
+    // Validate the health value
+    if (health <= 0) {
+        health = TRIANGLE_HEALTH; // Use default if invalid
     }
     
     // Add new triangle enemy with specified health
     triangleEnemies.emplace_back(id, position);
     
-    // Set health
+    // Set health by applying damage
     for (auto& enemy : triangleEnemies) {
         if (enemy.GetID() == id) {
             // Damage it to set correct health (reverse calculation)
-            int damage = static_cast<int>(TRIANGLE_HEALTH - health); // Add explicit cast to fix warning
+            int damage = static_cast<int>(TRIANGLE_HEALTH - health);
             if (damage > 0) {
                 enemy.TakeDamage(damage);
             }
@@ -533,17 +582,61 @@ void EnemyManager::SpawnEnemyBatch(int count) {
     }
 }
 
+// Replace the AddEnemy method in EnemyManager.cpp to more strictly prevent ghost enemies
 void EnemyManager::AddEnemy(int id, const sf::Vector2f& position, EnemyType type, int health) {
-    // Check if this is a client and the enemy is at origin
+    // Strict ghost enemy prevention - reject any enemies with suspicious positions
+    if (std::abs(position.x) < 1.0f && std::abs(position.y) < 1.0f) {
+        std::cout << "[CLIENT] Prevented ghost enemy creation at origin: ID " << id << "\n";
+        return;
+    }
+    
+    // Additional check for very close to origin (likely ghosts)
+    if (std::abs(position.x) < 10.0f && std::abs(position.y) < 10.0f) {
+        // Only allow enemies near origin if they have specific health values that make sense
+        // This helps distinguish between genuine spawns and network artifacts
+        if (health <= 0 || health > TRIANGLE_HEALTH) {
+            std::cout << "[CLIENT] Prevented suspicious ghost enemy near origin: ID " << id << "\n";
+            return;
+        }
+    }
+    
+    // Check if this is a client and the enemy has already been registered
     CSteamID localSteamID = SteamUser()->GetSteamID();
     CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
     bool isClient = (localSteamID != hostID);
     
-    if (isClient && position.x == 0.0f && position.y == 0.0f) {
-        // This is likely a ghost enemy for a client at game start
-        // Log but don't add it
-        std::cout << "[CLIENT] Prevented ghost enemy creation at origin: ID " << id << "\n";
-        return;
+    if (isClient) {
+        // First check if this enemy already exists
+        bool enemyExists = false;
+        if (id >= 10000) {
+            enemyExists = HasTriangleEnemy(id);
+        } else {
+            enemyExists = HasEnemy(id);
+        }
+        
+        if (enemyExists) {
+            // Don't recreate existing enemies, just update their properties
+            if (id >= 10000) {
+                // Update triangle enemy health
+                UpdateTriangleEnemyHealth(id, health);
+                
+                // Update position through the proper channels with interpolation
+                TriangleEnemy* enemy = GetTriangleEnemy(id);
+                if (enemy) {
+                    enemy->SetTargetPosition(position);
+                }
+            } else {
+                // Update regular enemy health
+                UpdateEnemyHealth(id, health);
+                
+                // Update through proper channels
+                auto it = enemyIdToIndex.find(id);
+                if (it != enemyIdToIndex.end() && it->second < enemies.size() && enemies[it->second].enemy) {
+                    enemies[it->second].enemy->SetPosition(position);
+                }
+            }
+            return;
+        }
     }
     
     // If health is not specified, use the appropriate default health value
@@ -1258,17 +1351,54 @@ void EnemyManager::UpdateTriangleEnemyHealth(int id, int health) {
     }
 }
 
+// Replace the UpdateTriangleEnemyPositions method in EnemyManager.cpp
 void EnemyManager::UpdateTriangleEnemyPositions(const std::vector<std::tuple<int, sf::Vector2f, int>>& positions) {
+    // Track successful updates for logging
+    int updatedCount = 0;
+    int skippedCount = 0;
+    
     for (const auto& enemyData : positions) {
         int id = std::get<0>(enemyData);
         sf::Vector2f position = std::get<1>(enemyData);
         int health = std::get<2>(enemyData);
         
+        // Skip any positions at exact origin (0,0) - likely ghost enemies
+        if (std::abs(position.x) < 1.0f && std::abs(position.y) < 1.0f) {
+            skippedCount++;
+            continue;
+        }
+        
+        // Skip positions that are suspiciously close to origin unless they have valid health
+        if (std::abs(position.x) < 10.0f && std::abs(position.y) < 10.0f) {
+            if (health <= 0 || health > TRIANGLE_HEALTH) {
+                skippedCount++;
+                continue;
+            }
+        }
+        
         // Find the enemy
         TriangleEnemy* enemy = GetTriangleEnemy(id);
         if (enemy && enemy->IsAlive()) {
-            // Update position
-            enemy->UpdatePosition(position, true); // true = interpolate
+            // Calculate distance to new position
+            sf::Vector2f currentPos = enemy->GetPosition();
+            float distSquared = 
+                (position.x - currentPos.x) * (position.x - currentPos.x) +
+                (position.y - currentPos.y) * (position.y - currentPos.y);
+            
+            // For very large position changes (likely targeting a new player),
+            // use the smoother SetTargetPosition method
+            if (distSquared > 10000.0f) { // Over 100 units away
+                enemy->SetTargetPosition(position);
+            } 
+            // For medium changes, use UpdatePosition with interpolation
+            else if (distSquared > 25.0f) { // More than 5 units away
+                enemy->UpdatePosition(position, true); // true = interpolate
+            }
+            // For very small changes, don't update to avoid jitter
+            else if (distSquared > 1.0f) { // At least 1 unit of movement
+                enemy->UpdatePosition(position, true); // true = interpolate
+            }
+            // For tiny movements, ignore to reduce network traffic and visual jitter
             
             // Update health if it's significantly different
             if (std::abs(enemy->GetHealth() - health) > 5) {
@@ -1280,13 +1410,18 @@ void EnemyManager::UpdateTriangleEnemyPositions(const std::vector<std::tuple<int
                 }
                 // Force update visuals
                 enemy->UpdateVisuals();
-                // Note: we can't increase health, so if server health is higher,
-                // we'll just wait for it to sync naturally over time
             }
-        } else if (!enemy && health > 0) {
+            
+            updatedCount++;
+        } else if (health > 0) {
             // Enemy doesn't exist locally but should - create it
             AddTriangleEnemy(id, position, health);
+            updatedCount++;
         }
+    }
+    
+    if (skippedCount > 0) {
+        std::cout << "[EM] Skipped " << skippedCount << " suspicious triangle enemy positions" << std::endl;
     }
 }
 
@@ -1773,16 +1908,47 @@ std::string EnemyManager::SerializeEnemies() const {
     
     return ss.str();
 }
+// Replace the ClearAllEnemies method in EnemyManager.cpp
 void EnemyManager::ClearAllEnemies() {
+    // Clear spatial grid first
+    spatialGrid.Clear();
+    
+    // Log counts before clearing
+    size_t regularCount = enemies.size();
+    size_t triangleCount = triangleEnemies.size();
+    
+    // Clear enemies
     if (!enemies.empty()) {
-        std::cout << "[EM] Clearing " << enemies.size() << " regular enemies" << std::endl;
+        std::cout << "[EM] Clearing " << regularCount << " regular enemies" << std::endl;
         enemies.clear();
         enemyIdToIndex.clear();
     }
     
     if (!triangleEnemies.empty()) {
-        std::cout << "[EM] Clearing " << triangleEnemies.size() << " triangle enemies" << std::endl;
+        std::cout << "[EM] Clearing " << triangleCount << " triangle enemies" << std::endl;
         triangleEnemies.clear();
+    }
+    
+    // Reset any static variables or counters that might affect future enemy creation
+    lastProcessedRegularIndex = 0;
+    lastProcessedTriangleIndex = 0;
+    
+    // Reset enemy sync timers to force an immediate sync after clearing
+    if (triangleCount > 0 || regularCount > 0) {
+        enemySyncTimer = 0.1f;  // Request a sync soon
+        fullSyncTimer = 0.2f;   // Request a full sync shortly after
+    }
+    
+    // We need to inform players of this action if we're the host
+    CSteamID localSteamID = SteamUser()->GetSteamID();
+    CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+    
+    if (localSteamID == hostID && (regularCount > 0 || triangleCount > 0)) {
+        // Create a basic message to inform clients that enemies were cleared
+        std::string clearMsg = MessageHandler::FormatEnemyClearMessage();
+        game->GetNetworkManager().BroadcastMessage(clearMsg);
+        
+        std::cout << "[HOST] Broadcast enemy clear message to all clients" << std::endl;
     }
 }
 

@@ -168,7 +168,11 @@ std::string MessageHandler::FormatEnemyValidationMessage(const std::vector<int>&
     
     return oss.str();
 }
-
+std::string MessageHandler::FormatEnemyClearMessage() {
+    std::stringstream ss;
+    ss << "EC|"; // EnemyClear message type
+    return ss.str();
+}
 std::string MessageHandler::FormatPlayerRespawnMessage(const std::string& playerID, const sf::Vector2f& position) {
     std::ostringstream oss;
     oss << "RS|" << playerID << "|" << position.x << "," << position.y;
@@ -629,6 +633,9 @@ ParsedMessage MessageHandler::ParseMessage(const std::string& msg) {
             // Re-parse the complete message
             return ParseMessage(completeMessage);
         }
+    }else if (parts[0] == "EC") {
+        parsed.type = MessageType::EnemyClear;
+        // This message doesn't have any additional data
     }
 
     return parsed;
