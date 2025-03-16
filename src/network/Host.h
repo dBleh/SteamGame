@@ -4,17 +4,16 @@
 #include <SFML/Graphics.hpp>
 #include <steam/steam_api.h>
 #include <string>
-#include "../utils/MessageHandler.h"
+#include <unordered_map>
+#include "messages/MessageHandler.h"
 #include "../entities/Player.h"
 #include "../utils/SteamHelpers.h"
 #include "../entities/PlayerManager.h"
-#include "../entities/EnemyManager.h"
 
 class Game;
 class EnemyManager;
 class PlayingState;
 
-// Forward declaration helper
 inline PlayingState* GetPlayingState(Game* game);
 
 class HostNetwork {
@@ -26,31 +25,26 @@ public:
     void BroadcastFullPlayerList();
     void BroadcastPlayersList();
     void ProcessChatMessage(const std::string& message, CSteamID sender);
-    void Update(); // Time-based
-    void ProcessBulletMessage(const ParsedMessage& parsed);
-    
-private:
-    // Message handlers
-    void ProcessConnectionMessage(const ParsedMessage& parsed);
-    void ProcessMovementMessage(const ParsedMessage& parsed, CSteamID sender);
-    void ProcessReadyStatusMessage(const ParsedMessage& parsed);
-    void ProcessPlayerDeathMessage(const ParsedMessage& parsed);
-    void ProcessPlayerRespawnMessage(const ParsedMessage& parsed);
-    
-    // Enemy-related message handlers - unified for all enemy types
-    void ProcessEnemyHitMessage(const ParsedMessage& parsed);
-    void ProcessEnemyDeathMessage(const ParsedMessage& parsed);
-    void ProcessWaveStartMessage(const ParsedMessage& parsed);
-    void ProcessWaveCompleteMessage(const ParsedMessage& parsed);
-    void ProcessEnemyValidationRequestMessage(const ParsedMessage& parsed);
-    void ProcessTriangleWaveStartMessage(const ParsedMessage& parsed);
-    void ProcessEnemyBatchSpawnMessage(const ParsedMessage& parsed);
+    void Update();
 
+    // Updated handler signatures
+    void ProcessConnectionMessage(Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender);
+    void ProcessMovementMessage(Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender);
+    void ProcessChatMessageParsed(Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender);
+    void ProcessReadyStatusMessage(Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender);
+    void ProcessBulletMessage(Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender);
+    void ProcessPlayerDeathMessage(Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender);
+    void ProcessPlayerRespawnMessage(Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender);
+    void ProcessStartGameMessage(Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender);
+    void ProcessPlayerDamageMessage(Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender);
+    void ProcessUnknownMessage(Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender);
+
+private:
     Game* game;
     PlayerManager* playerManager;
     std::unordered_map<std::string, RemotePlayer> remotePlayers;
     std::chrono::steady_clock::time_point lastBroadcastTime;
-    static constexpr float BROADCAST_INTERVAL = 0.1f; // Match client send rate
+    static constexpr float BROADCAST_INTERVAL = 0.1f;
 };
 
 #endif // HOST_H

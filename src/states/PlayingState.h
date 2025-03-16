@@ -1,8 +1,10 @@
 #ifndef PLAYING_STATE_H
 #define PLAYING_STATE_H
 
-#include "State.h"
+#include "base/State.h"
 #include "../entities/Grid.h"
+#include "../entities/enemies/EnemyManager.h"
+#include "../entities/enemies/Enemy.h"
 #include <memory>
 #include <algorithm>  // For std::sort
 #include <SFML/Graphics.hpp>
@@ -10,7 +12,6 @@
 class Game;
 class PlayerManager;
 class PlayerRenderer;
-class EnemyManager;
 class HostNetwork;
 class ClientNetwork;
 
@@ -24,31 +25,34 @@ public:
     void ProcessEvent(const sf::Event& event) override;
     bool IsFullyLoaded();
     
-    // Getter for unified EnemyManager
-    EnemyManager* GetEnemyManager();
+    // Enemy management methods
+    EnemyManager* GetEnemyManager() { return enemyManager.get(); }
+    void StartWave(int enemyCount);
 
 private:
     void AttemptShoot(int mouseX, int mouseY);
     void ProcessEvents(const sf::Event& event);
     void UpdatePlayerStats();
     void UpdateLeaderboard();
+    void CheckBulletEnemyCollisions();
     void UpdateWaveInfo();
-    void StartFirstWave();
-    void StartNextWave();
-    bool AreAllEnemiesDefeated();
+    bool isPointInRect(const sf::Vector2f& point, const sf::FloatRect& rect);
+    void updateButtonHoverState(sf::RectangleShape& button, const sf::Vector2f& mousePos, bool& isHovered);
     
     std::unique_ptr<PlayerManager> playerManager;
     std::unique_ptr<PlayerRenderer> playerRenderer;
-    std::unique_ptr<EnemyManager> enemyManager;
     std::unique_ptr<HostNetwork> hostNetwork;
     std::unique_ptr<ClientNetwork> clientNetwork;
+    std::unique_ptr<EnemyManager> enemyManager;
+    
+    // Wave management
+    float waveTimer;
+    bool waitingForNextWave;
+    
     sf::Text menuTitle;
     sf::RectangleShape continueButton;
     sf::Text continueButtonText;
-
-    // Methods for handling button hovers
-    void updateButtonHoverState(sf::RectangleShape& button, const sf::Vector2f& mousePos, bool& isHovered);
-    bool isPointInRect(const sf::Vector2f& point, const sf::FloatRect& rect);
+    
     Grid grid;
     bool showGrid;
     bool playerLoaded;
@@ -56,16 +60,11 @@ private:
     bool connectionSent;
     bool mouseHeld;
     float shootTimer;
-    int initialSyncStage = 0;
-    float initialSyncTimer = 0.0f;
     bool showEscapeMenu;
     sf::RectangleShape menuBackground;
     sf::RectangleShape returnButton;
     sf::Text returnButtonText;
-    bool clientNeedsInitialValidation;
-float initialValidationTimer;
-int syncAttemptCount = 0; 
-bool enemySyncComplete = false;
+
     // Cursor locking
     bool cursorLocked;
     sf::Vector2i windowCenter;

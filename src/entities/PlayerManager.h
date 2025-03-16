@@ -8,9 +8,9 @@
 #include <chrono>
 #include <thread>
 #include <SFML/Graphics.hpp>
-#include "../utils/MessageHandler.h"
-#include "../entities/Player.h"
-#include "../entities/Bullet.h"
+#include "../network/messages/MessageHandler.h"
+#include "Player.h"
+#include "Bullet.h"
 #include "../utils/SteamHelpers.h"
 
 class Game;

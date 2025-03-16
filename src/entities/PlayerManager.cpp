@@ -1,5 +1,6 @@
 #include "PlayerManager.h"
-#include "../Game.h"
+#include "../core/Game.h"
+#include "../network/messages/MessageHandler.h"  // Updated import
 #include <iostream>
 
 PlayerManager::PlayerManager(Game* game, const std::string& localID)

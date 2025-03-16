@@ -1,6 +1,6 @@
 // SteamHelpers.cpp
 #include "SteamHelpers.h"
-#include "../Game.h"
+#include "../core/Game.h"
 #include "../states/PlayingState.h"
 
 PlayingState* GetPlayingState(Game* game) {

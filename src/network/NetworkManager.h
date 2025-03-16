@@ -7,9 +7,8 @@
 #include <unordered_map>
 #include <functional>
 #include "../utils/SteamHelpers.h"
-#include "../utils/MessageHandler.h"
-#include "../utils/Config.h"
-
+#include "../network/messages/MessageHandler.h"
+//#include "../network/messages/MessageDefinitions.h"
 
 class Game;
 class NetworkManager {
@@ -35,17 +34,16 @@ public:
 
     // New method for chat messages
     void SendChatMessage(CSteamID target, const std::string& message);
-    CSteamID GetCurrentLobbyID() const { return m_currentLobbyID; } // Add getter
-    // Getter for current lobby ID
-    void SendConnectionMessageOnJoin(CSteamID hostID); // New method for retry logic
+    CSteamID GetCurrentLobbyID() const { return m_currentLobbyID; }
+    void SendConnectionMessageOnJoin(CSteamID hostID);
     void ResetLobbyState();
     
 private:
     // Callback handlers
     void ProcessNetworkMessages(const std::string& msg, CSteamID sender);
-    bool m_pendingConnectionMessage{false}; // Flag for retry
-    std::string m_connectionMessage;        // Store message for retry
-    CSteamID m_pendingHostID;               // Host to send to
+    bool m_pendingConnectionMessage{false};
+    std::string m_connectionMessage;
+    CSteamID m_pendingHostID;
     Game* game;
     ISteamNetworking* m_networking;
     bool isConnectedToHost{false};
@@ -53,9 +51,9 @@ private:
     std::vector<std::pair<CSteamID, std::string>> lobbyList;
     bool lobbyListUpdated{false};
     std::function<void(const std::string&, CSteamID)> messageHandler;
-    CSteamID m_currentLobbyID; // Store the current lobby ID
+    CSteamID m_currentLobbyID;
 
-    // STEAM_CALLBACK for synchronous events
+    // STEAM_CALLBACKs
     STEAM_CALLBACK(NetworkManager, OnLobbyCreated, LobbyCreated_t, m_cbLobbyCreated);
     STEAM_CALLBACK(NetworkManager, OnGameLobbyJoinRequested, GameLobbyJoinRequested_t, m_cbGameLobbyJoinRequested);
     STEAM_CALLBACK(NetworkManager, OnLobbyEnter, LobbyEnter_t, m_cbLobbyEnter);

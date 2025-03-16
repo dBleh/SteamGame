@@ -4,17 +4,15 @@
 #include <SFML/Graphics.hpp>
 #include <steam/steam_api.h>
 #include <string>
-#include "../utils/MessageHandler.h"
+#include <unordered_map>
+#include "messages/MessageHandler.h"
 #include "../entities/Player.h"
 #include "../utils/SteamHelpers.h"
 #include "../entities/PlayerManager.h"
-#include "../entities/EnemyManager.h"
 
 class Game;
-class EnemyManager;
 class PlayingState;
 
-// Forward declaration helper (same as in Host.h)
 PlayingState* GetPlayingState(Game* game);
 
 class ClientNetwork {
@@ -30,27 +28,19 @@ public:
     void Update();
     CSteamID GetHostID() const { return hostID; }
 
+    // Updated handler signatures
+    void ProcessConnectionMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed);
+    void ProcessChatMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed);
+    void ProcessReadyStatusMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed);
+    void ProcessMovementMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed);
+    void ProcessBulletMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed);
+    void ProcessPlayerDeathMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed);
+    void ProcessPlayerRespawnMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed);
+    void ProcessStartGameMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed);
+    void ProcessPlayerDamageMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed);
+    void ProcessUnknownMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed);
+
 private:
-    // Message handlers
-    void ProcessChatMessage(const ParsedMessage& parsed);
-    void ProcessConnectionMessage(const ParsedMessage& parsed);
-    void ProcessReadyStatusMessage(const ParsedMessage& parsed);
-    void ProcessMovementMessage(const ParsedMessage& parsed);
-    void ProcessBulletMessage(const ParsedMessage& parsed);
-    void ProcessPlayerDeathMessage(const ParsedMessage& parsed);
-    void ProcessPlayerRespawnMessage(const ParsedMessage& parsed);
-    void ProcessEnemyPositionsMessage(const ParsedMessage& parsed);
-    void ProcessEnemyValidationMessage(const ParsedMessage& parsed);
-    void ProcessTriangleWaveStartMessage(const ParsedMessage& parsed);
-
-    // Enemy-related message handlers - unified for all enemy types
-    void ProcessEnemySpawnMessage(const ParsedMessage& parsed);
-    void ProcessEnemyBatchSpawnMessage(const ParsedMessage& parsed);
-    void ProcessEnemyHitMessage(const ParsedMessage& parsed);
-    void ProcessEnemyDeathMessage(const ParsedMessage& parsed);
-    void ProcessWaveStartMessage(const ParsedMessage& parsed);
-    void ProcessWaveCompleteMessage(const ParsedMessage& parsed);
-
     Game* game;
     std::chrono::steady_clock::time_point lastSendTime;
     PlayerManager* playerManager;

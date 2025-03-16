@@ -3,9 +3,9 @@
 
 #include <SFML/Graphics.hpp>
 #include <iostream>
-#include "../utils/InputHandler.h"
-#include "../utils/InputManager.h" // Add InputManager include
-#include "../utils/Config.h"
+#include "../utils/input/InputHandler.h"
+#include "../utils/input/InputManager.h" 
+#include "../utils/config/Config.h"
 
 class Player {
 public:

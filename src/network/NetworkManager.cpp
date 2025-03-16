@@ -5,9 +5,11 @@
 #include <sstream>
 #include <vector>
 #include <chrono>
-#include "../Game.h"
+#include "../core/Game.h"
+#include "messages/MessageHandler.h"
 
 #define GAME_ID "SteamGame_v1"
+#define MAX_PACKET_SIZE 1024
 
 NetworkManager::NetworkManager(Game* gameInstance)
     : game(gameInstance),
@@ -26,6 +28,9 @@ NetworkManager::NetworkManager(Game* gameInstance)
     if (!m_networking) {
         std::cerr << "[ERROR] Could not get SteamNetworking interface!" << std::endl;
     }
+    
+    // Initialize the message handler system
+    MessageHandler::Initialize();
 }
 
 NetworkManager::~NetworkManager() {
@@ -37,7 +42,7 @@ void NetworkManager::ReceiveMessages() {
 
     uint32 msgSize;
     while (m_networking->IsP2PPacketAvailable(&msgSize)) {
-        char buffer[1024];
+        char buffer[MAX_PACKET_SIZE];
         CSteamID sender;
         if (msgSize > sizeof(buffer) - 1) {
             std::cerr << "[NETWORK] Packet too large: " << msgSize << "\n";
@@ -87,13 +92,14 @@ bool NetworkManager::SendMessage(CSteamID target, const std::string& msg) {
     }
     return success;
 }
+
 void NetworkManager::SendConnectionMessageOnJoin(CSteamID hostID) {
     CSteamID myID = SteamUser()->GetSteamID();
     std::string steamIDStr = std::to_string(myID.ConvertToUint64());
     std::string steamName = SteamFriends()->GetPersonaName();
-    sf::Color playerColor = sf::Color::Blue; // Customize as needed
+    sf::Color playerColor = sf::Color::Blue;
     std::string connectMsg = MessageHandler::FormatConnectionMessage(steamIDStr, steamName, playerColor, false, false);
-    
+
     if (SendMessage(hostID, connectMsg)) {
         std::cout << "[NETWORK] Sent connection message to host: " << connectMsg << "\n";
         m_pendingConnectionMessage = false;
@@ -104,7 +110,6 @@ void NetworkManager::SendConnectionMessageOnJoin(CSteamID hostID) {
         m_pendingHostID = hostID;
     }
 }
-// Modify the BroadcastMessage method in NetworkManager.cpp
 
 bool NetworkManager::BroadcastMessage(const std::string& msg) {
     bool success = true;
@@ -114,20 +119,17 @@ bool NetworkManager::BroadcastMessage(const std::string& msg) {
         return false;
     }
 
-    // Check message size and split if necessary
     if (msg.size() > MAX_PACKET_SIZE) {
-        // Extract message type for chunking
         std::string messageType = msg.substr(0, msg.find('|'));
         std::vector<std::string> chunks = MessageHandler::ChunkMessage(msg.substr(msg.find('|') + 1), messageType);
         
         std::cout << "[NETWORK] Large message (" << msg.size() << " bytes) split into " 
                   << chunks.size() << " chunks\n";
         
-        // Send each chunk
         int numMembers = SteamMatchmaking()->GetNumLobbyMembers(m_currentLobbyID);
         for (int i = 0; i < numMembers; ++i) {
             CSteamID memberID = SteamMatchmaking()->GetLobbyMemberByIndex(m_currentLobbyID, i);
-            if (memberID != myID) { // Don't send to self
+            if (memberID != myID) {
                 for (const auto& chunk : chunks) {
                     if (!SendMessage(memberID, chunk)) {
                         std::cout << "[NETWORK] Failed to send chunk to " 
@@ -140,11 +142,10 @@ bool NetworkManager::BroadcastMessage(const std::string& msg) {
         return success;
     }
     
-    // For small messages, use the original implementation
     int numMembers = SteamMatchmaking()->GetNumLobbyMembers(m_currentLobbyID);
     for (int i = 0; i < numMembers; ++i) {
         CSteamID memberID = SteamMatchmaking()->GetLobbyMemberByIndex(m_currentLobbyID, i);
-        if (memberID != myID) { // Don't send to self
+        if (memberID != myID) {
             if (!SendMessage(memberID, msg)) {
                 std::cout << "[NETWORK] Failed to broadcast to " << memberID.ConvertToUint64() << "\n";
                 success = false;
@@ -160,6 +161,7 @@ void NetworkManager::SendChatMessage(CSteamID target, const std::string& message
     std::string formattedMsg = MessageHandler::FormatChatMessage(steamIDStr, message);
     SendMessage(target, formattedMsg);
 }
+
 void NetworkManager::ProcessCallbacks() {
     SteamAPI_RunCallbacks();
 }
@@ -188,12 +190,6 @@ void NetworkManager::JoinLobbyFromNetwork(CSteamID lobby) {
     }
 }
 
-
-
-
-// In NetworkManager.cpp - Modify the OnLobbyCreated method
-
-// In NetworkManager.cpp - OnLobbyCreated method
 void NetworkManager::OnLobbyCreated(LobbyCreated_t* pParam) {
     if (pParam->m_eResult != k_EResultOK) {
         std::cerr << "[LOBBY] Failed to create lobby. EResult=" << pParam->m_eResult << "\n";
@@ -201,10 +197,8 @@ void NetworkManager::OnLobbyCreated(LobbyCreated_t* pParam) {
         return;
     }
     
-    // Store the newly created lobby ID
     m_currentLobbyID = CSteamID(pParam->m_ulSteamIDLobby);
     
-    // Set lobby data
     SteamMatchmaking()->SetLobbyData(m_currentLobbyID, "name", game->GetLobbyNameInput().c_str());
     SteamMatchmaking()->SetLobbyData(m_currentLobbyID, "game_id", GAME_ID);
     CSteamID myID = SteamUser()->GetSteamID();
@@ -212,35 +206,28 @@ void NetworkManager::OnLobbyCreated(LobbyCreated_t* pParam) {
     SteamMatchmaking()->SetLobbyData(m_currentLobbyID, "host_steam_id", hostStr.c_str());
     SteamMatchmaking()->SetLobbyJoinable(m_currentLobbyID, true);
     
-    // Set that we're in a lobby in the Game class
     game->SetInLobby(true);
     
-    // Add ourselves to connected clients
     m_connectedClients[myID] = true;
     
     std::cout << "[LOBBY] Created lobby " << m_currentLobbyID.ConvertToUint64() << std::endl;
     
-    // IMPORTANT: Check if the game isn't already transitioning to another state
     if (game->GetCurrentState() == GameState::LobbyCreation) {
         game->SetCurrentState(GameState::Lobby);
     }
 }
-// Improve the ResetLobbyState method in NetworkManager.cpp
+
 void NetworkManager::ResetLobbyState() {
     std::cout << "[NETWORK] Beginning lobby state reset..." << std::endl;
     
-    // Clear message handler first to prevent callbacks to deleted objects
     messageHandler = nullptr;
     
-    // Print current state before reset
     std::cout << "[NETWORK] Current lobby ID before reset: " 
               << (m_currentLobbyID == k_steamIDNil ? "None" : std::to_string(m_currentLobbyID.ConvertToUint64())) 
               << std::endl;
     
-    // Get number of connected clients before reset
     std::cout << "[NETWORK] Connected clients before reset: " << m_connectedClients.size() << std::endl;
     
-    // Reset all state variables
     m_currentLobbyID = k_steamIDNil;
     m_connectedClients.clear();
     isConnectedToHost = false;
@@ -249,14 +236,13 @@ void NetworkManager::ResetLobbyState() {
     m_connectionMessage = "";
     lobbyListUpdated = false;
     
-    // Clear any pending Steam callbacks related to lobbies
-    // This is critical to avoid stale callbacks being processed
-    for (int i = 0; i < 10; i++) {  // Process multiple times to flush all pending callbacks
+    for (int i = 0; i < 10; i++) {
         SteamAPI_RunCallbacks();
     }
     
     std::cout << "[NETWORK] Lobby state reset complete" << std::endl;
 }
+
 void NetworkManager::OnLobbyEnter(LobbyEnter_t* pParam) {
     std::cout << "[NETWORK] OnLobbyEnter callback received - response: " 
               << pParam->m_EChatRoomEnterResponse << std::endl;
@@ -270,14 +256,11 @@ void NetworkManager::OnLobbyEnter(LobbyEnter_t* pParam) {
     m_currentLobbyID = CSteamID(pParam->m_ulSteamIDLobby);
     std::cout << "Joined lobby " << m_currentLobbyID.ConvertToUint64() << std::endl;
     
-    // Set that we're in a lobby
     game->SetInLobby(true);
     
     CSteamID myID = SteamUser()->GetSteamID();
     CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(m_currentLobbyID);
     
-    // IMPORTANT: Check current state before transitioning
-    // If we're already in Lobby state, don't try to transition again
     if (game->GetCurrentState() != GameState::Lobby) {
         std::cout << "[NETWORK] Transitioning to Lobby state" << std::endl;
         game->SetCurrentState(GameState::Lobby);
@@ -285,9 +268,8 @@ void NetworkManager::OnLobbyEnter(LobbyEnter_t* pParam) {
         std::cout << "[NETWORK] Already in Lobby state - not transitioning" << std::endl;
     }
     
-    // Send connection message if we're not the host
     if (myID != hostID) {
-        SendConnectionMessageOnJoin(hostID); // Client case
+        SendConnectionMessageOnJoin(hostID);
     }
 }
 
@@ -308,7 +290,6 @@ void NetworkManager::OnLobbyMatchList(LobbyMatchList_t* pParam) {
     lobbyListUpdated = true;
     std::cout << "[LOBBY] Found " << lobbyList.size() << " lobbies with names\n";
 }
-
 
 void NetworkManager::OnGameLobbyJoinRequested(GameLobbyJoinRequested_t* pParam) {
     JoinLobbyFromNetwork(pParam->m_steamIDLobby);
@@ -336,5 +317,5 @@ void NetworkManager::OnP2PSessionConnectFail(P2PSessionConnectFail_t* pParam) {
 }
 
 void NetworkManager::ProcessNetworkMessages(const std::string& msg, CSteamID sender) {
-    //std::cout << "[NETWORK] Received: " << msg << " from " << sender.ConvertToUint64() << std::endl;
+    // std::cout << "[NETWORK] Received: " << msg << " from " << sender.ConvertToUint64() << std::endl;
 }

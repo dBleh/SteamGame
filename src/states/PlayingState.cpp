@@ -1,13 +1,14 @@
 #include "PlayingState.h"
-#include "../Game.h"
-#include "../utils/Config.h"
+#include "../core/Game.h"
+#include "../utils/config/Config.h"
 #include "../entities/PlayerManager.h"
+#include "../entities/enemies/EnemyManager.h"
+#include "../entities/enemies/Enemy.h"
 #include "../network/Host.h"
 #include "../network/Client.h"
-#include "../entities/EnemyManager.h"
 #include "../render/PlayerRenderer.h"
-
-#include <Steam/steam_api.h>
+#include "../network/messages/MessageHandler.h"
+#include <steam/steam_api.h>
 #include <iostream>
 
 PlayingState::PlayingState(Game* game)
@@ -21,8 +22,8 @@ PlayingState::PlayingState(Game* game)
       showLeaderboard(false),
       cursorLocked(true),
       showEscapeMenu(false),
-      clientNeedsInitialValidation(false),
-      initialValidationTimer(0.0f) {
+      waveTimer(0.0f),
+      waitingForNextWave(false) {
     
     std::cout << "[DEBUG] PlayingState constructor start\n";
     
@@ -75,7 +76,7 @@ PlayingState::PlayingState(Game* game)
     
     // Wave info (right aligned)
     game->GetHUD().addElement("waveInfo", "Enemies: 0", 18, 
-                             sf::Vector2f(BASE_WIDTH - 220.0f, topBarY + 15.0f), 
+                             sf::Vector2f(BASE_WIDTH - 280.0f, topBarY + 15.0f), 
                              GameState::Playing, 
                              HUD::RenderMode::ScreenSpace, false);
     game->GetHUD().updateBaseColor("waveInfo", sf::Color::Black);
@@ -184,7 +185,6 @@ PlayingState::PlayingState(Game* game)
     continueButtonText.setCharacterSize(20);
     continueButtonText.setFillColor(sf::Color(220, 220, 220));
     
-    
     // Hide system cursor and lock it to window
     game->GetWindow().setMouseCursorGrabbed(true);
     
@@ -223,22 +223,11 @@ PlayingState::PlayingState(Game* game)
     // Create PlayerRenderer after PlayerManager
     playerRenderer = std::make_unique<PlayerRenderer>(playerManager.get());
 
-    // ===== ENEMY MANAGER SETUP =====
-    // Create the Enemy Manager after Player Manager (handles all enemy types)
+    // Initialize enemy manager
     enemyManager = std::make_unique<EnemyManager>(game, playerManager.get());
     
     // Check if we're the client
     bool isClient = (myID != hostIDSteam);
-    
-    if (isClient) {
-        // Client-specific initialization to prevent ghost enemies
-        std::cout << "[CLIENT] Initializing PlayingState as client, cleaning any potential ghost enemies\n";
-        
-        // Set a flag to request enemy validation after a short delay
-        // This will be checked in the Update method
-        clientNeedsInitialValidation = true;
-        initialValidationTimer = 1.0f; // 1 second delay
-    }
 
     // ===== NETWORK SETUP =====
     // Create networking components last, so they can use the other managers
@@ -290,71 +279,11 @@ PlayingState::~PlayingState() {
     // Clean up components in the correct order to avoid any crashes
     hostNetwork.reset();
     clientNetwork.reset();
-    enemyManager.reset();
+    enemyManager.reset();  // Clean up enemy manager before player manager
     playerRenderer.reset();
     playerManager.reset();
     
     std::cout << "[DEBUG] PlayingState destructor completed\n";
-}
-
-void PlayingState::UpdateWaveInfo() {
-    if (!enemyManager) return;
-    
-    int currentWave = enemyManager->GetCurrentWave();
-    int remainingEnemies = enemyManager->GetRemainingEnemies();
-    float waveTimer = enemyManager->GetWaveTimer();
-    
-    // Update the wave header
-    std::string headerText = "WAVE " + std::to_string(currentWave);
-    game->GetHUD().updateText("gameHeader", headerText);
-    
-    // Update the wave info
-    std::string waveText;
-    if (enemyManager->IsWaveComplete()) {
-        // Show "next wave" message when all enemies are defeated
-        waveText = "Next wave in: " + std::to_string(static_cast<int>(waveTimer)) + "s";
-        game->GetHUD().updateBaseColor("waveInfo", sf::Color(76, 175, 80)); // Green for wave complete
-    } else {
-        // Show remaining enemies count
-        waveText = "Enemies: " + std::to_string(remainingEnemies);
-        game->GetHUD().updateBaseColor("waveInfo", sf::Color::Black);
-    }
-    
-    game->GetHUD().updateText("waveInfo", waveText);
-}
-
-void PlayingState::StartFirstWave() {
-    // Only the host should start the wave
-    if (!playerLoaded) return;
-    
-    CSteamID myID = SteamUser()->GetSteamID();
-    CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
-    
-    if (myID == hostID) {
-        std::cout << "[HOST] Starting first wave" << std::endl;
-        
-        // Start the enemy wave
-        if (enemyManager) {
-            try {
-                enemyManager->StartNextWave();
-                
-                // Broadcast the wave start to all clients
-                std::string waveMsg = MessageHandler::FormatWaveStartMessage(
-                    enemyManager->GetCurrentWave());
-                game->GetNetworkManager().BroadcastMessage(waveMsg);
-                
-                std::cout << "[HOST] Enemy wave started" << std::endl;
-            } catch (const std::exception& e) {
-                std::cerr << "[ERROR] Failed to start enemy wave: " << e.what() << std::endl;
-            }
-        }
-    }
-}
-
-bool PlayingState::AreAllEnemiesDefeated() {
-    if (!enemyManager) return false;
-    
-    return enemyManager->GetRemainingEnemies() == 0;
 }
 
 bool PlayingState::isPointInRect(const sf::Vector2f& point, const sf::FloatRect& rect) {
@@ -379,115 +308,6 @@ void PlayingState::Update(float dt) {
     // Update HUD animations
     game->GetHUD().update(game->GetWindow(), GameState::Playing, dt);
     
-    // Handle initial validation request for clients
-    if (clientNeedsInitialValidation) {
-        initialValidationTimer -= dt;
-        if (initialValidationTimer <= 0.0f) {
-            // Reset the flag
-            clientNeedsInitialValidation = false;
-            
-            // Identify if we're a client
-            CSteamID myID = SteamUser()->GetSteamID();
-            CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
-            
-            if (myID != hostID && clientNetwork) {
-                std::cout << "[CLIENT] Starting staged enemy validation protocol\n";
-                
-                // First, clear all existing enemies to avoid duplicates
-                if (enemyManager) {
-                    enemyManager->ClearAllEnemies();
-                }
-                
-                // Request validation from host
-                std::string validationMsg = MessageHandler::FormatEnemyValidationRequestMessage();
-                game->GetNetworkManager().SendMessage(hostID, validationMsg);
-                
-                // Set up the multi-stage sync process
-                initialSyncStage = 1;
-                initialSyncTimer = 0.2f; // Wait a short time before next stage
-                syncAttemptCount = 0;
-                enemySyncComplete = false;
-            }
-        }
-    }
-    
-    // Handle multi-stage initial sync
-    if (initialSyncStage > 0 && !enemySyncComplete) {
-        initialSyncTimer -= dt;
-        if (initialSyncTimer <= 0.0f) {
-            // Identify if we're a client
-            CSteamID myID = SteamUser()->GetSteamID();
-            CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
-            
-            if (myID != hostID && clientNetwork) {
-                // Increase attempt count
-                syncAttemptCount++;
-                
-                if (syncAttemptCount >= 5) {
-                    // Give up after 5 attempts
-                    std::cout << "[CLIENT] Enemy sync protocol timed out after " << syncAttemptCount << " attempts\n";
-                    initialSyncStage = 0;
-                    enemySyncComplete = true;
-                } else {
-                    if (initialSyncStage == 1) {
-                        // Second stage: request detailed positions after ID validation
-                        std::cout << "[CLIENT] Initial sync stage " << initialSyncStage << ": requesting position details (attempt " << syncAttemptCount << ")\n";
-                        
-                        // Request another validation to ensure we get positions too
-                        std::string validationMsg = MessageHandler::FormatEnemyValidationRequestMessage();
-                        game->GetNetworkManager().SendMessage(hostID, validationMsg);
-                        
-                        // Setup next stage
-                        initialSyncStage = 2;
-                        initialSyncTimer = 0.3f; // Wait for positions to arrive
-                    }
-                    else if (initialSyncStage == 2) {
-                        // Third stage: request batch data for any missing enemies
-                        std::cout << "[CLIENT] Initial sync stage " << initialSyncStage << ": requesting batch data (attempt " << syncAttemptCount << ")\n";
-                        
-                        // Request enemy batch spawn information
-                        std::string batchMsg = MessageHandler::FormatEnemyBatchRequestMessage({}, ParsedMessage::EnemyType::Regular);
-                        game->GetNetworkManager().SendMessage(hostID, batchMsg);
-                        
-                        // Request triangle batch data too
-                        std::string triangleBatchMsg = MessageHandler::FormatEnemyBatchRequestMessage({}, ParsedMessage::EnemyType::Triangle);
-                        game->GetNetworkManager().SendMessage(hostID, triangleBatchMsg);
-                        
-                        // Setup final verification stage
-                        initialSyncStage = 3;
-                        initialSyncTimer = 0.3f;
-                    }
-                    else if (initialSyncStage == 3) {
-                        // Final verification stage
-                        std::cout << "[CLIENT] Initial sync stage " << initialSyncStage << ": final verification (attempt " << syncAttemptCount << ")\n";
-                        
-                        // One last validation to catch any missed enemies
-                        std::string validationMsg = MessageHandler::FormatEnemyValidationRequestMessage();
-                        game->GetNetworkManager().SendMessage(hostID, validationMsg);
-                        
-                        // Check if we need another attempt
-                        if (syncAttemptCount >= 3) {
-                            // After 3 complete cycles, consider it done regardless
-                            initialSyncStage = 0;
-                            enemySyncComplete = true;
-                            std::cout << "[CLIENT] Initial sync process completed after " << syncAttemptCount << " attempts\n";
-                        } else {
-                            // Loop back to first stage for another complete cycle
-                            initialSyncStage = 1;
-                            initialSyncTimer = 0.3f;
-                        }
-                    }
-                }
-            }
-            else {
-                // If we somehow get here as host, just exit the process
-                initialSyncStage = 0;
-                enemySyncComplete = true;
-            }
-        }
-    }
-    
-    
     if (!playerLoaded) {
         loadingTimer += dt;
         if (loadingTimer >= 2.0f) {
@@ -497,9 +317,6 @@ void PlayingState::Update(float dt) {
                 clientNetwork->SendConnectionMessage();
                 connectionSent = true;
             }
-            
-            // Start the first wave once players are loaded
-            StartFirstWave();
         }
     } else {
         // Update PlayerManager with the game instance (for InputManager access)
@@ -507,35 +324,53 @@ void PlayingState::Update(float dt) {
         if (clientNetwork) clientNetwork->Update();
         if (hostNetwork) hostNetwork->Update();
         
-        // Add special check for client initial sync during the first few seconds after joining
-        static bool initialSyncDone = false;
-        static float initialSyncTimer = 3.0f;
-        
-        if (!initialSyncDone) {
-            initialSyncTimer -= dt;
+        // Update enemies
+        if (playerLoaded && enemyManager) {
+            enemyManager->Update(dt);
             
-            // Check if we're a client
+            // Check for bullet-enemy collisions
+            CheckBulletEnemyCollisions();
+            
+            // Handle wave logic
+            if (enemyManager->IsWaveComplete() && !waitingForNextWave) {
+                waitingForNextWave = true;
+                waveTimer = 5.0f; // 5 second delay between waves
+                
+                // Display a message about the next wave
+                std::string waveMsg = "Wave " + std::to_string(enemyManager->GetCurrentWave()) + 
+                                    " complete! Next wave in " + std::to_string(static_cast<int>(waveTimer)) + "...";
+                game->GetHUD().updateText("waveInfo", waveMsg);
+            }
+            
+            if (waitingForNextWave) {
+                waveTimer -= dt;
+                
+                // Update the countdown timer
+                if (waveTimer > 0.0f) {
+                    std::string waveMsg = "Wave " + std::to_string(enemyManager->GetCurrentWave()) + 
+                                        " complete! Next wave in " + std::to_string(static_cast<int>(std::ceil(waveTimer))) + "...";
+                    game->GetHUD().updateText("waveInfo", waveMsg);
+                }
+                
+                if (waveTimer <= 0.0f) {
+                    waitingForNextWave = false;
+                    int nextWave = enemyManager->GetCurrentWave() + 1;
+                    int enemyCount = 5 + (nextWave * 3); // Scale up enemy count with each wave
+                    StartWave(enemyCount);
+                }
+            }
+            
+            // Only the host starts the first wave
             CSteamID myID = SteamUser()->GetSteamID();
             CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
             
-            if (myID != hostID && clientNetwork) {
-                // Request validation every 1 second for the first 3 seconds
-                if (std::fmod(initialSyncTimer, 1.0f) < dt) {
-                    std::cout << "[CLIENT] Sending initial sync validation request\n";
-                    
-                    // Request validation from host
-                    std::string validationMsg = MessageHandler::FormatEnemyValidationRequestMessage();
-                    game->GetNetworkManager().SendMessage(hostID, validationMsg);
-                }
-                
-                // After 3 seconds, mark initial sync as done
-                if (initialSyncTimer <= 0.0f) {
-                    initialSyncDone = true;
-                    std::cout << "[CLIENT] Initial sync complete\n";
-                }
-            } else {
-                // Host doesn't need initial sync
-                initialSyncDone = true;
+            if (myID == hostID && enemyManager->GetCurrentWave() == 0 && playerLoaded && !waitingForNextWave) {
+                StartWave(5); // First wave with 5 enemies
+            }
+            
+            // Update wave info on HUD if not waiting for next wave
+            if (!waitingForNextWave) {
+                UpdateWaveInfo();
             }
         }
         
@@ -555,64 +390,6 @@ void PlayingState::Update(float dt) {
             // Hide timer when player is alive
             game->GetHUD().updateText("deathTimer", "");
             isDeathTimerVisible = false;
-        }
-        
-        // Update EnemyManager with improved frame timing
-        if (enemyManager) {
-            // Track how much time enemy updates take
-            auto startTime = std::chrono::high_resolution_clock::now();
-            
-            enemyManager->Update(dt);
-            
-            // Check bullet collisions with enemies
-            enemyManager->CheckBulletCollisions(playerManager->GetAllBullets());
-            
-            // Check player collisions with enemies
-            enemyManager->CheckPlayerCollisions();
-            
-            // Update wave info in HUD
-            UpdateWaveInfo();
-            
-            // Debug performance if needed
-            auto endTime = std::chrono::high_resolution_clock::now();
-            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime).count();
-            
-            // Only log if update takes more than 10ms (potential performance issue)
-            if (duration > 10000) {
-                std::cout << "[PERF] Enemy update took " << (duration / 1000.0f) << "ms\n";
-            }
-        }
-        
-        // Check if all enemies are defeated and start next wave (only host)
-        CSteamID myID = SteamUser()->GetSteamID();
-        CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
-        
-        if (myID == hostID) {
-            // Debug output to show enemy counts
-            static float debugTimer = 1.0f;
-            debugTimer -= dt;
-            if (debugTimer <= 0.0f) {
-                int regularCount = enemyManager ? enemyManager->GetRemainingEnemies() : 0;
-                std::cout << "[WAVE DEBUG] Regular enemies: " << regularCount << std::endl;
-                debugTimer = 3.0f; // Show debug every 3 seconds
-            }
-            
-            // Check if all enemies are defeated to start next wave
-            if (AreAllEnemiesDefeated()) {
-                // If all enemies are defeated, start the next wave after a delay
-                static float nextWaveTimer = 3.0f;
-                nextWaveTimer -= dt;
-                
-                if (nextWaveTimer <= 0.0f) {
-                    // Start next wave
-                    StartNextWave();
-                    nextWaveTimer = 3.0f; // Reset timer
-                }
-            } else {
-                // Reset the timer if enemies are still alive
-                static float nextWaveTimer = 3.0f;
-                nextWaveTimer = 3.0f;
-            }
         }
         
         // Handle continuous shooting if mouse button is held down
@@ -731,166 +508,6 @@ void PlayingState::Update(float dt) {
     sf::Vector2f mousePosView = game->GetWindow().mapPixelToCoords(mousePos, game->GetUIView());
 }
 
-// Add these implementations to your PlayingState.cpp file
-
-// Getter for the EnemyManager
-EnemyManager* PlayingState::GetEnemyManager() {
-    return enemyManager.get();
-}
-
-// Process events from SFML
-void PlayingState::ProcessEvent(const sf::Event& event) {
-    // Call the internal event processing function
-    ProcessEvents(event);
-}
-
-// Handle shooting logic
-void PlayingState::AttemptShoot(int mouseX, int mouseY) {
-    // Skip if the game is paused or not fully loaded
-    if (showEscapeMenu || !playerLoaded) return;
-    
-    // Get the current mouse position in world coordinates
-    sf::Vector2i mousePos(mouseX, mouseY);
-    sf::Vector2f worldPos = game->GetWindow().mapPixelToCoords(mousePos, game->GetCamera());
-    
-    // Get the local player
-    auto& localPlayer = playerManager->GetLocalPlayer();
-    
-    // Calculate direction vector from player to mouse position
-    sf::Vector2f playerPos = localPlayer.player.GetPosition();
-    sf::Vector2f direction = worldPos - playerPos;
-    
-    // Normalize the direction vector
-    float length = std::sqrt(direction.x * direction.x + direction.y * direction.y);
-    if (length > 0) {
-        direction /= length;
-    }
-    
-    // Get local player ID
-    std::string localPlayerID = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
-    
-    // Create a bullet
-    playerManager->AddBullet(localPlayerID, playerPos, direction, 800.0f);
-    
-    // Send the bullet message to all other players
-    std::string bulletMsg = MessageHandler::FormatBulletMessage(
-        localPlayerID, playerPos, direction, 800.0f);
-    
-    // Send to host if client, broadcast if host
-    if (clientNetwork) {
-        game->GetNetworkManager().SendMessage(clientNetwork->GetHostID(), bulletMsg);
-    } else if (hostNetwork) {
-        game->GetNetworkManager().BroadcastMessage(bulletMsg);
-    }
-}
-
-// Update player stats in the HUD
-void PlayingState::UpdatePlayerStats() {
-    if (!playerManager) return;
-    
-    // Get the local player
-    const auto& localPlayer = playerManager->GetLocalPlayer();
-    
-    // Format stats string
-    std::string statsText = "HP: " + std::to_string(localPlayer.player.GetHealth()) + 
-                            " | Kills: " + std::to_string(localPlayer.kills) + 
-                            " | Money: " + std::to_string(localPlayer.money);
-    
-    // Update the HUD
-    game->GetHUD().updateText("playerStats", statsText);
-    
-    // Update color based on health
-    int health = localPlayer.player.GetHealth();
-    if (health < 30) {
-        game->GetHUD().updateBaseColor("playerStats", sf::Color::Red);
-    } else if (health < 70) {
-        game->GetHUD().updateBaseColor("playerStats", sf::Color(255, 165, 0)); // Orange
-    } else {
-        game->GetHUD().updateBaseColor("playerStats", sf::Color::Black);
-    }
-}
-
-// Update leaderboard display
-void PlayingState::UpdateLeaderboard() {
-    if (!playerManager) return;
-    
-    // Get all players
-    auto& players = playerManager->GetPlayers();
-    
-    // Vector to hold player data for sorting
-    std::vector<std::pair<std::string, int>> playerData;
-    
-    // Collect data
-    for (const auto& pair : players) {
-        playerData.push_back({pair.second.baseName, pair.second.kills});
-    }
-    
-    // Sort by kills (highest first)
-    std::sort(playerData.begin(), playerData.end(), 
-        [](const auto& a, const auto& b) { return a.second > b.second; });
-    
-    // Format leaderboard string
-    std::string leaderboardText = "LEADERBOARD\n\n";
-    
-    for (size_t i = 0; i < playerData.size(); ++i) {
-        leaderboardText += std::to_string(i + 1) + ". " + 
-                          playerData[i].first + " - " + 
-                          std::to_string(playerData[i].second) + " kills\n";
-    }
-    
-    // Update the HUD
-    game->GetHUD().updateText("leaderboard", leaderboardText);
-}
-
-// Start the next wave of enemies
-void PlayingState::StartNextWave() {
-    if (!enemyManager || !playerLoaded) return;
-    
-    // Only the host should start the wave
-    CSteamID myID = SteamUser()->GetSteamID();
-    CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
-    
-    if (myID == hostID) {
-        std::cout << "[HOST] Starting next wave" << std::endl;
-        
-        try {
-            // First, make sure all existing enemies are cleared
-            enemyManager->ClearAllEnemies();
-            
-            // Wait a moment to ensure clients have time to process the clear
-            sf::sleep(sf::milliseconds(100));
-            
-            // Start the next wave
-            enemyManager->StartNextWave();
-            
-            // Broadcast the wave start to all clients
-            std::string waveMsg = MessageHandler::FormatWaveStartMessage(
-                enemyManager->GetCurrentWave());
-                
-            // Send the message twice for reliability
-            game->GetNetworkManager().BroadcastMessage(waveMsg);
-            sf::sleep(sf::milliseconds(20));
-            game->GetNetworkManager().BroadcastMessage(waveMsg);
-            
-            std::cout << "[HOST] Next enemy wave started: " 
-                      << enemyManager->GetCurrentWave() << std::endl;
-                      
-            // Give a delay before sending the enemy validation
-            sf::sleep(sf::milliseconds(200));
-            
-            // Force a full enemy sync shortly after wave start
-            //enemyManager->SyncFullEnemyList();
-        } catch (const std::exception& e) {
-            std::cerr << "[ERROR] Failed to start next wave: " << e.what() << std::endl;
-        }
-    }
-}
-
-// Check if the game state is fully loaded
-bool PlayingState::IsFullyLoaded() {
-    return playerLoaded;
-}
-
 void PlayingState::Render() {
     game->GetWindow().clear(MAIN_BACKGROUND_COLOR);
     
@@ -908,7 +525,7 @@ void PlayingState::Render() {
                 playerRenderer->Render(game->GetWindow());
             }
             
-            // Render enemies
+            // Render enemies after players
             if (enemyManager) {
                 enemyManager->Render(game->GetWindow());
             }
@@ -996,6 +613,11 @@ void PlayingState::Render() {
     } catch (const std::exception& e) {
         std::cerr << "[ERROR] Exception in PlayingState::Render: " << e.what() << std::endl;
     }
+}
+
+void PlayingState::ProcessEvent(const sf::Event& event) {
+    // Call the internal event processing function
+    ProcessEvents(event);
 }
 
 void PlayingState::ProcessEvents(const sf::Event& event) {
@@ -1136,4 +758,191 @@ void PlayingState::ProcessEvents(const sf::Event& event) {
             game->GetWindow().setMouseCursorGrabbed(true);
         }
     }
+}
+
+void PlayingState::AttemptShoot(int mouseX, int mouseY) {
+    // Skip if the game is paused or not fully loaded
+    if (showEscapeMenu || !playerLoaded) return;
+    
+    // Get the current mouse position in world coordinates
+    sf::Vector2i mousePos(mouseX, mouseY);
+    sf::Vector2f worldPos = game->GetWindow().mapPixelToCoords(mousePos, game->GetCamera());
+    
+    // Get the local player
+    auto& localPlayer = playerManager->GetLocalPlayer();
+    
+    // Skip if player is dead
+    if (localPlayer.player.IsDead()) return;
+    
+    // Calculate direction vector from player to mouse position
+    sf::Vector2f playerPos = localPlayer.player.GetPosition();
+    sf::Vector2f direction = worldPos - playerPos;
+    
+    // Normalize the direction vector
+    float length = std::sqrt(direction.x * direction.x + direction.y * direction.y);
+    if (length > 0) {
+        direction /= length;
+    }
+    
+    // Get local player ID
+    std::string localPlayerID = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
+    
+    // Create a bullet
+    playerManager->AddBullet(localPlayerID, playerPos, direction, BULLET_SPEED);
+    
+    // Send the bullet message to all other players
+    std::string bulletMsg = MessageHandler::FormatBulletMessage(
+        localPlayerID, playerPos, direction, BULLET_SPEED);
+    
+    // Send to host if client, broadcast if host
+    if (clientNetwork) {
+        game->GetNetworkManager().SendMessage(clientNetwork->GetHostID(), bulletMsg);
+    } else if (hostNetwork) {
+        game->GetNetworkManager().BroadcastMessage(bulletMsg);
+    }
+}
+
+void PlayingState::UpdatePlayerStats() {
+    if (!playerManager) return;
+    
+    // Get the local player
+    const auto& localPlayer = playerManager->GetLocalPlayer();
+    
+    // Format stats string
+    std::string statsText = "HP: " + std::to_string(localPlayer.player.GetHealth()) + 
+                            " | Kills: " + std::to_string(localPlayer.kills) + 
+                            " | Money: " + std::to_string(localPlayer.money);
+    
+    // Update the HUD
+    game->GetHUD().updateText("playerStats", statsText);
+    
+    // Update color based on health
+    int health = localPlayer.player.GetHealth();
+    if (health < 30) {
+        game->GetHUD().updateBaseColor("playerStats", sf::Color::Red);
+    } else if (health < 70) {
+        game->GetHUD().updateBaseColor("playerStats", sf::Color(255, 165, 0)); // Orange
+    } else {
+        game->GetHUD().updateBaseColor("playerStats", sf::Color::Black);
+    }
+}
+
+void PlayingState::UpdateLeaderboard() {
+    if (!playerManager) return;
+    
+    // Get all players
+    auto& players = playerManager->GetPlayers();
+    
+    // Vector to hold player data for sorting
+    std::vector<std::pair<std::string, int>> playerData;
+    
+    // Collect data
+    for (const auto& pair : players) {
+        playerData.push_back({pair.second.baseName, pair.second.kills});
+    }
+    
+    // Sort by kills (highest first)
+    std::sort(playerData.begin(), playerData.end(), 
+        [](const auto& a, const auto& b) { return a.second > b.second; });
+    
+    // Format leaderboard string
+    std::string leaderboardText = "LEADERBOARD\n\n";
+    
+    for (size_t i = 0; i < playerData.size(); ++i) {
+        leaderboardText += std::to_string(i + 1) + ". " + 
+                          playerData[i].first + " - " + 
+                          std::to_string(playerData[i].second) + " kills\n";
+    }
+    
+    // Update the HUD
+    game->GetHUD().updateText("leaderboard", leaderboardText);
+}
+
+void PlayingState::CheckBulletEnemyCollisions() {
+    if (!playerManager || !enemyManager) return;
+    
+    // Get all bullets
+    const auto& bullets = playerManager->GetAllBullets();
+    std::vector<size_t> bulletsToRemove;
+    
+    // Check each bullet for collisions with enemies
+    for (size_t bulletIdx = 0; bulletIdx < bullets.size(); bulletIdx++) {
+        const Bullet& bullet = bullets[bulletIdx];
+        
+        // Skip already expired bullets
+        if (bullet.IsExpired()) {
+            bulletsToRemove.push_back(bulletIdx);
+            continue;
+        }
+        
+        sf::Vector2f bulletPos = bullet.GetPosition();
+        int enemyId = -1;
+        
+        // Check if bullet hits any enemy
+        if (enemyManager->CheckBulletCollision(bulletPos, 4.0f, enemyId)) {
+            // If we hit an enemy, add this bullet to remove list
+            bulletsToRemove.push_back(bulletIdx);
+            
+            // Apply damage to the enemy
+            std::string shooterId = bullet.GetShooterID();
+            
+            // Get local player ID
+            CSteamID myID = SteamUser()->GetSteamID();
+            CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+            std::string localPlayerID = std::to_string(myID.ConvertToUint64());
+            
+            if (myID == hostID) {
+                // Host handles damage directly
+                bool killed = enemyManager->InflictDamage(enemyId, 20.0f); // 20 damage per bullet
+                
+                // If player killed an enemy, reward them
+                if (killed && !shooterId.empty()) {
+                    playerManager->IncrementPlayerKills(shooterId);
+                    
+                    // Add money reward
+                    auto& players = playerManager->GetPlayers();
+                    auto it = players.find(shooterId);
+                    if (it != players.end()) {
+                        it->second.money += TRIANGLE_KILL_REWARD;
+                    }
+                }
+            } else {
+                // Client sends damage message to host
+                std::string damageMsg = MessageHandler::FormatEnemyDamageMessage(enemyId, 20.0f, 0.0f);
+                game->GetNetworkManager().SendMessage(hostID, damageMsg);
+            }
+        }
+    }
+    
+    // Remove all collided bullets
+    if (!bulletsToRemove.empty()) {
+        playerManager->RemoveBullets(bulletsToRemove);
+    }
+}
+
+void PlayingState::StartWave(int enemyCount) {
+    if (!enemyManager) return;
+    
+    // Start the wave
+    enemyManager->StartNewWave(enemyCount, EnemyType::Triangle);
+    
+    // Update wave info
+    UpdateWaveInfo();
+    
+    // Update the game header with current wave
+    std::string headerText = "WAVE " + std::to_string(enemyManager->GetCurrentWave());
+    game->GetHUD().updateText("gameHeader", headerText);
+}
+
+void PlayingState::UpdateWaveInfo() {
+    if (!enemyManager) return;
+    
+    // Update wave info on HUD
+    std::string waveInfo = "Wave: " + std::to_string(enemyManager->GetCurrentWave()) + 
+                          " | Enemies: " + std::to_string(enemyManager->GetEnemyCount());
+    game->GetHUD().updateText("waveInfo", waveInfo);
+}
+
+bool PlayingState::IsFullyLoaded() {
+    return playerLoaded;
 }
