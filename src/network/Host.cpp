@@ -447,7 +447,7 @@ void HostNetwork::ProcessWaveStartMessage(const ParsedMessage& parsed) {
         std::cout << "[HOST] Broadcast wave start for wave " << enemyManager->GetCurrentWave() << " (duplicated for reliability)" << std::endl;
         
         // Force a full sync right after spawning
-        enemyManager->SyncFullEnemyList();
+        //enemyManager->SyncFullEnemyList();
     }
 }
 

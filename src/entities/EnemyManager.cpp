@@ -96,7 +96,7 @@ void EnemyManager::Update(float dt) {
     // Update full sync timer for both enemy types
     fullSyncTimer -= dt;
     if (fullSyncTimer <= 0.0f) {
-        SyncFullEnemyList();
+        //SyncFullEnemyList();
         fullSyncTimer = FULL_SYNC_INTERVAL;
     }
     

@@ -842,7 +842,7 @@ void PlayingState::StartNextWave() {
             sf::sleep(sf::milliseconds(200));
             
             // Force a full enemy sync shortly after wave start
-            enemyManager->SyncFullEnemyList();
+            //enemyManager->SyncFullEnemyList();
         } catch (const std::exception& e) {
             std::cerr << "[ERROR] Failed to start next wave: " << e.what() << std::endl;
         }
