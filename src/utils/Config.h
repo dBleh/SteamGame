@@ -14,7 +14,7 @@
 #define ENEMY_SIZE 20.0f  // Removed erroneous '='
 #define ENEMY_ORIGIN 10.0f // Half of ENEMY_SIZE
 #define ENEMY_SPEED 70.0f
-#define ENEMY_HEALTH 40.0f
+#define ENEMY_HEALTH 40000.0f
 
 // Triangle configuration
 #define TRIANGLE_SIZE 15.0f
