@@ -40,7 +40,7 @@ void PlayerManager::Update(Game* game) {
                     RespawnPlayer(pair.first);
                     
                     // Double-check health after respawn
-                    if (rp.player.GetHealth() < 100) {
+                    if (rp.player.GetHealth() < PLAYER_HEALTH) {
                         std::cout << "[PM] WARNING: Player health not fully restored after respawn: " 
                                   << rp.player.GetHealth() << "/100\n";
                         

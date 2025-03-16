@@ -5,6 +5,7 @@
 #include <iostream>
 #include "../utils/InputHandler.h"
 #include "../utils/InputManager.h" // Add InputManager include
+#include "../utils/Config.h"
 
 class Player {
 public:

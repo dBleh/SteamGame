@@ -3,14 +3,14 @@
 #include <cmath>
 
 Player::Player()
-    : movementSpeed(200.f), shootCooldown(0.f), health(100), isDead(false), respawnPosition(0.f, 0.f) {
+    : movementSpeed(200.f), shootCooldown(0.f), health(PLAYER_HEALTH), isDead(false), respawnPosition(0.f, 0.f) {
     shape.setSize(sf::Vector2f(50.f, 50.f));
     shape.setFillColor(sf::Color::Blue);
     shape.setPosition(100.f, 100.f);
 }
 
 Player::Player(const sf::Vector2f& startPosition, const sf::Color& color)
-    : movementSpeed(200.f), shootCooldown(0.f), health(100), isDead(false), respawnPosition(0.f, 0.f) {
+    : movementSpeed(200.f), shootCooldown(0.f), health(PLAYER_HEALTH), isDead(false), respawnPosition(0.f, 0.f) {
     shape.setSize(sf::Vector2f(50.f, 50.f));
     shape.setFillColor(color);
     shape.setPosition(startPosition);
@@ -123,7 +123,7 @@ bool Player::IsDead() const {
 }
 
 void Player::Respawn() {
-    health = 100;
+    health = PLAYER_HEALTH;
     isDead = false;
     shape.setPosition(respawnPosition);
 }
