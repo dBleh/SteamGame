@@ -334,7 +334,7 @@ void PlayingState::Update(float dt) {
             // Handle wave logic
             if (enemyManager->IsWaveComplete() && !waitingForNextWave) {
                 waitingForNextWave = true;
-                waveTimer = 5.0f; // 5 second delay between waves
+                waveTimer = WAVE_COOLDOWN_TIME; // 5 second delay between waves
                 
                 // Display a message about the next wave
                 std::string waveMsg = "Wave " + std::to_string(enemyManager->GetCurrentWave()) + 
@@ -355,7 +355,7 @@ void PlayingState::Update(float dt) {
                 if (waveTimer <= 0.0f) {
                     waitingForNextWave = false;
                     int nextWave = enemyManager->GetCurrentWave() + 1;
-                    int enemyCount = 5 + (nextWave * 3); // Scale up enemy count with each wave
+                    int enemyCount = BASE_ENEMIES_PER_WAVE + (nextWave * ENEMIES_SCALE_PER_WAVE);
                     StartWave(enemyCount);
                 }
             }
@@ -365,7 +365,7 @@ void PlayingState::Update(float dt) {
             CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
             
             if (myID == hostID && enemyManager->GetCurrentWave() == 0 && playerLoaded && !waitingForNextWave) {
-                StartWave(5); // First wave with 5 enemies
+                StartWave(FIRST_WAVE_ENEMY_COUNT); // First wave with 5 enemies
             }
             
             // Update wave info on HUD if not waiting for next wave

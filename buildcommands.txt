@@ -50,34 +50,47 @@ git commit -m "Resolved merge conflicts"
 
 
 add_executable(CubeShooter
-    src/main.cpp
-    src/Game.cpp                       # Assuming CubeGame.cpp is renamed to Game.cpp per your new structure
-    src/entities/Player.cpp            # Matches src/entities/Player.h
-    src/entities/Enemy.cpp             # Matches src/entities/Enemy.h
-    src/entities/EnemyManager.cpp 
-    src/entities/Bullet.cpp  
-    src/entities/TriangleEnemy.cpp        
-    src/entities/TriangleManager.cpp
-    src/utils/SpatialGrid.cpp
-    src/entities/Grid.cpp   
-    #src/entities/EntityManager.cpp     # Not explicitly listed, assuming it goes in src/entities/
-    src/Hud/Hud.cpp                    # Matches src/Hud/Hud.h
-    #src/network/SteamManager.cpp       # Moved to src/network/ from src/Networking/
-    src/network/NetworkManager.cpp     # Matches src/network/NetworkManager.h
+    # Core files
+    src/core/main.cpp
+    src/core/Game.cpp
+    
+    # Entity files
+    src/entities/Player.cpp
+    src/entities/Bullet.cpp
+    src/entities/Grid.cpp
+    src/entities/PlayerManager.cpp
+
+    # Enemy files
+    src/entities/enemies/Enemy.cpp
+    src/entities/enemies/EnemyManager.cpp
+    src/entities/enemies/TriangleEnemy.cpp
+   
+        
+    # UI files
+    src/ui/hud/Hud.cpp
+    
+    # Network files
+    src/network/NetworkManager.cpp
     src/network/Client.cpp
     src/network/Host.cpp
-    src/states/MainMenuState.cpp       # Matches src/states/MainMenuState.h
-    src/states/LobbyState.cpp          # Not listed but assumed in src/states/
-    src/states/PlayingState.cpp       # Matches src/states/PlayingState.h (assuming renamed)
-    #src/states/GameOverState.cpp       # Matches src/states/GameOverState.h
-    src/states/SettingsState.cpp       # Matches src/states/SettingsState.h
-    src/states/LobbyCreationState.cpp  # Not listed but assumed in src/states/
-    src/states/LobbySearchState.cpp    # Not listed but assumed in src/states/
-    src/utils/MessageHandler.cpp
-    src/utils/SteamHelpers.cpp
-    src/utils/SettingsManager.cpp
-    src/utils/InputHandler.cpp
+    
+    # Network message files
+    src/network/messages/MessageHandler.cpp
+    
+    # State files
+    src/states/PlayingState.cpp
+    src/states/menu/MainMenuState.cpp
+    src/states/menu/LobbyState.cpp
+    src/states/menu/SettingsState.cpp
+    src/states/menu/LobbyCreationState.cpp
+    src/states/menu/LobbySearchState.cpp
+    
+    # Render files
     src/render/PlayerRenderer.cpp
-    src/entities/PlayerManager.cpp
-    src/utils/InputManager.cpp
+    
+    # Utility files
+    src/utils/SteamHelpers.cpp
+    src/utils/config/SettingsManager.cpp
+    src/utils/input/InputHandler.cpp
+    src/utils/input/InputManager.cpp
 )

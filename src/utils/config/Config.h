@@ -8,16 +8,16 @@
 
 // Player configuration
 #define PLAYER_SPEED 100.0f
-#define PLAYER_HEALTH 10000
+#define PLAYER_HEALTH 1000000
 
 // Enemy configuration
-#define ENEMY_SIZE 20.0f  // Removed erroneous '='
+#define ENEMY_SIZE 20.0f
 #define ENEMY_ORIGIN 10.0f // Half of ENEMY_SIZE
 #define ENEMY_SPEED 70.0f
 #define ENEMY_HEALTH 40.0f
 
 // Triangle configuration
-#define TRIANGLE_SIZE 15.0f
+#define TRIANGLE_SIZE 10.0f
 
 // Bullet configuration
 #define BULLET_SPEED 400.0f
@@ -34,6 +34,12 @@
 #define TRIANGLE_HEALTH 40                  // Default triangle enemy health
 #define TRIANGLE_KILL_REWARD 10             // Money rewarded for killing a triangle
 
+// Wave configuration
+#define FIRST_WAVE_ENEMY_COUNT 5           // Number of enemies in first wave
+#define BASE_ENEMIES_PER_WAVE 50          // Base number of enemies per wave (after first)
+#define ENEMIES_SCALE_PER_WAVE 100           // Additional enemies per wave number
+#define WAVE_COOLDOWN_TIME 2.0f            // Seconds between waves
+
 // UI Colors
 // Light gray similar to Claude's background - RGB(249, 249, 249)
 #define MAIN_BACKGROUND_COLOR sf::Color(70, 70, 70)
@@ -47,20 +53,13 @@ constexpr int BASE_HEIGHT = 720;
 // Collision constants
 #define COLLISION_RADIUS 25.0f
 
-// Triangle Enemy configuration
-#define TRIANGLE_MIN_SPAWN_DISTANCE 200.0f  // Minimum spawn distance from players
-#define TRIANGLE_MAX_SPAWN_DISTANCE 500.0f  // Maximum spawn distance from players
-#define TRIANGLE_DAMAGE 10                  // Damage dealt to players on collision
-#define TRIANGLE_HEALTH 40                  // Default triangle enemy health
-#define TRIANGLE_KILL_REWARD 10             // Money rewarded for killing a triangle
-
 // Network sync constants
 #define ENEMY_SYNC_INTERVAL 0.05f          // Interval for position updates
 #define FULL_SYNC_INTERVAL 2.0f            // Interval for full state sync
 
 // Enemy system performance optimization constants
 #define MAX_ENEMIES_PER_UPDATE 10          // Max enemies to update in a single sync message
-#define MAX_ENEMIES_SPAWNABLE 1000         // Maximum enemies allowed in the game
+#define MAX_ENEMIES_SPAWNABLE 100000         // Maximum enemies allowed in the game
 #define ENEMY_CULLING_DISTANCE 2000.0f     // Distance from player at which enemies are culled
 
 #endif // CONFIG_H
