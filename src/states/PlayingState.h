@@ -64,6 +64,8 @@ private:
     sf::Text returnButtonText;
     bool clientNeedsInitialValidation;
 float initialValidationTimer;
+int syncAttemptCount = 0; 
+bool enemySyncComplete = false;
     // Cursor locking
     bool cursorLocked;
     sf::Vector2i windowCenter;

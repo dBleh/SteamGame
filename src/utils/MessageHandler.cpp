@@ -168,6 +168,25 @@ std::string MessageHandler::FormatEnemyValidationMessage(const std::vector<int>&
     
     return oss.str();
 }
+
+std::string MessageHandler::FormatEnemyBatchRequestMessage(const std::vector<int>& enemyIds, ParsedMessage::EnemyType enemyType) {
+    std::stringstream ss;
+    ss << "ENEMY_BATCH_REQUEST|";
+    
+    // Add enemy type
+    ss << static_cast<int>(enemyType) << "|";
+    
+    // Add count of IDs
+    ss << enemyIds.size();
+    
+    // Add the IDs if any
+    for (int id : enemyIds) {
+        ss << "|" << id;
+    }
+    
+    return ss.str();
+}
+
 std::string MessageHandler::FormatEnemyClearMessage() {
     std::stringstream ss;
     ss << "EC|"; // EnemyClear message type
@@ -636,7 +655,18 @@ ParsedMessage MessageHandler::ParseMessage(const std::string& msg) {
     }else if (parts[0] == "EC") {
         parsed.type = MessageType::EnemyClear;
         // This message doesn't have any additional data
+    }// Replace the existing problematic part with this code:
+else if (parts[0] == "ENEMY_BATCH_REQUEST" && parts.size() >= 3) {
+    parsed.type = MessageType::EnemyBatchRequest;
+    parsed.enemyType = static_cast<ParsedMessage::EnemyType>(std::stoi(parts[1]));
+    int idCount = std::stoi(parts[2]);
+    
+    parsed.validEnemyIds.clear();
+    
+    // Parse the enemy IDs if any
+    for (int i = 0; i < idCount && i + 3 < parts.size(); ++i) {
+        parsed.validEnemyIds.push_back(std::stoi(parts[i + 3]));
     }
-
+}
     return parsed;
 }

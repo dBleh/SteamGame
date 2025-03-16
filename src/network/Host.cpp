@@ -56,6 +56,18 @@ void HostNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
         case MessageType::PlayerDeath:
             ProcessPlayerDeathMessage(parsed);
             break;
+        case MessageType::EnemyBatchRequest:
+            // Get the PlayingState and its unified EnemyManager
+            {
+                PlayingState* playingState = GetPlayingState(game);
+                if (playingState) {
+                    EnemyManager* enemyManager = playingState->GetEnemyManager();
+                    if (enemyManager) {
+                        enemyManager->HandleBatchRequest(parsed.validEnemyIds, parsed.enemyType, sender);
+                    }
+                }
+            }
+            break;
         case MessageType::PlayerRespawn:
             ProcessPlayerRespawnMessage(parsed);
             break;

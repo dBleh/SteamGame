@@ -31,7 +31,8 @@ enum class MessageType {
     ChunkStart,
     ChunkPart,
     ChunkEnd,
-    EnemyClear 
+    EnemyClear,
+    EnemyBatchRequest
 };
 
 struct ParsedMessage {
@@ -105,7 +106,8 @@ public:
     static std::string FormatWaveStartMessage(int waveNumber);
     static std::string FormatWaveCompleteMessage(int waveNumber);
     static std::string FormatWaveStartWithTypesMessage(int waveNumber, uint32_t seed, const std::vector<int>& typeInts);
-    
+    static std::string FormatEnemyBatchRequestMessage(const std::vector<int>& enemyIds, ParsedMessage::EnemyType enemyType = ParsedMessage::EnemyType::Regular);
+
     // Other enemy-related messages
     static std::string FormatPlayerDamageMessage(const std::string& playerID, int damage, int enemyId);
     static std::string FormatEnemyValidationMessage(const std::vector<int>& enemyIds);

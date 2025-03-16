@@ -52,7 +52,8 @@ public:
     
     void Update(float dt);
     void Render(sf::RenderWindow& window);
-    
+    void ValidateClientEnemyState(const std::vector<int>& validIds, ParsedMessage::EnemyType enemyType);
+void HandleBatchRequest(const std::vector<int>& enemyIds, ParsedMessage::EnemyType enemyType, CSteamID requesterId);
     // Wave management
     void StartNextWave();
     int GetCurrentWave() const { return currentWave; }

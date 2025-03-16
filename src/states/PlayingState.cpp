@@ -391,7 +391,7 @@ void PlayingState::Update(float dt) {
             CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
             
             if (myID != hostID && clientNetwork) {
-                std::cout << "[CLIENT] Requesting initial enemy validation\n";
+                std::cout << "[CLIENT] Starting staged enemy validation protocol\n";
                 
                 // First, clear all existing enemies to avoid duplicates
                 if (enemyManager) {
@@ -405,12 +405,14 @@ void PlayingState::Update(float dt) {
                 // Set up the multi-stage sync process
                 initialSyncStage = 1;
                 initialSyncTimer = 0.2f; // Wait a short time before next stage
+                syncAttemptCount = 0;
+                enemySyncComplete = false;
             }
         }
     }
     
     // Handle multi-stage initial sync
-    if (initialSyncStage > 0) {
+    if (initialSyncStage > 0 && !enemySyncComplete) {
         initialSyncTimer -= dt;
         if (initialSyncTimer <= 0.0f) {
             // Identify if we're a client
@@ -418,34 +420,69 @@ void PlayingState::Update(float dt) {
             CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
             
             if (myID != hostID && clientNetwork) {
-                if (initialSyncStage == 1) {
-                    // Second stage: request detailed positions after ID validation
-                    std::cout << "[CLIENT] Initial sync stage 2: requesting position details\n";
-                    
-                    // Request another validation to ensure we get positions too
-                    std::string validationMsg = MessageHandler::FormatEnemyValidationRequestMessage();
-                    game->GetNetworkManager().SendMessage(hostID, validationMsg);
-                    
-                    // Setup next stage
-                    initialSyncStage = 2;
-                    initialSyncTimer = 0.5f; // Wait longer for positions to arrive
-                }
-                else if (initialSyncStage == 2) {
-                    // Final verification stage
-                    std::cout << "[CLIENT] Initial sync stage 3: final verification\n";
-                    
-                    // One last validation to catch any missed enemies
-                    std::string validationMsg = MessageHandler::FormatEnemyValidationRequestMessage();
-                    game->GetNetworkManager().SendMessage(hostID, validationMsg);
-                    
-                    // Complete the process
+                // Increase attempt count
+                syncAttemptCount++;
+                
+                if (syncAttemptCount >= 5) {
+                    // Give up after 5 attempts
+                    std::cout << "[CLIENT] Enemy sync protocol timed out after " << syncAttemptCount << " attempts\n";
                     initialSyncStage = 0;
-                    std::cout << "[CLIENT] Initial sync process completed\n";
+                    enemySyncComplete = true;
+                } else {
+                    if (initialSyncStage == 1) {
+                        // Second stage: request detailed positions after ID validation
+                        std::cout << "[CLIENT] Initial sync stage " << initialSyncStage << ": requesting position details (attempt " << syncAttemptCount << ")\n";
+                        
+                        // Request another validation to ensure we get positions too
+                        std::string validationMsg = MessageHandler::FormatEnemyValidationRequestMessage();
+                        game->GetNetworkManager().SendMessage(hostID, validationMsg);
+                        
+                        // Setup next stage
+                        initialSyncStage = 2;
+                        initialSyncTimer = 0.3f; // Wait for positions to arrive
+                    }
+                    else if (initialSyncStage == 2) {
+                        // Third stage: request batch data for any missing enemies
+                        std::cout << "[CLIENT] Initial sync stage " << initialSyncStage << ": requesting batch data (attempt " << syncAttemptCount << ")\n";
+                        
+                        // Request enemy batch spawn information
+                        std::string batchMsg = MessageHandler::FormatEnemyBatchRequestMessage({}, ParsedMessage::EnemyType::Regular);
+                        game->GetNetworkManager().SendMessage(hostID, batchMsg);
+                        
+                        // Request triangle batch data too
+                        std::string triangleBatchMsg = MessageHandler::FormatEnemyBatchRequestMessage({}, ParsedMessage::EnemyType::Triangle);
+                        game->GetNetworkManager().SendMessage(hostID, triangleBatchMsg);
+                        
+                        // Setup final verification stage
+                        initialSyncStage = 3;
+                        initialSyncTimer = 0.3f;
+                    }
+                    else if (initialSyncStage == 3) {
+                        // Final verification stage
+                        std::cout << "[CLIENT] Initial sync stage " << initialSyncStage << ": final verification (attempt " << syncAttemptCount << ")\n";
+                        
+                        // One last validation to catch any missed enemies
+                        std::string validationMsg = MessageHandler::FormatEnemyValidationRequestMessage();
+                        game->GetNetworkManager().SendMessage(hostID, validationMsg);
+                        
+                        // Check if we need another attempt
+                        if (syncAttemptCount >= 3) {
+                            // After 3 complete cycles, consider it done regardless
+                            initialSyncStage = 0;
+                            enemySyncComplete = true;
+                            std::cout << "[CLIENT] Initial sync process completed after " << syncAttemptCount << " attempts\n";
+                        } else {
+                            // Loop back to first stage for another complete cycle
+                            initialSyncStage = 1;
+                            initialSyncTimer = 0.3f;
+                        }
+                    }
                 }
             }
             else {
                 // If we somehow get here as host, just exit the process
                 initialSyncStage = 0;
+                enemySyncComplete = true;
             }
         }
     }

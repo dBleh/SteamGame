@@ -1294,51 +1294,58 @@ int EnemyManager::GetTriangleEnemyHealth(int id) const {
 }
 
 void EnemyManager::ValidateTriangleEnemyList(const std::vector<int>& validIds) {
-    // First, identify triangle enemies that shouldn't exist
-    std::vector<int> localIds = GetAllTriangleEnemyIds();
-    std::vector<int> toRemove;
+    // Check if we're a client or host
+    CSteamID localSteamID = SteamUser()->GetSteamID();
+    CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+    bool isClient = (localSteamID != hostID);
     
-    // Find IDs in our local list that aren't in the valid list
-    for (int localId : localIds) {
-        bool found = false;
-        for (int validId : validIds) {
-            if (localId == validId) {
-                found = true;
-                break;
+    if (isClient) {
+        // For clients, use the new improved validation method
+        ValidateClientEnemyState(validIds, ParsedMessage::EnemyType::Triangle);
+    } else {
+        // Hosts use the original validation method
+        // First, identify triangle enemies that shouldn't exist
+        std::vector<int> localIds = GetAllTriangleEnemyIds();
+        std::vector<int> toRemove;
+        
+        // Find IDs in our local list that aren't in the valid list
+        for (int localId : localIds) {
+            bool found = false;
+            for (int validId : validIds) {
+                if (localId == validId) {
+                    found = true;
+                    break;
+                }
+            }
+            
+            if (!found) {
+                toRemove.push_back(localId);
             }
         }
         
-        if (!found) {
-            toRemove.push_back(localId);
+        // Remove triangle enemies that shouldn't exist
+        for (int id : toRemove) {
+            std::cout << "[HOST] Removing invalid triangle enemy: " << id << std::endl;
+            // Find and remove the specific triangle enemy
+            for (auto it = triangleEnemies.begin(); it != triangleEnemies.end(); ) {
+                if (it->GetID() == id) {
+                    it = triangleEnemies.erase(it);
+                } else {
+                    ++it;
+                }
+            }
         }
-    }
-    
-    // Remove triangle enemies that shouldn't exist
-    for (int id : toRemove) {
-        std::cout << "[CLIENT] Removing ghost triangle enemy: " << id << std::endl;
-        // Find and remove the specific triangle enemy
-        for (auto it = triangleEnemies.begin(); it != triangleEnemies.end(); ) {
-            if (it->GetID() == id) {
-                it = triangleEnemies.erase(it);
-            } else {
-                ++it;
+        
+        // Check for missing triangle enemies that should exist
+        for (int validId : validIds) {
+            if (!HasTriangleEnemy(validId)) {
+                // Create placeholder triangle enemy at (0,0) that will get updated
+                // in the next position sync
+                AddTriangleEnemy(validId, sf::Vector2f(0.f, 0.f));
             }
         }
     }
-    
-    // Now check for missing triangle enemies that should exist
-    for (int validId : validIds) {
-        if (!HasTriangleEnemy(validId)) {
-            // Request the enemy's data from the host
-            std::cout << "[CLIENT] Requesting missing triangle enemy: " << validId << std::endl;
-            
-            // Create a placeholder triangle enemy at (0,0) that will get updated
-            // in the next position sync
-            AddTriangleEnemy(validId, sf::Vector2f(0.f, 0.f));
-        }
-    }
 }
-
 void EnemyManager::UpdateTriangleEnemyHealth(int id, int health) {
     TriangleEnemy* enemy = GetTriangleEnemy(id);
     if (enemy && enemy->IsAlive()) {
@@ -1428,7 +1435,14 @@ void EnemyManager::UpdateTriangleEnemyPositions(const std::vector<std::tuple<int
 
 void EnemyManager::HandleTriangleEnemyHit(int enemyId, int damage, bool killed, const std::string& shooterID) {
     TriangleEnemy* enemy = GetTriangleEnemy(enemyId);
-    if (!enemy || !enemy->IsAlive()) {
+    if (!enemy) {
+        // Handle non-existent enemy case - log but don't crash
+        std::cout << "[CLIENT] Cannot handle hit for non-existent triangle enemy: " << enemyId << std::endl;
+        return;
+    }
+    
+    if (!enemy->IsAlive()) {
+        // Enemy already dead, just ignore this hit
         return;
     }
     
@@ -1448,6 +1462,9 @@ void EnemyManager::HandleTriangleEnemyHit(int enemyId, int damage, bool killed, 
             if (!shooterID.empty()) {
                 RewardShooter(shooterID, EnemyType::Triangle);
             }
+        } else if (!killed) {
+            // Apply damage if enemy isn't supposed to be killed
+            enemy->TakeDamage(damage);
         }
         
         // Force update visuals
@@ -1468,6 +1485,86 @@ void EnemyManager::HandleTriangleEnemyHit(int enemyId, int damage, bool killed, 
     }
 }
 
+void EnemyManager::HandleBatchRequest(const std::vector<int>& enemyIds, ParsedMessage::EnemyType enemyType, CSteamID requesterId) {
+    // Only the host should respond to batch requests
+    CSteamID localSteamID = SteamUser()->GetSteamID();
+    CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+    
+    if (localSteamID != hostID) {
+        return;
+    }
+    
+    std::vector<std::tuple<int, sf::Vector2f, int>> batchData;
+    
+    // If no specific IDs requested, send all enemies of the requested type
+    if (enemyIds.empty()) {
+        if (enemyType == ParsedMessage::EnemyType::Triangle) {
+            // Send all triangle enemies
+            for (const auto& enemy : triangleEnemies) {
+                if (enemy.IsAlive()) {
+                    batchData.emplace_back(
+                        enemy.GetID(),
+                        enemy.GetPosition(),
+                        enemy.GetHealth()
+                    );
+                }
+            }
+        } else {
+            // Send all regular enemies
+            for (const auto& entry : enemies) {
+                if (entry.enemy && entry.enemy->IsAlive() && 
+                    entry.type == EnemyType::Rectangle) {
+                    batchData.emplace_back(
+                        entry.GetID(),
+                        entry.GetPosition(),
+                        entry.GetHealth()
+                    );
+                }
+            }
+        }
+    } else {
+        // Send only the requested enemy IDs
+        if (enemyType == ParsedMessage::EnemyType::Triangle) {
+            // Find and send requested triangle enemies
+            for (int id : enemyIds) {
+                for (const auto& enemy : triangleEnemies) {
+                    if (enemy.GetID() == id && enemy.IsAlive()) {
+                        batchData.emplace_back(
+                            id,
+                            enemy.GetPosition(),
+                            enemy.GetHealth()
+                        );
+                        break;
+                    }
+                }
+            }
+        } else {
+            // Find and send requested regular enemies
+            for (int id : enemyIds) {
+                auto it = enemyIdToIndex.find(id);
+                if (it != enemyIdToIndex.end() && it->second < enemies.size() && 
+                    enemies[it->second].enemy && enemies[it->second].enemy->IsAlive()) {
+                    batchData.emplace_back(
+                        id,
+                        enemies[it->second].GetPosition(),
+                        enemies[it->second].GetHealth()
+                    );
+                }
+            }
+        }
+    }
+    
+    // Send the batch data if not empty
+    if (!batchData.empty()) {
+        std::string batchMsg = MessageHandler::FormatEnemyBatchSpawnMessage(
+            batchData, enemyType);
+        game->GetNetworkManager().SendMessage(requesterId, batchMsg);
+        
+        std::cout << "[HOST] Sent batch data for " << batchData.size() 
+                  << " " << (enemyType == ParsedMessage::EnemyType::Triangle ? "triangle" : "regular") 
+                  << " enemies to requester" << std::endl;
+    }
+}
 bool EnemyManager::HasTriangleEnemy(int id) const {
     for (const auto& enemy : triangleEnemies) {
         if (enemy.GetID() == id) {
@@ -1525,7 +1622,105 @@ std::vector<std::tuple<int, sf::Vector2f, int, int>> EnemyManager::GetEnemyDataF
     
     return enemyData;
 }
-
+// Add this method to EnemyManager.cpp
+void EnemyManager::ValidateClientEnemyState(const std::vector<int>& validIds, ParsedMessage::EnemyType enemyType) {
+    // Convert vector of IDs to a set for faster lookup
+    std::unordered_set<int> validIdSet(validIds.begin(), validIds.end());
+    
+    // Track which IDs are present locally
+    std::unordered_set<int> localIdSet;
+    std::vector<int> missingIds;
+    
+    if (enemyType == ParsedMessage::EnemyType::Triangle) {
+        // For triangle enemies
+        // First collect all local IDs
+        for (const auto& enemy : triangleEnemies) {
+            int id = enemy.GetID();
+            localIdSet.insert(id);
+            
+            // Mark if enemy isn't in the valid list
+            if (validIdSet.find(id) == validIdSet.end()) {
+                // This is a ghost enemy that should be removed
+                std::cout << "[CLIENT] Found invalid triangle enemy: " << id << std::endl;
+            }
+        }
+        
+        // Find missing enemies - those in valid list but not local
+        for (int validId : validIds) {
+            if (localIdSet.find(validId) == localIdSet.end()) {
+                missingIds.push_back(validId);
+            }
+        }
+        
+        // Remove invalid triangle enemies in one batch
+        triangleEnemies.erase(
+            std::remove_if(triangleEnemies.begin(), triangleEnemies.end(),
+                [&validIdSet](const TriangleEnemy& enemy) {
+                    return validIdSet.find(enemy.GetID()) == validIdSet.end();
+                }),
+            triangleEnemies.end());
+        
+        // Request creation for missing enemies (but don't create them yet to avoid ghosts)
+        if (!missingIds.empty()) {
+            std::cout << "[CLIENT] Requesting " << missingIds.size() << " missing triangle enemies" << std::endl;
+            
+            // Request detailed data for these enemies
+            CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+            std::string requestMsg = MessageHandler::FormatEnemyBatchRequestMessage(missingIds, ParsedMessage::EnemyType::Triangle);
+            game->GetNetworkManager().SendMessage(hostID, requestMsg);
+        }
+    }
+    else {
+        // For regular enemies
+        // First collect all local IDs
+        for (const auto& entry : enemies) {
+            if (entry.enemy && entry.enemy->IsAlive()) {
+                int id = entry.GetID();
+                localIdSet.insert(id);
+                
+                // Mark if enemy isn't in the valid list
+                if (validIdSet.find(id) == validIdSet.end()) {
+                    // This is a ghost enemy that should be removed
+                    std::cout << "[CLIENT] Found invalid regular enemy: " << id << std::endl;
+                }
+            }
+        }
+        
+        // Find missing enemies - those in valid list but not local
+        for (int validId : validIds) {
+            if (localIdSet.find(validId) == localIdSet.end()) {
+                missingIds.push_back(validId);
+            }
+        }
+        
+        // Mark invalid regular enemies for removal
+        std::vector<int> idsToRemove;
+        for (const auto& entry : enemies) {
+            if (entry.enemy && entry.enemy->IsAlive()) {
+                int id = entry.GetID();
+                if (validIdSet.find(id) == validIdSet.end()) {
+                    idsToRemove.push_back(id);
+                }
+            }
+        }
+        
+        // Remove them in one batch
+        for (int id : idsToRemove) {
+            std::cout << "[CLIENT] Removing invalid regular enemy: " << id << std::endl;
+            RemoveEnemy(id);
+        }
+        
+        // Request creation for missing enemies (but don't create them yet to avoid ghosts)
+        if (!missingIds.empty()) {
+            std::cout << "[CLIENT] Requesting " << missingIds.size() << " missing regular enemies" << std::endl;
+            
+            // Request detailed data for these enemies
+            CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+            std::string requestMsg = MessageHandler::FormatEnemyBatchRequestMessage(missingIds, ParsedMessage::EnemyType::Regular);
+            game->GetNetworkManager().SendMessage(hostID, requestMsg);
+        }
+    }
+}
 void EnemyManager::SyncFullEnemyList() {
     // Static variable to track the last sync time
     static auto lastFullSyncTime = std::chrono::steady_clock::now() - std::chrono::seconds(10);
@@ -1698,35 +1893,44 @@ void EnemyManager::SyncFullEnemyList() {
 }
 
 void EnemyManager::ValidateEnemyList(const std::vector<int>& validIds) {
-    // Create a set for faster lookups
-    std::unordered_set<int> validIdSet(validIds.begin(), validIds.end());
-    std::vector<int> toRemove;
+    // Check if we're a client or host
+    CSteamID localSteamID = SteamUser()->GetSteamID();
+    CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+    bool isClient = (localSteamID != hostID);
     
-    // Find enemies that shouldn't exist
-    for (auto& entry : enemies) {
-        if (entry.enemy) {
-            int id = entry.GetID();
-            if (validIdSet.find(id) == validIdSet.end()) {
-                toRemove.push_back(id);
+    if (isClient) {
+        // For clients, use the new improved validation method
+        ValidateClientEnemyState(validIds, ParsedMessage::EnemyType::Regular);
+    } else {
+        // Hosts use the original validation method
+        std::unordered_set<int> validIdSet(validIds.begin(), validIds.end());
+        std::vector<int> toRemove;
+        
+        // Find enemies that shouldn't exist
+        for (auto& entry : enemies) {
+            if (entry.enemy) {
+                int id = entry.GetID();
+                if (validIdSet.find(id) == validIdSet.end()) {
+                    toRemove.push_back(id);
+                }
+            }
+        }
+        
+        // Remove invalid enemies
+        for (int id : toRemove) {
+            RemoveEnemy(id);
+        }
+        
+        // Find missing enemies
+        for (int validId : validIds) {
+            if (enemyIdToIndex.find(validId) == enemyIdToIndex.end()) {
+                // Missing enemy - add a placeholder at origin
+                // It will be updated with correct position in next sync
+                AddEnemy(validId, sf::Vector2f(0, 0), EnemyType::Rectangle);
             }
         }
     }
-    
-    // Remove invalid enemies
-    for (int id : toRemove) {
-        RemoveEnemy(id);
-    }
-    
-    // Find missing enemies
-    for (int validId : validIds) {
-        if (enemyIdToIndex.find(validId) == enemyIdToIndex.end()) {
-            // Missing enemy - add a placeholder at origin
-            // It will be updated with correct position in next sync
-            AddEnemy(validId, sf::Vector2f(0, 0), EnemyType::Rectangle);
-        }
-    }
 }
-
 std::vector<int> EnemyManager::GetAllEnemyIds() const {
     std::vector<int> ids;
     for (const auto& entry : enemies) {
