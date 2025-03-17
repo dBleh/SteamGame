@@ -51,6 +51,9 @@ public:
         }
     }
 private:
+    // Add zoom-related variables
+    float currentZoom = DEFAULT_ZOOM;
+    void HandleZoom(float delta);
     void ProcessEvents(sf::Event& event);
     void AdjustViewToWindow();
     float deltaTime = 0.f;

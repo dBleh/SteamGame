@@ -35,9 +35,11 @@ Game::Game() : hud(font) {
     inputHandler = std::make_shared<InputHandler>(settingsManager);
 
     // Initialize camera for game world
+       
     camera.setSize(BASE_WIDTH, BASE_HEIGHT);
     camera.setCenter(BASE_WIDTH / 2.f, BASE_HEIGHT / 2.f);  // Initial center
-    
+    currentZoom = DEFAULT_ZOOM; 
+
     // Initialize UI view with base resolution
     uiView.setSize(BASE_WIDTH, BASE_HEIGHT);
     uiView.setCenter(BASE_WIDTH / 2.f, BASE_HEIGHT / 2.f);
@@ -175,6 +177,7 @@ void Game::SetCurrentState(GameState newState) {
     std::cout << "[GAME] Switched to state: " << static_cast<int>(currentState) << std::endl;
 }
 
+// In Game.cpp - modify the ProcessEvents method to handle mouse wheel events
 void Game::ProcessEvents(sf::Event& event) {
     if (event.type == sf::Event::Closed) {
         window.close();
@@ -201,16 +204,64 @@ void Game::ProcessEvents(sf::Event& event) {
     if (event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::R) {
         std::cout << "Triggering ready state" << std::endl;
     }
+    
+    // Handle mouse wheel scrolling for zoom
+    if (event.type == sf::Event::MouseWheelScrolled && event.mouseWheelScroll.wheel == sf::Mouse::VerticalWheel) {
+        // Negative delta means scroll down (zoom out), positive means scroll up (zoom in)
+        HandleZoom(-event.mouseWheelScroll.delta * ZOOM_SPEED);
+    }
 }
 
+// In Game.cpp - add the HandleZoom method
+void Game::HandleZoom(float delta) {
+    // Get mouse position before zoom for centering
+    sf::Vector2i mousePos = sf::Mouse::getPosition(window);
+    sf::Vector2f worldPos = window.mapPixelToCoords(mousePos, camera);
+    
+    // Apply zoom change
+    float newZoom = currentZoom + delta;
+    
+    // Clamp zoom to min/max values
+    newZoom = std::max(MIN_ZOOM, std::min(MAX_ZOOM, newZoom));
+    
+    // Only update if zoom actually changed
+    if (newZoom != currentZoom) {
+        // Store new zoom level
+        currentZoom = newZoom;
+        
+        // Update camera size based on zoom
+        sf::Vector2u windowSize = window.getSize();
+        float viewWidth = windowSize.x / currentZoom;
+        float viewHeight = windowSize.y / currentZoom;
+        
+        // Set new view size
+        camera.setSize(viewWidth, viewHeight);
+        
+        // Center around mouse position
+        if (currentState == GameState::Playing) {
+            // Get the new world position of the mouse
+            sf::Vector2f newWorldPos = window.mapPixelToCoords(mousePos, camera);
+            
+            // Adjust the camera position to keep the mouse over the same world position
+            sf::Vector2f cameraDelta = worldPos - newWorldPos;
+            camera.setCenter(camera.getCenter() + cameraDelta);
+        }
+        
+        std::cout << "Zoom level: " << currentZoom << std::endl;
+    }
+}
+
+// In Game.cpp - modify AdjustViewToWindow method
 void Game::AdjustViewToWindow() {
     sf::Vector2u windowSize = window.getSize();
     
     // Game world camera - shows more of the world when window is larger
-    camera.setSize(static_cast<float>(windowSize.x), static_cast<float>(windowSize.y));
+    // Apply zoom factor to the camera size
+    camera.setSize(static_cast<float>(windowSize.x) / currentZoom, 
+                  static_cast<float>(windowSize.y) / currentZoom);
     camera.setCenter(camera.getCenter()); // Preserve current center
     
-    // UI view - fixed size that doesn't scale
+    // UI view - fixed size that doesn't scale - NOT affected by zoom
     uiView.setSize(BASE_WIDTH, BASE_HEIGHT);
     uiView.setCenter(BASE_WIDTH / 2.0f, BASE_HEIGHT / 2.0f);
     
