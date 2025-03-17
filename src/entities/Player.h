@@ -40,8 +40,21 @@ public:
     // New getter for health
     int GetHealth() const { return health; }
     float GetShootCooldown() const;
-
+    float GetBulletSpeedMultiplier() const { return bulletSpeedMultiplier; }
+    void SetBulletSpeedMultiplier(float multiplier) { bulletSpeedMultiplier = multiplier; }
+    
+    float GetMoveSpeedMultiplier() const { return moveSpeedMultiplier; }
+    void SetMoveSpeedMultiplier(float multiplier) { moveSpeedMultiplier = multiplier; }
+    
+    float GetMaxHealth() const { return maxHealth; }
+    void SetMaxHealth(float newMaxHealth) { maxHealth = newMaxHealth; }
+    
+    // Also make sure there's a SetHealth method to update the player's health directly
+    void SetHealth(float newHealth) { health = std::min(newHealth, maxHealth); }
 private:
+    float bulletSpeedMultiplier = 1.0f;
+    float moveSpeedMultiplier = 1.0f;
+    float maxHealth = PLAYER_HEALTH;
     sf::RectangleShape shape;
     float movementSpeed;
     float shootCooldown;

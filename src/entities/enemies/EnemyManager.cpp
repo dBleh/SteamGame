@@ -27,6 +27,11 @@ void EnemyManager::Update(float dt) {
     // Skip updates if paused or not in gameplay
     if (game->GetCurrentState() != GameState::Playing) return;
     
+    // Update batch spawning if needed
+    if (remainingEnemiesInWave > 0) {
+        UpdateSpawning(dt);
+    }
+    
     // Update all enemies
     for (auto& pair : enemies) {
         pair.second->Update(dt, *playerManager);
@@ -320,10 +325,6 @@ void EnemyManager::StartNewWave(int enemyCount, EnemyType type) {
     }
 }
 
-bool EnemyManager::IsWaveComplete() const {
-    return enemies.empty();
-}
-
 void EnemyManager::OptimizeEnemyList() {
     // Remove enemies that are very far from all players
     auto& players = playerManager->GetPlayers();
@@ -472,4 +473,84 @@ void EnemyManager::RemoveEnemiesNotInList(const std::vector<int>& validIds) {
 Enemy* EnemyManager::FindEnemy(int id) {
     auto it = enemies.find(id);
     return (it != enemies.end()) ? it->second.get() : nullptr;
+}
+
+void EnemyManager::ProcessBatchSpawning(float dt) {
+    // Update batch timer
+    batchSpawnTimer += dt;
+    
+    // Check if it's time to spawn a batch
+    if (batchSpawnTimer >= ENEMY_SPAWN_BATCH_INTERVAL) {
+        // Reset timer
+        batchSpawnTimer = 0.0f;
+        
+        // Calculate how many enemies to spawn in this batch
+        int spawnCount = std::min(ENEMY_SPAWN_BATCH_SIZE, enemiesRemainingToSpawn);
+        if (spawnCount > 0) {
+            // Debug log
+            std::cout << "[WAVE] Spawning batch of " << spawnCount 
+                      << " enemies. Remaining after batch: " 
+                      << (enemiesRemainingToSpawn - spawnCount) << std::endl;
+            
+            // Spawn the batch
+            for (int i = 0; i < spawnCount; ++i) {
+                // Randomly select a player position to spawn relative to
+                sf::Vector2f targetPos = playerPositionsCache[rand() % playerPositionsCache.size()];
+                
+                // Get a spawn position away from the player
+                sf::Vector2f spawnPos = GetRandomSpawnPosition(targetPos, 
+                                                             TRIANGLE_MIN_SPAWN_DISTANCE, 
+                                                             TRIANGLE_MAX_SPAWN_DISTANCE);
+                
+                // Add the enemy
+                AddEnemy(currentWaveEnemyType, spawnPos);
+            }
+            
+            // Update remaining count
+            enemiesRemainingToSpawn -= spawnCount;
+        }
+    }
+}
+
+bool EnemyManager::IsWaveComplete() const {
+    // A wave is complete when all enemies have been spawned and eliminated
+    return enemies.empty() && enemiesRemainingToSpawn == 0;
+}
+
+void EnemyManager::UpdateSpawning(float dt) {
+    // Update batch timer
+    batchSpawnTimer += dt;
+    
+    // Check if it's time to spawn a batch
+    if (batchSpawnTimer >= ENEMY_SPAWN_BATCH_INTERVAL) {
+        // Reset timer
+        batchSpawnTimer = 0.0f;
+        
+        // Calculate how many enemies to spawn in this batch
+        int spawnCount = std::min(ENEMY_SPAWN_BATCH_SIZE, remainingEnemiesInWave);
+        
+        if (spawnCount > 0) {
+            // Debug log
+            std::cout << "[WAVE] Spawning batch of " << spawnCount 
+                      << " enemies. Remaining after batch: " 
+                      << (remainingEnemiesInWave - spawnCount) << std::endl;
+            
+            // Spawn the batch
+            for (int i = 0; i < spawnCount; ++i) {
+                // Randomly select a player position to spawn relative to
+                sf::Vector2f targetPos = playerPositionsCache[rand() % playerPositionsCache.size()];
+                
+                // Get a spawn position away from the player
+                sf::Vector2f spawnPos = GetRandomSpawnPosition(targetPos, 
+                                                             TRIANGLE_MIN_SPAWN_DISTANCE, 
+                                                             TRIANGLE_MAX_SPAWN_DISTANCE);
+                
+                // Add the enemy
+                AddEnemy(currentWaveEnemyType, spawnPos);
+            }
+            
+            // Update remaining count
+            remainingEnemiesInWave -= spawnCount;
+        }
+    }
 }

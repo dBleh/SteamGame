@@ -16,6 +16,7 @@ enum class GameAction {
     ToggleCursorLock,
     ShowLeaderboard,
     OpenMenu,
+    ShowShop, 
     // Add more actions as needed
 };
 

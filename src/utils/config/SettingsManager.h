@@ -20,6 +20,7 @@ struct GameSettings {
     sf::Keyboard::Key toggleGrid = sf::Keyboard::G;
     sf::Keyboard::Key toggleCursorLock = sf::Keyboard::L;
     sf::Keyboard::Key toggleReady = sf::Keyboard::R;
+    sf::Keyboard::Key showShop = sf::Keyboard::B; 
     
     // Other settings can be added here in the future
     bool showFPS = true;

@@ -360,9 +360,6 @@ void PlayerManager::IncrementPlayerKills(const std::string& playerID) {
         
         // Also reward the player with some money (already set in the original code)
         players[playerID].money += 50;
-        
-        std::cout << "[STATS] Player " << playerID << " now has " << players[playerID].kills 
-                  << " kills and " << players[playerID].money << " money" << std::endl;
     }
 }
 const std::vector<Bullet>& PlayerManager::GetAllBullets() const {

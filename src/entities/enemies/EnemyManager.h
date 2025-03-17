@@ -42,10 +42,12 @@ public:
     
     // Wave management
     void StartNewWave(int enemyCount, EnemyType type = EnemyType::Triangle);
+    void UpdateSpawning(float dt);
     int GetCurrentWave() const { return currentWave; }
     void SetCurrentWave(int wave) { currentWave = wave; }
     bool IsWaveComplete() const;
-    
+    bool IsWaveSpawning() const { return remainingEnemiesInWave > 0; }
+    void ProcessBatchSpawning(float dt);
     // Performance optimization
     void OptimizeEnemyList();
 
@@ -59,7 +61,11 @@ private:
     float syncTimer;
     float fullSyncTimer;
     int currentWave;
-    
+    int remainingEnemiesInWave = 0;
+    float batchSpawnTimer = 0.0f;
+    EnemyType currentWaveEnemyType = EnemyType::Triangle;
+    std::vector<sf::Vector2f> playerPositionsCache;
+    int enemiesRemainingToSpawn  = 0;
     // Spawn and position helpers
     sf::Vector2f GetRandomSpawnPosition(const sf::Vector2f& targetPosition, float minDistance, float maxDistance);
     bool IsValidSpawnPosition(const sf::Vector2f& position);

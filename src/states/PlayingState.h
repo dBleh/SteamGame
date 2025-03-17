@@ -14,6 +14,7 @@ class PlayerManager;
 class PlayerRenderer;
 class HostNetwork;
 class ClientNetwork;
+class Shop; // Forward declaration for Shop
 
 class PlayingState : public State {
 public:
@@ -28,8 +29,14 @@ public:
     // Enemy management methods
     EnemyManager* GetEnemyManager() { return enemyManager.get(); }
     void StartWave(int enemyCount);
+    
+    // Static method to access the shop instance
+    static Shop* GetShopInstance() { return shopInstance; }
 
 private:
+    // Static shop instance
+    static Shop* shopInstance;
+    
     void AttemptShoot(int mouseX, int mouseY);
     void ProcessEvents(const sf::Event& event);
     void UpdatePlayerStats();
@@ -72,6 +79,10 @@ private:
     bool isDeathTimerVisible;   
     // Leaderboard
     bool showLeaderboard;
+
+    // Shop system
+    std::unique_ptr<Shop> shop;
+    bool showShop;
 };
 
 #endif // PLAYING_STATE_H

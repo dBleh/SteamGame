@@ -24,6 +24,7 @@ enum class InputAction {
     ShowMenu,
     ToggleGrid,
     ToggleCursorLock,
+    ShowShop,  
 };
 
 // Class to handle input and process it according to the current game settings

@@ -36,9 +36,11 @@
 
 // Wave configuration
 #define FIRST_WAVE_ENEMY_COUNT 5           // Number of enemies in first wave
-#define BASE_ENEMIES_PER_WAVE 50          // Base number of enemies per wave (after first)
-#define ENEMIES_SCALE_PER_WAVE 100           // Additional enemies per wave number
+#define BASE_ENEMIES_PER_WAVE 500          // Base number of enemies per wave (after first)
+#define ENEMIES_SCALE_PER_WAVE 400         // Additional enemies per wave number
 #define WAVE_COOLDOWN_TIME 2.0f            // Seconds between waves
+#define ENEMY_SPAWN_BATCH_SIZE 20          // Number of enemies to spawn in a single batch
+#define ENEMY_SPAWN_BATCH_INTERVAL 0.05f   // Time between spawning batches in seconds
 
 // UI Colors
 // Light gray similar to Claude's background - RGB(249, 249, 249)
@@ -59,7 +61,21 @@ constexpr int BASE_HEIGHT = 720;
 
 // Enemy system performance optimization constants
 #define MAX_ENEMIES_PER_UPDATE 10          // Max enemies to update in a single sync message
-#define MAX_ENEMIES_SPAWNABLE 100000         // Maximum enemies allowed in the game
+#define MAX_ENEMIES_SPAWNABLE 100000       // Maximum enemies allowed in the game
 #define ENEMY_CULLING_DISTANCE 2000.0f     // Distance from player at which enemies are culled
+
+// Shop core gameplay settings
+#define SHOP_DEFAULT_MAX_LEVEL 500         // Default maximum level for shop items
+#define SHOP_COST_INCREMENT 10             // Cost increases by this amount per level
+
+// Shop item base costs
+#define SHOP_BULLET_SPEED_BASE_COST 20
+#define SHOP_MOVE_SPEED_BASE_COST 15
+#define SHOP_HEALTH_BASE_COST 25
+
+// Shop upgrade multipliers
+#define SHOP_BULLET_SPEED_MULTIPLIER 0.1f  // 10% increase per level
+#define SHOP_MOVE_SPEED_MULTIPLIER 0.08f   // 8% increase per level
+#define SHOP_HEALTH_INCREASE 20.0f         // Health increase per level
 
 #endif // CONFIG_H

@@ -1,5 +1,5 @@
 #include "InputHandler.h" // Include the settings manager header
-#include "../utils/SettingsManager.h" // Include the settings manager header
+#include "../config/SettingsManager.h" // Include the settings manager header
 InputHandler::InputHandler(std::shared_ptr<SettingsManager> settingsManager)
     : settingsManager(settingsManager), currentSettings(&settingsManager->GetSettings()) {
     // Initialize key states
@@ -27,7 +27,7 @@ void InputHandler::UpdateKeyBindings() {
     if (currentSettings->shoot != sf::Keyboard::Unknown) {
         keyState[currentSettings->shoot] = false;
     }
-    
+    keyState[currentSettings->showShop] = false;
     keyState[currentSettings->showLeaderboard] = false;
     keyState[currentSettings->showMenu] = false;
     keyState[currentSettings->toggleGrid] = false;
@@ -178,6 +178,8 @@ sf::Keyboard::Key InputHandler::GetKeyForAction(InputAction action) const {
             return currentSettings->shoot;
         case InputAction::ShowLeaderboard:
             return currentSettings->showLeaderboard;
+        case InputAction::ShowShop:
+            return currentSettings->showShop;
         case InputAction::ShowMenu:
             return currentSettings->showMenu;
         case InputAction::ToggleGrid:

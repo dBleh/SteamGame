@@ -17,6 +17,7 @@ void InputManager::InitializeDefaultBindings() {
     keyBindings[GameAction::ToggleCursorLock] = sf::Keyboard::L;
     keyBindings[GameAction::ShowLeaderboard] = sf::Keyboard::Tab;
     keyBindings[GameAction::OpenMenu] = sf::Keyboard::Escape;
+    keyBindings[GameAction::ShowShop] = sf::Keyboard::B;
 }
 
 sf::Keyboard::Key InputManager::GetKeyBinding(GameAction action) const {

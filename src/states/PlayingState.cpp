@@ -6,11 +6,12 @@
 #include "../entities/enemies/Enemy.h"
 #include "../network/Host.h"
 #include "../network/Client.h"
+#include "shop/Shop.h"
 #include "../render/PlayerRenderer.h"
 #include "../network/messages/MessageHandler.h"
 #include <steam/steam_api.h>
 #include <iostream>
-
+Shop* PlayingState::shopInstance = nullptr;
 PlayingState::PlayingState(Game* game)
     : State(game), 
       playerLoaded(false), 
@@ -23,6 +24,7 @@ PlayingState::PlayingState(Game* game)
       cursorLocked(true),
       showEscapeMenu(false),
       waveTimer(0.0f),
+      showShop(false),
       waitingForNextWave(false) {
     
     std::cout << "[DEBUG] PlayingState constructor start\n";
@@ -148,6 +150,13 @@ PlayingState::PlayingState(Game* game)
                              GameState::Playing, 
                              HUD::RenderMode::ScreenSpace, false);
     game->GetHUD().updateBaseColor("leaderboard", sf::Color::White);
+    // Shop hint
+    game->GetHUD().addElement("shopHint", "B - Open Shop", 16, 
+        sf::Vector2f(30.0f + spacing * 4, controlsY), 
+        GameState::Playing, 
+        HUD::RenderMode::ScreenSpace, true,
+        "bottomBarLine", "");
+    game->GetHUD().updateBaseColor("shopHint", sf::Color::Black);
     
     // ===== ESCAPE MENU SETUP =====
     // Background panel with modern styling
@@ -229,6 +238,10 @@ PlayingState::PlayingState(Game* game)
     // Check if we're the client
     bool isClient = (myID != hostIDSteam);
 
+    // Initialize the static Shop pointer
+    shop = std::make_unique<Shop>(game, playerManager.get());
+    shopInstance = shop.get();
+
     // ===== NETWORK SETUP =====
     // Create networking components last, so they can use the other managers
     if (myID == hostIDSteam) {
@@ -277,15 +290,16 @@ PlayingState::~PlayingState() {
     game->GetWindow().setMouseCursorGrabbed(false);
     
     // Clean up components in the correct order to avoid any crashes
+    shopInstance = nullptr; // Clear static pointer first
+    shop.reset(); // Then reset the unique_ptr
     hostNetwork.reset();
     clientNetwork.reset();
-    enemyManager.reset();  // Clean up enemy manager before player manager
+    enemyManager.reset();
     playerRenderer.reset();
     playerManager.reset();
     
     std::cout << "[DEBUG] PlayingState destructor completed\n";
 }
-
 bool PlayingState::isPointInRect(const sf::Vector2f& point, const sf::FloatRect& rect) {
     return point.x >= rect.left && point.x <= rect.left + rect.width &&
            point.y >= rect.top && point.y <= rect.top + rect.height;
@@ -497,6 +511,9 @@ void PlayingState::Update(float dt) {
             updateButtonHoverState(continueButton, mouseUIPos, continueHovered);
             updateButtonHoverState(returnButton, mouseUIPos, returnHovered);
         }
+        if (showShop && shop) {
+            shop->Update(dt);
+        }
     }
     
     // Center camera on local player
@@ -536,7 +553,10 @@ void PlayingState::Render() {
         
         // Render HUD elements using the UI view
         game->GetHUD().render(game->GetWindow(), game->GetUIView(), GameState::Playing);
-        
+        // Render shop if visible
+        if (showShop && shop) {
+            shop->Render(game->GetWindow());
+        }
         // Render escape menu if active
         if (showEscapeMenu) {
             // Draw a semi-transparent overlay for the entire screen
@@ -616,9 +636,15 @@ void PlayingState::Render() {
 }
 
 void PlayingState::ProcessEvent(const sf::Event& event) {
+    // Only process shop events if shop is open
+    if (showShop && shop) {
+        shop->ProcessEvent(event);
+    }
+    
     // Call the internal event processing function
     ProcessEvents(event);
 }
+
 
 void PlayingState::ProcessEvents(const sf::Event& event) {
     if (event.type == sf::Event::KeyPressed) {
@@ -637,6 +663,21 @@ void PlayingState::ProcessEvents(const sf::Event& event) {
             cursorLocked = !cursorLocked;
             game->GetWindow().setMouseCursorGrabbed(cursorLocked);
         }
+        else if (event.key.code == sf::Keyboard::B) { // Check for 'B' key directly
+            std::cout << "Opened shop" << std::endl;
+            // Toggle shop visibility
+            showShop = !showShop;
+            if (shop) {
+                if (showShop) {
+                    shop->Toggle();
+                    
+                    // Ensure escape menu is closed when shop is opened
+                    showEscapeMenu = false;
+                } else {
+                    shop->Close();
+                }
+            }
+        }
         else if (game->GetInputManager().IsActionTriggered(GameAction::OpenMenu, event)) {
             // Toggle escape menu
             showEscapeMenu = !showEscapeMenu;
@@ -645,6 +686,12 @@ void PlayingState::ProcessEvents(const sf::Event& event) {
                 // Show menu, release cursor, and make system cursor visible
                 cursorLocked = false;
                 game->GetWindow().setMouseCursorGrabbed(false);
+                
+                // Close shop if open
+                if (showShop && shop) {
+                    showShop = false;
+                    shop->Close();
+                }
             } else {
                 // Hide menu, restore cursor lock, and hide system cursor
                 cursorLocked = true;
@@ -788,11 +835,12 @@ void PlayingState::AttemptShoot(int mouseX, int mouseY) {
     std::string localPlayerID = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
     
     // Create a bullet
-    playerManager->AddBullet(localPlayerID, playerPos, direction, BULLET_SPEED);
+    float bulletSpeed = BULLET_SPEED * localPlayer.player.GetBulletSpeedMultiplier();
+    playerManager->AddBullet(localPlayerID, playerPos, direction, bulletSpeed);
     
     // Send the bullet message to all other players
     std::string bulletMsg = MessageHandler::FormatBulletMessage(
-        localPlayerID, playerPos, direction, BULLET_SPEED);
+        localPlayerID, playerPos, direction, bulletSpeed);
     
     // Send to host if client, broadcast if host
     if (clientNetwork) {

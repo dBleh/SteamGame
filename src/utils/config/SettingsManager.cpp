@@ -49,7 +49,9 @@ bool SettingsManager::LoadSettings() {
             settings.showLeaderboard = StringToKey(value);
         } else if (key == "showMenu") {
             settings.showMenu = StringToKey(value);
-        } else if (key == "toggleGrid") {
+        }else if (key == "showShop") {
+            settings.showShop = StringToKey(value);
+        }else if (key == "toggleGrid") {
             settings.toggleGrid = StringToKey(value);
         } else if (key == "toggleCursorLock") {
             settings.toggleCursorLock = StringToKey(value);
@@ -85,6 +87,7 @@ bool SettingsManager::SaveSettings() {
     file << "shoot=" << KeyToString(settings.shoot) << "\n";
     file << "showLeaderboard=" << KeyToString(settings.showLeaderboard) << "\n";
     file << "showMenu=" << KeyToString(settings.showMenu) << "\n";
+    file << "showShop=" << KeyToString(settings.showShop) << "\n";
     file << "toggleGrid=" << KeyToString(settings.toggleGrid) << "\n";
     file << "toggleCursorLock=" << KeyToString(settings.toggleCursorLock) << "\n";
     
@@ -116,6 +119,8 @@ void SettingsManager::SetKeyBinding(const std::string& action, sf::Keyboard::Key
         settings.toggleGrid = key;
     } else if (action == "toggleCursorLock") {
         settings.toggleCursorLock = key;
+    } else if (action == "showShop"){
+        settings.showShop = key;
     }
 }
 
