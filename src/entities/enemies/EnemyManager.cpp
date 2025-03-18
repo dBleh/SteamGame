@@ -285,7 +285,7 @@ void EnemyManager::SyncEnemyPositions() {
     if (enemies.empty()) return;
     
     std::vector<int> priorities = GetEnemyUpdatePriorities();
-    size_t updateCount = std::min(priorities.size(), static_cast<size_t>(50));  // Increase to 50 enemies
+    size_t updateCount = std::min(priorities.size(), static_cast<size_t>(30));  // Reduce to 30 enemies
     
     std::ostringstream oss;
     oss << "EP";
@@ -360,20 +360,21 @@ void EnemyManager::ApplyNetworkUpdate(int enemyId, const sf::Vector2f& position,
         sf::Vector2f posDiff = position - currentPos;
         float distanceSquared = posDiff.x * posDiff.x + posDiff.y * posDiff.y;
         
-        // If the distance is small, apply full update; otherwise, interpolate using velocity
+        // If very close, snap to position; otherwise, interpolate
         if (distanceSquared < 25.0f) {  // Less than 5 units
             it->second->SetPosition(position);
         } else {
-            // Use velocity from last update or assume direction-based velocity
-            sf::Vector2f vel = it->second->GetVelocity();
-            if (vel.x == 0.f && vel.y == 0.f) {
-                vel = posDiff;  // Normalize if no velocity provided
-                float len = std::sqrt(vel.x * vel.x + vel.y * vel.y);
-                if (len > 0) vel = vel / len * it->second->GetSpeed();
+            // Blend toward target position (30% per frame, assuming 60 FPS)
+            sf::Vector2f newPos = currentPos + posDiff * 0.3f;
+            it->second->SetPosition(newPos);
+            
+            // Update velocity based on the movement direction
+            sf::Vector2f vel = posDiff;
+            float len = std::sqrt(vel.x * vel.x + vel.y * vel.y);
+            if (len > 0) {
+                vel = vel / len * it->second->GetSpeed();  // Normalize and scale by speed
+                it->second->SetVelocity(vel);
             }
-            // Interpolate toward target position (assuming 1/60th second frame time for simplicity)
-            it->second->SetPosition(currentPos + vel * 0.016f);
-            it->second->SetVelocity(vel);
         }
         it->second->SetHealth(health);
     } else {
@@ -641,23 +642,31 @@ void EnemyManager::HandleStateRequest(CSteamID requesterId) {
     
     std::cout << "[HOST] Received state request from " << requesterId.ConvertToUint64() << "\n";
     
-    // Send position updates for all enemies instead of full state
-    std::ostringstream oss;
-    oss << "EP";
-    int count = 0;
+    std::vector<int> allEnemyIds;
     for (const auto& pair : enemies) {
-        const sf::Vector2f& pos = pair.second->GetPosition();
-        sf::Vector2f vel = pair.second->GetVelocity();
-        oss << "|" << pair.first << "," << pos.x << "," << pos.y << "," << vel.x << "," << vel.y;
-        count++;
-        // Send in batches of 50
-        if (count % 50 == 0) {
-            game->GetNetworkManager().SendMessage(requesterId, oss.str());
-            oss.str("EP");
-        }
+        allEnemyIds.push_back(pair.first);
     }
-    if (count % 50 != 0) {  // Send remaining enemies
+    
+    const size_t batchSize = 30;  // Reduce to 30 enemies per batch
+    for (size_t startIdx = 0; startIdx < allEnemyIds.size(); startIdx += batchSize) {
+        std::ostringstream oss;
+        oss << "EP";
+        size_t endIdx = std::min(startIdx + batchSize, allEnemyIds.size());
+        
+        for (size_t i = startIdx; i < endIdx; ++i) {
+            int enemyId = allEnemyIds[i];
+            auto it = enemies.find(enemyId);
+            if (it != enemies.end()) {
+                const sf::Vector2f& pos = it->second->GetPosition();
+                sf::Vector2f vel = it->second->GetVelocity();
+                oss << "|" << enemyId << "," << pos.x << "," << pos.y << "," << vel.x << "," << vel.y;
+            }
+        }
+        
         game->GetNetworkManager().SendMessage(requesterId, oss.str());
+        if (endIdx < allEnemyIds.size()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));  // Small delay between batches
+        }
     }
 }
 
