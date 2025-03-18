@@ -360,11 +360,26 @@ std::unordered_map<std::string, RemotePlayer>& PlayerManager::GetPlayers() {
 }
 
 void PlayerManager::IncrementPlayerKills(const std::string& playerID) {
-    if (players.find(playerID) != players.end()) {
-        players[playerID].kills++;
+    // Normalize player ID for consistent comparison
+    std::string normalizedPlayerID;
+    try {
+        uint64_t idNum = std::stoull(playerID);
+        normalizedPlayerID = std::to_string(idNum);
+    } catch (const std::exception& e) {
+        std::cout << "[PM] Error normalizing player ID in IncrementPlayerKills: " << e.what() << "\n";
+        normalizedPlayerID = playerID;
+    }
+    
+    if (players.find(normalizedPlayerID) != players.end()) {
+        players[normalizedPlayerID].kills++;
         
         // Also reward the player with some money
-        players[playerID].money += 50;
+        players[normalizedPlayerID].money += 50;
+        
+        std::cout << "[PM] Incremented kills for " << normalizedPlayerID 
+                  << " to " << players[normalizedPlayerID].kills << "\n";
+    } else {
+        std::cout << "[PM] Could not find player " << normalizedPlayerID << " to increment kills\n";
     }
 }
 
@@ -454,7 +469,46 @@ void PlayerManager::PlayerDied(const std::string& playerID, const std::string& k
         }
     }
 }
-
+void PlayerManager::HandleKill(const std::string& killerID, int enemyId) {
+    // Normalize player ID to ensure consistent string representation
+    std::string normalizedKillerID;
+    try {
+        uint64_t idNum = std::stoull(killerID);
+        normalizedKillerID = std::to_string(idNum);
+    } catch (const std::exception& e) {
+        std::cout << "[KILL] Error normalizing killer ID: " << e.what() << "\n";
+        normalizedKillerID = killerID;
+    }
+    
+    // Check if we're the host
+    CSteamID localSteamID = SteamUser()->GetSteamID();
+    CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+    bool isHost = (localSteamID == hostID);
+    
+    if (isHost) {
+        // Host logic - authoritative source of kill tracking
+        if (players.find(normalizedKillerID) != players.end()) {
+            // Increment kill counter
+            players[normalizedKillerID].kills++;
+            
+            // Award money for kill
+            players[normalizedKillerID].money += 50;
+            
+            // Broadcast kill information to all clients
+            std::string killMsg = MessageHandler::FormatKillMessage(normalizedKillerID, enemyId);
+            game->GetNetworkManager().BroadcastMessage(killMsg);
+            
+            std::cout << "[HOST] Player " << normalizedKillerID << " awarded kill for enemy " << enemyId << "\n";
+        }
+    } else {
+        // Client logic - send kill message to host for validation
+        // The host will validate and broadcast the kill to all clients
+        std::string killMsg = MessageHandler::FormatKillMessage(normalizedKillerID, enemyId);
+        game->GetNetworkManager().SendMessage(hostID, killMsg);
+        
+        std::cout << "[CLIENT] Sent kill claim to host for player " << normalizedKillerID << "\n";
+    }
+}
 void PlayerManager::RespawnPlayer(const std::string& playerID) {
     // Normalize the player ID for consistent comparison
     std::string normalizedID = playerID;
@@ -578,21 +632,19 @@ void PlayerManager::InitializeForceFields() {
     }
 }
 void PlayerManager::HandleForceFieldZap(const std::string& playerID, int enemyId, float damage, bool killed) {
-    if (killed) {
-        // Update kill count
-        IncrementPlayerKills(playerID);
-        
-        // Also reward the player with some money for the kill
+    // Only update rewards for hits, not kills (as those are handled by HandleKill)
+    if (!killed) {
+        // Reward for hits (not kills)
         auto it = players.find(playerID);
         if (it != players.end()) {
-            it->second.money += 50;
+            it->second.money += 10; // 10 money for hitting an enemy with force field
         }
     }
     
     // If this is the local player, send a network message
     if (playerID == localPlayerID) {
-        // Send force field zap message
-        std::string zapMsg = "FZ|" + playerID + "|" + std::to_string(enemyId) + "|" + std::to_string(damage);
+        // Format and send force field zap message
+        std::string zapMsg = MessageHandler::FormatForceFieldZapMessage(playerID, enemyId, damage);
         
         // Check if we're the host
         CSteamID localSteamID = SteamUser()->GetSteamID();

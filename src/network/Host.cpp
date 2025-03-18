@@ -189,14 +189,38 @@ void HostNetwork::ProcessForceFieldUpdateMessage(Game& game, HostNetwork& host, 
 
 void HostNetwork::ProcessKillMessage(Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender) {
     std::string killerID = parsed.steamID;
+    int enemyId = parsed.enemyId;
     
-    // Validate the kill before incrementing
-    // This is where the host acts as authority
-    playerManager->IncrementPlayerKills(killerID);
+    // Normalize killer ID for consistent comparison
+    std::string normalizedKillerID;
+    try {
+        uint64_t killerIdNum = std::stoull(killerID);
+        normalizedKillerID = std::to_string(killerIdNum);
+    } catch (const std::exception& e) {
+        std::cout << "[HOST] Error normalizing killer ID: " << e.what() << "\n";
+        normalizedKillerID = killerID;
+    }
     
-    // Broadcast the kill to all clients
-    std::string killMsg = MessageHandler::FormatKillMessage(killerID, parsed.enemyId);
-    game.GetNetworkManager().BroadcastMessage(killMsg);
+    // Validate the kill (check if the enemy exists and is alive)
+    bool validKill = false;
+    PlayingState* playingState = GetPlayingState(&game);
+    if (playingState && playingState->GetEnemyManager()) {
+        Enemy* enemy = playingState->GetEnemyManager()->FindEnemy(enemyId);
+        validKill = (enemy != nullptr);
+    }
+    
+    if (validKill) {
+        // This is where the host acts as authority - increment kill count
+        playerManager->IncrementPlayerKills(normalizedKillerID);
+        
+        // Broadcast the validated kill to all clients
+        std::string killMsg = MessageHandler::FormatKillMessage(normalizedKillerID, enemyId);
+        game.GetNetworkManager().BroadcastMessage(killMsg);
+        
+        std::cout << "[HOST] Validated and broadcast kill for player " << normalizedKillerID << "\n";
+    } else {
+        std::cout << "[HOST] Rejected invalid kill claim for player " << normalizedKillerID << "\n";
+    }
 }
 void HostNetwork::ProcessReadyStatusMessage(Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender) {
     std::string localSteamIDStr = std::to_string(game.GetLocalSteamID().ConvertToUint64());
@@ -345,12 +369,11 @@ void HostNetwork::ProcessForceFieldZapMessage(Game& game, HostNetwork& host, con
         if (enemy) {
             killed = enemyManager->InflictDamage(enemyId, damage);
             
-            // If the enemy was killed, update player kills
+            // If the enemy was killed, use centralized kill handling
             if (killed) {
-                playerManager->IncrementPlayerKills(normalizedZapperID);
+                playerManager->HandleKill(normalizedZapperID, enemyId);
             }
-            std::string killMsg = MessageHandler::FormatKillMessage(normalizedZapperID, enemyId);
-            game.GetNetworkManager().BroadcastMessage(killMsg);
+            
             // Apply visual effect if this isn't our own zap
             if (normalizedZapperID != normalizedLocalID) {
                 // Get the player who owns the force field

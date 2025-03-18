@@ -220,27 +220,15 @@ void PlayingState::Update(float dt) {
                         bulletsToRemove.push_back(i);
                         std::string shooterId = bullet.GetShooterID();
 
+                        // Use centralized kill tracking if enemy was killed
                         if (killed) {
-                            // Don't increment kills locally, only send message to host
-                            // For the host's own bullets, still increment
-                            CSteamID myID = SteamUser()->GetSteamID();
-                            CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
-                            
-                            if (myID == hostID) {
-                                playerManager->IncrementPlayerKills(shooterId);
-                            }
-                            
-                            // Notify host about the kill
-                            if (myID != hostID) {
-                                std::string killMsg = "KL|" + shooterId + "|" + std::to_string(hitEnemyId);
-                                game->GetNetworkManager().SendMessage(hostID, killMsg);
-                            }
+                            playerManager->HandleKill(shooterId, hitEnemyId);
                         }
                         
-                        // Only modify money locally for local player's bullets
+                        // Only modify money locally for local player's bullets on hit (not kill)
                         if (shooterId == playerManager->GetLocalPlayer().playerID) {
                             auto& localPlayer = playerManager->GetLocalPlayer();
-                            localPlayer.money += (killed ? 25 : 10); // More money for hits
+                            localPlayer.money += (killed ? 0 : 10); // Hits give 10, kills are handled by HandleKill
                         }
                     }
                 }

@@ -32,7 +32,7 @@ void AddOrUpdatePlayer(const std::string& playerID, RemotePlayer&& player);
 void RemovePlayer(const std::string& id);
     RemotePlayer& GetLocalPlayer();
     std::unordered_map<std::string, RemotePlayer>& GetPlayers();
-    
+    void HandleKill(const std::string& killerID, int enemyId);
     // Player status management
     void SetReadyStatus(const std::string& playerID, bool isReady);
     bool AreAllPlayersReady() const;

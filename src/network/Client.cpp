@@ -112,9 +112,23 @@ void ClientNetwork::ProcessChatMessage(Game& game, ClientNetwork& client, const 
 }
 void ClientNetwork::ProcessKillMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
     std::string killerID = parsed.steamID;
+    int enemyId = parsed.enemyId;
+    
+    // Normalize killer ID
+    std::string normalizedKillerID;
+    try {
+        uint64_t killerIdNum = std::stoull(killerID);
+        normalizedKillerID = std::to_string(killerIdNum);
+    } catch (const std::exception& e) {
+        std::cout << "[CLIENT] Error normalizing killer ID: " << e.what() << "\n";
+        normalizedKillerID = killerID;
+    }
     
     // Update kill count based on host's authoritative message
-    playerManager->IncrementPlayerKills(killerID);
+    if (playerManager->GetPlayers().find(normalizedKillerID) != playerManager->GetPlayers().end()) {
+        playerManager->IncrementPlayerKills(normalizedKillerID);
+        std::cout << "[CLIENT] Player " << normalizedKillerID << " awarded kill by host for enemy " << enemyId << "\n";
+    }
 }
 void ClientNetwork::ProcessConnectionMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
     // Create a new RemotePlayer directly with its fields set, don't copy
@@ -396,13 +410,6 @@ void ClientNetwork::ProcessForceFieldZapMessage(Game& game, ClientNetwork& clien
                 rp.player.GetForceField()->CreateZapEffect(playerPos, enemyPos);
                 rp.player.GetForceField()->SetIsZapping(true);
                 rp.player.GetForceField()->SetZapEffectTimer(0.3f); // Show effect for 0.3 seconds
-                
-                // Check if enemy was killed by this zap
-                bool killed = enemy->GetHealth() <= damage;
-                if (killed) {
-                    // Increment kill count for the zapper
-                    playerManager->IncrementPlayerKills(normalizedZapperID);
-                }
             }
         }
     }
