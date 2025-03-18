@@ -56,7 +56,6 @@ add_executable(CubeShooter
     
     # Entity files
     src/entities/Player.cpp
-    src/entities/Bullet.cpp
     src/entities/Grid.cpp
     src/entities/PlayerManager.cpp
 
@@ -64,10 +63,21 @@ add_executable(CubeShooter
     src/entities/enemies/Enemy.cpp
     src/entities/enemies/EnemyManager.cpp
     src/entities/enemies/TriangleEnemy.cpp
-   
+
+    # Inventory files
+   #src/entities/inventory/Inventory.cpp
+
+    # Weapon files
+    src/entities/Bullet.cpp
+    #src/entities/weapons/Weapon.cpp
+    #src/entities/weapons/LaserCannon.cpp
+    #src/entities/weapons/ForceField.cpp
         
     # UI files
+    #src/ui/UIManager.cpp
     src/ui/hud/Hud.cpp
+
+    
     
     # Network files
     src/network/NetworkManager.cpp
@@ -84,6 +94,7 @@ add_executable(CubeShooter
     src/states/menu/SettingsState.cpp
     src/states/menu/LobbyCreationState.cpp
     src/states/menu/LobbySearchState.cpp
+    src/states/shop/Shop.cpp
     
     # Render files
     src/render/PlayerRenderer.cpp
