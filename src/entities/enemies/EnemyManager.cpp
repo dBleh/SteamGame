@@ -285,7 +285,7 @@ void EnemyManager::SyncEnemyPositions() {
     if (enemies.empty()) return;
     
     std::vector<int> priorities = GetEnemyUpdatePriorities();
-    size_t updateCount = std::min(priorities.size(), static_cast<size_t>(20));  // Reduce to 20 enemies
+    size_t updateCount = std::min(priorities.size(), static_cast<size_t>(30));  // Reduce to 30 enemies
     
     std::ostringstream oss;
     oss << "EP";
@@ -300,11 +300,7 @@ void EnemyManager::SyncEnemyPositions() {
         }
     }
     
-    std::string message = oss.str();
-    std::vector<std::string> chunks = MessageHandler::ChunkMessage(message, "EP");
-    for (const auto& chunk : chunks) {
-        game->GetNetworkManager().BroadcastMessage(chunk);
-    }
+    game->GetNetworkManager().BroadcastMessage(oss.str());
 }
 
 void EnemyManager::SyncFullState() {
@@ -418,12 +414,15 @@ void EnemyManager::RemoteAddEnemy(int enemyId, EnemyType type, const sf::Vector2
 }
 
 void EnemyManager::RemoteAddEnemyWithVelocity(int enemyId, EnemyType type, const sf::Vector2f& position, 
-    const sf::Vector2f& velocity, float health) {
-SmoothAddEnemy(enemyId, type, position, health);
-auto it = enemies.find(enemyId);
-if (it != enemies.end()) {
-it->second->SetVelocity(velocity);  // Use host-provided velocity for initial movement
-}
+                                          const sf::Vector2f& velocity, float health) {
+    // Use the same smooth spawning logic
+    SmoothAddEnemy(enemyId, type, position, health);
+    
+    // Set velocity after spawning
+    auto it = enemies.find(enemyId);
+    if (it != enemies.end()) {
+        it->second->SetVelocity(velocity);
+    }
 }
 
 void EnemyManager::RemoteRemoveEnemy(int enemyId) {
@@ -648,7 +647,7 @@ void EnemyManager::HandleStateRequest(CSteamID requesterId) {
         allEnemyIds.push_back(pair.first);
     }
     
-    const size_t batchSize = 20;  // Reduce to 20 enemies per batch
+    const size_t batchSize = 30;  // Reduce to 30 enemies per batch
     for (size_t startIdx = 0; startIdx < allEnemyIds.size(); startIdx += batchSize) {
         std::ostringstream oss;
         oss << "EP";
@@ -664,13 +663,9 @@ void EnemyManager::HandleStateRequest(CSteamID requesterId) {
             }
         }
         
-        std::string message = oss.str();
-        std::vector<std::string> chunks = MessageHandler::ChunkMessage(message, "EP");
-        for (const auto& chunk : chunks) {
-            game->GetNetworkManager().SendMessage(requesterId, chunk);
-            if (endIdx < allEnemyIds.size() || !chunks.empty()) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(10));  // Delay between chunks/batches
-            }
+        game->GetNetworkManager().SendMessage(requesterId, oss.str());
+        if (endIdx < allEnemyIds.size()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));  // Small delay between batches
         }
     }
 }
