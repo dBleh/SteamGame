@@ -345,7 +345,7 @@ void PlayerManager::CheckBulletCollisions() {
             
             if (bulletIt->CheckCollision(remotePlayer.player.GetShape(), playerID)) {
                 // Apply damage to player
-                remotePlayer.player.TakeDamage(25); // 4 hits to kill
+                remotePlayer.player.TakeDamage(BULLET_DAMAGE); // 4 hits to kill
                 
                 if (remotePlayer.player.IsDead()) {
                     // Increment kill count for the shooter

@@ -3,7 +3,7 @@
 Bullet::Bullet(const sf::Vector2f& position, const sf::Vector2f& direction, float speed, const std::string& shooterID)
     : lifetime(5.f), shooterID(shooterID) {
     // Create smaller bullet for better precision
-    shape.setSize(sf::Vector2f(8.f, 8.f));  
+    shape.setSize(sf::Vector2f(BULLET_RADIUS, BULLET_RADIUS));  
     shape.setFillColor(sf::Color::Black);
     
     // Center the bullet shape (important for accurate collision)

@@ -200,6 +200,37 @@ void PlayingState::Update(float dt) {
                     StartWave(enemyCount);
                 }
             }
+
+            if (playerLoaded && enemyManager && playerManager) {
+                std::vector<size_t> bulletsToRemove;
+                const auto& bullets = playerManager->GetAllBullets();
+                
+                for (size_t i = 0; i < bullets.size(); i++) {
+                    const Bullet& bullet = bullets[i];
+                    int hitEnemyId = -1;
+                    
+                    // Check if this bullet collides with any enemy
+                    if (enemyManager->CheckBulletCollision(bullet.GetPosition(), BULLET_RADIUS, hitEnemyId)) {
+                        // Enemy hit! Apply damage
+                        bool killed = enemyManager->InflictDamage(hitEnemyId, BULLET_DAMAGE);
+                        
+                        // Mark this bullet for removal
+                        bulletsToRemove.push_back(i);
+                        
+                        // If local player's bullet, give them money for the hit
+                        std::string shooterId = bullet.GetShooterID();
+                        if (shooterId == playerManager->GetLocalPlayer().playerID) {
+                            auto& localPlayer = playerManager->GetLocalPlayer();
+                            localPlayer.money += (killed ? 25 : 10); // More money for kills
+                        }
+                    }
+                }
+                
+                // Remove bullets that hit enemies
+                if (!bulletsToRemove.empty()) {
+                    playerManager->RemoveBullets(bulletsToRemove);
+                }
+            }
             
             // Only the host starts the first wave
             CSteamID myID = SteamUser()->GetSteamID();

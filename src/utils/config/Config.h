@@ -13,7 +13,7 @@
 // Enemy configuration
 #define ENEMY_SIZE 20.0f
 #define ENEMY_ORIGIN 10.0f // Half of ENEMY_SIZE
-#define ENEMY_SPEED 70.0f
+#define ENEMY_SPEED 30.0f
 #define ENEMY_HEALTH 40.0f
 
 // Triangle configuration
@@ -21,6 +21,8 @@
 
 // Bullet configuration
 #define BULLET_SPEED 400.0f
+#define BULLET_RADIUS 8.0f
+#define BULLET_DAMAGE 20.0f
 
 // Spawning configuration
 #define SPAWN_RADIUS 300.0f
