@@ -11,6 +11,8 @@
 #include <cmath>
 #include <ctime>
 #include <sstream>
+#include <thread>
+#include <chrono>
 
 EnemyManager::EnemyManager(Game* game, PlayerManager* playerManager)
     : game(game),
@@ -22,7 +24,8 @@ EnemyManager::EnemyManager(Game* game, PlayerManager* playerManager)
       remainingEnemiesInWave(0),
       batchSpawnTimer(0.0f),
       currentWaveEnemyType(EnemyType::Triangle),
-      enemiesRemainingToSpawn(0) {
+      enemiesRemainingToSpawn(0),
+      lastEnemyStateUpdate(std::chrono::steady_clock::now()) {
     // Initialize random seed
     std::srand(static_cast<unsigned int>(std::time(nullptr)));
 }
@@ -36,27 +39,33 @@ void EnemyManager::Update(float dt) {
         UpdateSpawning(dt);
     }
     
-    // Update all enemies
-    for (auto& pair : enemies) {
-        pair.second->Update(dt, *playerManager);
-    }
-    
-    // Check for collisions with players
-    CheckPlayerCollisions();
-    
-    // Check for bullet-enemy collisions
-    CheckBulletEnemyCollisions();
-    
-    // Optimize enemy list if we have a large number
-    if (enemies.size() > 200) {
-        OptimizeEnemyList();
-    }
-    
-    // Handle network synchronization if we're the host
+    // Determine if we're the host
     CSteamID myID = SteamUser()->GetSteamID();
     CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+    bool isHost = (myID == hostID);
     
-    if (myID == hostID) {
+    // On the client, if we haven't received a full state update in a while, request one
+    if (!isHost) {
+        auto now = std::chrono::steady_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - lastEnemyStateUpdate).count();
+        
+        // If it's been more than 5 seconds since the last full update, request one
+        if (elapsed > 5) {
+            // Send a request for a full state update
+            std::ostringstream oss;
+            oss << "ESR"; // Enemy State Request
+            game->GetNetworkManager().SendMessage(hostID, oss.str());
+            lastEnemyStateUpdate = now; // Reset the timer to prevent spamming requests
+        }
+        
+        // Apply client-side prediction for smoother movement
+        UpdateEnemyClientPrediction(dt);
+    } else {
+        // Host updates enemies normally
+        for (auto& pair : enemies) {
+            pair.second->Update(dt, *playerManager);
+        }
+        
         // Sync enemy positions periodically
         syncTimer += dt;
         if (syncTimer >= ENEMY_SYNC_INTERVAL) {
@@ -70,6 +79,30 @@ void EnemyManager::Update(float dt) {
             SyncFullState();
             fullSyncTimer = 0.0f;
         }
+    }
+    
+    // These checks are done by both host and client
+    CheckPlayerCollisions();
+    CheckBulletEnemyCollisions();
+    
+    // Optimize enemy list if we have a large number
+    if (enemies.size() > 200) {
+        OptimizeEnemyList();
+    }
+}
+
+void EnemyManager::UpdateEnemyClientPrediction(float dt) {
+    // Update enemy positions on the client based on their current velocity
+    for (auto& pair : enemies) {
+        Enemy* enemy = pair.second.get();
+        
+        // Get the enemy's velocity
+        sf::Vector2f velocity = enemy->GetVelocity();
+        sf::Vector2f position = enemy->GetPosition();
+        
+        // Simple linear prediction based on velocity
+        position += velocity * dt;
+        enemy->SetPosition(position);
     }
 }
 
@@ -281,8 +314,8 @@ void EnemyManager::SyncEnemyPositions() {
     // Get priority list of enemies to sync
     std::vector<int> priorities = GetEnemyUpdatePriorities();
     
-    // Limit to 10 enemies per update to avoid network congestion
-    size_t updateCount = std::min(priorities.size(), static_cast<size_t>(10));
+    // Increase to 20 enemies per update for better coverage
+    size_t updateCount = std::min(priorities.size(), static_cast<size_t>(20));
     
     // Create batch position update message
     std::ostringstream oss;
@@ -293,7 +326,8 @@ void EnemyManager::SyncEnemyPositions() {
         auto it = enemies.find(enemyId);
         if (it != enemies.end()) {
             const sf::Vector2f& pos = it->second->GetPosition();
-            oss << "|" << enemyId << "," << pos.x << "," << pos.y;
+            sf::Vector2f vel = it->second->GetVelocity();
+            oss << "|" << enemyId << "," << pos.x << "," << pos.y << "," << vel.x << "," << vel.y;
         }
     }
     
@@ -304,30 +338,77 @@ void EnemyManager::SyncEnemyPositions() {
 void EnemyManager::SyncFullState() {
     if (enemies.empty()) return;
     
-    // Create a complete state update message
-    std::ostringstream oss;
-    oss << "ES";
+    // Limit the number of enemies per state update to avoid network congestion
     
+    // Get a list of all enemy IDs
+    std::vector<int> allEnemyIds;
     for (const auto& pair : enemies) {
-        const Enemy& enemy = *pair.second;
-        oss << "|" << enemy.GetID() << ","
-            << static_cast<int>(enemy.GetType()) << ","
-            << enemy.GetPosition().x << "," << enemy.GetPosition().y << ","
-            << enemy.GetHealth();
+        allEnemyIds.push_back(pair.first);
     }
     
-    // Broadcast the message
-    game->GetNetworkManager().BroadcastMessage(oss.str());
+    // Process enemies in batches
+    for (size_t startIdx = 0; startIdx < allEnemyIds.size(); startIdx += ENEMY_SPAWN_BATCH_SIZE) {
+        // Calculate how many enemies to include in this batch
+        size_t endIdx = std::min(startIdx + ENEMY_SPAWN_BATCH_SIZE, allEnemyIds.size());
+        size_t count = endIdx - startIdx;
+        
+        // Create a batch state update message
+        std::ostringstream oss;
+        oss << "ES";
+        
+        for (size_t i = startIdx; i < endIdx; ++i) {
+            int enemyId = allEnemyIds[i];
+            const Enemy& enemy = *enemies[enemyId];
+            sf::Vector2f velocity = enemy.GetVelocity();
+            oss << "|" << enemy.GetID() << ","
+                << static_cast<int>(enemy.GetType()) << ","
+                << enemy.GetPosition().x << "," << enemy.GetPosition().y << ","
+                << enemy.GetHealth() << "," << velocity.x << "," << velocity.y;
+        }
+        
+        // Broadcast the message
+        game->GetNetworkManager().BroadcastMessage(oss.str());
+        
+        // Add a small delay between batches to avoid overloading the network
+        if (count < allEnemyIds.size()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+    }
 }
 
 void EnemyManager::ApplyNetworkUpdate(int enemyId, const sf::Vector2f& position, float health) {
     auto it = enemies.find(enemyId);
     if (it != enemies.end()) {
+        // Update existing enemy
         it->second->SetPosition(position);
         it->second->SetHealth(health);
     } else {
-        // Enemy doesn't exist, create it
+        // Enemy doesn't exist, create it with default type until a full state update arrives
         RemoteAddEnemy(enemyId, EnemyType::Triangle, position, health);
+        
+        std::cout << "[CLIENT] Created new enemy from position update: ID=" << enemyId 
+                  << " at position (" << position.x << "," << position.y << ")\n";
+    }
+}
+
+void EnemyManager::ApplyNetworkUpdateWithVelocity(int enemyId, const sf::Vector2f& position, 
+                                               const sf::Vector2f& velocity, float health) {
+    auto it = enemies.find(enemyId);
+    if (it != enemies.end()) {
+        // Update existing enemy
+        it->second->SetPosition(position);
+        it->second->SetVelocity(velocity);
+        it->second->SetHealth(health);
+        
+        // Reset prediction timer since we got a fresh update
+        lastEnemyStateUpdate = std::chrono::steady_clock::now();
+    } else {
+        // Enemy doesn't exist, create it and set velocity
+        RemoteAddEnemyWithVelocity(enemyId, EnemyType::Triangle, position, velocity, health);
+        
+        std::cout << "[CLIENT] Created new enemy with velocity: ID=" << enemyId 
+                  << " at position (" << position.x << "," << position.y 
+                  << ") with velocity (" << velocity.x << "," << velocity.y << ")\n";
     }
 }
 
@@ -335,6 +416,20 @@ void EnemyManager::RemoteAddEnemy(int enemyId, EnemyType type, const sf::Vector2
     // Create the enemy with the given ID
     auto enemy = CreateEnemy(type, enemyId, position);
     enemy->SetHealth(health);
+    enemies[enemyId] = std::move(enemy);
+    
+    // Update nextEnemyId if necessary
+    if (enemyId >= nextEnemyId) {
+        nextEnemyId = enemyId + 1;
+    }
+}
+
+void EnemyManager::RemoteAddEnemyWithVelocity(int enemyId, EnemyType type, const sf::Vector2f& position, 
+                                          const sf::Vector2f& velocity, float health) {
+    // Create the enemy with the given ID
+    auto enemy = CreateEnemy(type, enemyId, position);
+    enemy->SetHealth(health);
+    enemy->SetVelocity(velocity);
     enemies[enemyId] = std::move(enemy);
     
     // Update nextEnemyId if necessary
@@ -537,6 +632,63 @@ void EnemyManager::RemoveEnemiesNotInList(const std::vector<int>& validIds) {
 Enemy* EnemyManager::FindEnemy(int id) {
     auto it = enemies.find(id);
     return (it != enemies.end()) ? it->second.get() : nullptr;
+}
+
+void EnemyManager::HandleStateRequest(CSteamID requesterId) {
+    if (enemies.empty()) return;
+    
+    CSteamID myID = SteamUser()->GetSteamID();
+    CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+    
+    // Only the host should respond to state requests
+    if (myID != hostID) return;
+    
+    std::cout << "[HOST] Received state request from " << requesterId.ConvertToUint64() << "\n";
+    
+    // Send a full state update directly to the requester
+    SyncFullStateForClient(requesterId);
+}
+
+void EnemyManager::SyncFullStateForClient(CSteamID clientId) {
+    if (enemies.empty()) return;
+    
+    // Limit the number of enemies per state update
+   
+    
+    // Get a list of all enemy IDs
+    std::vector<int> allEnemyIds;
+    for (const auto& pair : enemies) {
+        allEnemyIds.push_back(pair.first);
+    }
+    
+    // Process enemies in batches
+    for (size_t startIdx = 0; startIdx < allEnemyIds.size(); startIdx += ENEMY_SPAWN_BATCH_SIZE) {
+        // Calculate how many enemies to include in this batch
+        size_t endIdx = std::min(startIdx + ENEMY_SPAWN_BATCH_SIZE, allEnemyIds.size());
+        size_t count = endIdx - startIdx;
+        
+        // Create a batch state update message
+        std::ostringstream oss;
+        oss << "ES";
+        
+        for (size_t i = startIdx; i < endIdx; ++i) {
+            int enemyId = allEnemyIds[i];
+            const Enemy& enemy = *enemies[enemyId];
+            sf::Vector2f velocity = enemy.GetVelocity();
+            oss << "|" << enemy.GetID() << ","
+                << static_cast<int>(enemy.GetType()) << ","
+                << enemy.GetPosition().x << "," << enemy.GetPosition().y << ","
+                << enemy.GetHealth() << "," << velocity.x << "," << velocity.y;
+        }
+        
+        // Send the message directly to the requesting client
+        game->GetNetworkManager().SendMessage(clientId, oss.str());
+        
+        // Add a small delay between batches
+        if (count < allEnemyIds.size()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+    }
 }
 
 void EnemyManager::UpdateSpawning(float dt) {

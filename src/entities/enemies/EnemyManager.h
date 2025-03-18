@@ -4,6 +4,7 @@
 #include <memory>
 #include <vector>
 #include <unordered_map>
+#include <chrono>
 #include <SFML/Graphics.hpp>
 #include "Enemy.h"
 #include "../../utils/config/Config.h"
@@ -29,6 +30,9 @@ public:
     bool HasEnemies() const { return !enemies.empty(); }
     size_t GetEnemyCount() const { return enemies.size(); }
     
+    // Client-side prediction
+    void UpdateEnemyClientPrediction(float dt);
+    
     // Collision detection
     void CheckPlayerCollisions();
     void CheckBulletEnemyCollisions();
@@ -37,8 +41,14 @@ public:
     // Network synchronization
     void SyncEnemyPositions();
     void SyncFullState();
+    void SyncFullStateForClient(CSteamID clientId);
+    void HandleStateRequest(CSteamID requesterId);
     void ApplyNetworkUpdate(int enemyId, const sf::Vector2f& position, float health);
+    void ApplyNetworkUpdateWithVelocity(int enemyId, const sf::Vector2f& position, 
+                                      const sf::Vector2f& velocity, float health);
     void RemoteAddEnemy(int enemyId, EnemyType type, const sf::Vector2f& position, float health);
+    void RemoteAddEnemyWithVelocity(int enemyId, EnemyType type, const sf::Vector2f& position, 
+                                  const sf::Vector2f& velocity, float health);
     void RemoteRemoveEnemy(int enemyId);
     
     // Wave management
@@ -69,6 +79,7 @@ private:
     EnemyType currentWaveEnemyType;
     std::vector<sf::Vector2f> playerPositionsCache;
     int enemiesRemainingToSpawn;
+    std::chrono::steady_clock::time_point lastEnemyStateUpdate;
     
     // Spawn and position helpers
     sf::Vector2f GetRandomSpawnPosition(const sf::Vector2f& targetPosition, float minDistance, float maxDistance);
