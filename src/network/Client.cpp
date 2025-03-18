@@ -17,6 +17,31 @@ ClientNetwork::ClientNetwork(Game* game, PlayerManager* manager)
 ClientNetwork::~ClientNetwork() {}
 
 void ClientNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
+    // Special handling for chunked messages
+    if (msg.compare(0, 11, "CHUNK_START") == 0 || 
+        msg.compare(0, 10, "CHUNK_PART") == 0 || 
+        msg.compare(0, 9, "CHUNK_END") == 0) {
+        
+        ParsedMessage parsed = MessageHandler::ParseMessage(msg);
+        
+        // If this is a CHUNK_END and it returns a valid message type, process the reconstructed message
+        if (msg.compare(0, 9, "CHUNK_END") == 0 && parsed.type != MessageType::Unknown) {
+            std::cout << "[CLIENT] Processing reconstructed chunked message of type: " 
+                      << static_cast<int>(parsed.type) << "\n";
+            
+            const auto* descriptor = MessageHandler::GetDescriptorByType(parsed.type);
+            if (descriptor && descriptor->clientHandler) {
+                descriptor->clientHandler(*game, *this, parsed);
+            } else {
+                std::cout << "[CLIENT] Unhandled message type in reconstructed message: " 
+                          << static_cast<int>(parsed.type) << "\n";
+                ProcessUnknownMessage(*game, *this, parsed);
+            }
+        }
+        return;
+    }
+    
+    // Standard message processing
     ParsedMessage parsed = MessageHandler::ParseMessage(msg);
     const auto* descriptor = MessageHandler::GetDescriptorByType(parsed.type);
     if (descriptor && descriptor->clientHandler) {

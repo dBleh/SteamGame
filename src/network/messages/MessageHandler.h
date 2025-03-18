@@ -35,6 +35,9 @@ enum class MessageType {
     EnemyState,
     WaveStart,
     EnemyClear,
+    ChunkStart, 
+    ChunkPart,   
+    ChunkEnd  
 };
 
 struct ParsedMessage {
@@ -117,7 +120,9 @@ public:
 
     void ProcessUnknownMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed);
 
-    
+    static ParsedMessage ParseChunkStartMessage(const std::vector<std::string>& parts);
+    static ParsedMessage ParseChunkPartMessage(const std::vector<std::string>& parts);
+    static ParsedMessage ParseChunkEndMessage(const std::vector<std::string>& parts);
     // Message formatting functions (one for each type)
     static std::string FormatConnectionMessage(const std::string& steamID, 
                                              const std::string& steamName, 

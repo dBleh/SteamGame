@@ -26,21 +26,30 @@ void MessageHandler::Initialize() {
             std::string messageType = parts[1];
             int totalChunks = std::stoi(parts[2]);
             std::string chunkId = parts[3];
+            
+            std::cout << "[MessageHandler] Starting new chunked message " << chunkId 
+                      << " of type " << messageType << " with " << totalChunks << " chunks\n";
+            
             chunkTypes[chunkId] = messageType;
             chunkCounts[chunkId] = totalChunks;
             chunkStorage[chunkId].resize(totalChunks);
         }
-        return ParsedMessage{MessageType::Unknown};
+        return ParsedMessage{MessageType::ChunkStart}; // Create a specific type for chunks
     };
     
     messageParsers["CHUNK_PART"] = [](const std::vector<std::string>& parts) {
+        ParsedMessage result{MessageType::ChunkPart};
         if (parts.size() >= 4) {
             std::string chunkId = parts[1];
             int chunkNum = std::stoi(parts[2]);
             std::string chunkData = parts[3];
+            
+            std::cout << "[MessageHandler] Processing chunk part " << chunkNum 
+                      << " for message " << chunkId << "\n";
+            
             AddChunk(chunkId, chunkNum, chunkData);
         }
-        return ParsedMessage{MessageType::Unknown};
+        return result;
     };
     
     messageParsers["CHUNK_END"] = [](const std::vector<std::string>& parts) {
@@ -59,26 +68,24 @@ void MessageHandler::Initialize() {
                     // Reconstruct the full message
                     std::string fullMessage = GetReconstructedMessage(chunkId);
                     
-                    // Clear chunks to free memory
-                    ClearChunks(chunkId);
-                    
-                    // Debug output
-                    std::cout << "[MessageHandler] Reconstructed message: " << messageType 
-                              << " (length: " << fullMessage.length() << ")\n";
-                    
-                    // Find the appropriate parser for this message type
+                    // Parse the reconstructed message
+                    std::vector<std::string> messageParts = SplitString(fullMessage, '|');
                     auto parserIt = messageParsers.find(messageType);
                     if (parserIt != messageParsers.end()) {
-                        // Re-parse the reconstructed message
-                        std::vector<std::string> messageParts = SplitString(fullMessage, '|');
+                        // Clear chunks to free memory
+                        ClearChunks(chunkId);
+                        
+                        // Parse the reconstructed message and return the result
                         return parserIt->second(messageParts);
                     }
                     else {
                         std::cout << "[MessageHandler] No parser found for message type: " << messageType << "\n";
+                        ClearChunks(chunkId);
                     }
                 }
                 else {
-                    std::cout << "[MessageHandler] Chunks incomplete for " << chunkId << "\n";
+                    std::cout << "[MessageHandler] Chunks incomplete for " << chunkId << ". Expected: " 
+                              << expectedChunks << ", Have: " << chunkStorage[chunkId].size() << "\n";
                 }
             }
             else {
@@ -86,7 +93,7 @@ void MessageHandler::Initialize() {
             }
         }
         
-        return ParsedMessage{MessageType::Unknown};
+        return ParsedMessage{MessageType::ChunkEnd};
     };
     
     // Register message types with their parsers and handlers
@@ -311,6 +318,29 @@ void MessageHandler::Initialize() {
                                 // Host initiates clear, not receives it
                                 std::cout << "[HOST] Received enemy clear from client, ignoring\n";
                             });
+        RegisterMessageType("CHUNK_START", ParseChunkStartMessage,
+                                [](Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
+                                    // Client just stores the start info
+                                },
+                                [](Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender) {
+                                    // Host just stores the start info
+                                });
+          
+        RegisterMessageType("CHUNK_PART", ParseChunkPartMessage,
+                                [](Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
+                                    // Client just processes the chunk part
+                                },
+                                [](Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender) {
+                                    // Host just processes the chunk part
+                                });
+          
+        RegisterMessageType("CHUNK_END", ParseChunkEndMessage,
+                                [](Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
+                                    // Client should process the reconstructed message
+                                },
+                                [](Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender) {
+                                    // Host should process the reconstructed message
+                                });
 }
 
 void MessageHandler::RegisterMessageType(
@@ -341,9 +371,13 @@ std::string MessageHandler::GetPrefixForType(MessageType type) {
         case MessageType::EnemyState: return "ES";
         case MessageType::WaveStart: return "WS";
         case MessageType::EnemyClear: return "EC";
+        case MessageType::ChunkStart: return "CHUNK_START";
+        case MessageType::ChunkPart: return "CHUNK_PART";
+        case MessageType::ChunkEnd: return "CHUNK_END";
         case MessageType::Unknown: 
         default: return "";
     }
+
 }
 
 const MessageHandler::MessageDescriptor* MessageHandler::GetDescriptorByType(MessageType type) {
@@ -356,7 +390,24 @@ const MessageHandler::MessageDescriptor* MessageHandler::GetDescriptorByType(Mes
     }
     return nullptr;
 }
+// Add these ParseChunk* methods
+ParsedMessage MessageHandler::ParseChunkStartMessage(const std::vector<std::string>& parts) {
+    ParsedMessage parsed;
+    parsed.type = MessageType::ChunkStart;
+    return parsed;
+}
 
+ParsedMessage MessageHandler::ParseChunkPartMessage(const std::vector<std::string>& parts) {
+    ParsedMessage parsed;
+    parsed.type = MessageType::ChunkPart;
+    return parsed;
+}
+
+ParsedMessage MessageHandler::ParseChunkEndMessage(const std::vector<std::string>& parts) {
+    ParsedMessage parsed;
+    parsed.type = MessageType::ChunkEnd;
+    return parsed;
+}
 // Utility function to split strings
 std::vector<std::string> MessageHandler::SplitString(const std::string& str, char delimiter) {
     std::vector<std::string> parts;
@@ -437,20 +488,32 @@ std::string MessageHandler::FormatChunkEndMessage(const std::string& chunkId) {
 void MessageHandler::AddChunk(const std::string& chunkId, int chunkNum, const std::string& chunkData) {
     // Make sure the storage exists for this chunk ID
     if (chunkStorage.find(chunkId) == chunkStorage.end()) {
-        chunkStorage[chunkId] = std::vector<std::string>();
-        // Try to get expected count from map
-        int expectedCount = chunkCounts[chunkId];
-        if (expectedCount > 0) {
-            chunkStorage[chunkId].resize(expectedCount);
+        int expectedCount = 0;
+        auto countIt = chunkCounts.find(chunkId);
+        if (countIt != chunkCounts.end()) {
+            expectedCount = countIt->second;
         } else {
-            // If we don't know how many chunks to expect, allocate enough for this one
-            chunkStorage[chunkId].resize(chunkNum + 1);
+            // If we don't know how many chunks to expect, use a reasonable default
+            expectedCount = std::max(10, chunkNum + 1);
+            chunkCounts[chunkId] = expectedCount;
         }
+        
+        chunkStorage[chunkId].resize(expectedCount);
+        std::cout << "[MessageHandler] Created storage for chunk ID " << chunkId 
+                  << " with " << expectedCount << " slots\n";
     }
     
     // Ensure the vector is large enough
-    if (chunkStorage[chunkId].size() <= static_cast<size_t>(chunkNum)) {
-        chunkStorage[chunkId].resize(chunkNum + 1);
+    if (static_cast<size_t>(chunkNum) >= chunkStorage[chunkId].size()) {
+        size_t newSize = chunkNum + 1;
+        std::cout << "[MessageHandler] Resizing chunk storage for " << chunkId 
+                  << " from " << chunkStorage[chunkId].size() << " to " << newSize << "\n";
+        chunkStorage[chunkId].resize(newSize);
+        
+        // Update expected count if necessary
+        if (chunkCounts[chunkId] < static_cast<int>(newSize)) {
+            chunkCounts[chunkId] = static_cast<int>(newSize);
+        }
     }
     
     // Store the chunk
@@ -458,7 +521,7 @@ void MessageHandler::AddChunk(const std::string& chunkId, int chunkNum, const st
     
     // Debug output
     std::cout << "[MessageHandler] Added chunk " << chunkNum << " of " << chunkCounts[chunkId] 
-              << " for ID " << chunkId << " (" << chunkData.substr(0, 20) << "...)\n";
+              << " for ID " << chunkId << "\n";
 }
 
 bool MessageHandler::IsChunkComplete(const std::string& chunkId, int expectedChunks) {
@@ -467,19 +530,29 @@ bool MessageHandler::IsChunkComplete(const std::string& chunkId, int expectedChu
         return false;
     }
     
+    // Verify all chunks are present
     if (chunkStorage[chunkId].size() != static_cast<size_t>(expectedChunks)) {
         std::cout << "[MessageHandler] Chunk count mismatch for " << chunkId 
                   << ": have " << chunkStorage[chunkId].size() 
                   << ", need " << expectedChunks << "\n";
-        return false;
+                  
+        // If we have more chunks than expected, update the expected count
+        if (chunkStorage[chunkId].size() > static_cast<size_t>(expectedChunks)) {
+            chunkCounts[chunkId] = static_cast<int>(chunkStorage[chunkId].size());
+            expectedChunks = chunkCounts[chunkId];
+            std::cout << "[MessageHandler] Updated expected chunk count to " << expectedChunks << "\n";
+        } else {
+            return false;
+        }
     }
     
-    // Verify all chunks are present
+    // Verify no chunks are empty
     bool complete = true;
     for (size_t i = 0; i < chunkStorage[chunkId].size(); i++) {
         if (chunkStorage[chunkId][i].empty()) {
             std::cout << "[MessageHandler] Missing chunk " << i << " for " << chunkId << "\n";
             complete = false;
+            break;
         }
     }
     
@@ -503,9 +576,9 @@ std::string MessageHandler::GetReconstructedMessage(const std::string& chunkId) 
     std::ostringstream result;
     result << messageType;
     
-    // Join all chunks with the | delimiter
+    // Join all chunks without additional separators - the content already has them
     for (size_t i = 0; i < chunkStorage[chunkId].size(); ++i) {
-        result << "|" << chunkStorage[chunkId][i];
+        result << chunkStorage[chunkId][i];
     }
     
     std::string finalMessage = result.str();
