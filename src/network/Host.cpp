@@ -186,6 +186,18 @@ void HostNetwork::ProcessForceFieldUpdateMessage(Game& game, HostNetwork& host, 
     
     game.GetNetworkManager().BroadcastMessage(updateMsg);
 }
+
+void HostNetwork::ProcessKillMessage(Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender) {
+    std::string killerID = parsed.steamID;
+    
+    // Validate the kill before incrementing
+    // This is where the host acts as authority
+    playerManager->IncrementPlayerKills(killerID);
+    
+    // Broadcast the kill to all clients
+    std::string killMsg = MessageHandler::FormatKillMessage(killerID, parsed.enemyId);
+    game.GetNetworkManager().BroadcastMessage(killMsg);
+}
 void HostNetwork::ProcessReadyStatusMessage(Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender) {
     std::string localSteamIDStr = std::to_string(game.GetLocalSteamID().ConvertToUint64());
     if (localSteamIDStr != parsed.steamID) {
@@ -337,7 +349,8 @@ void HostNetwork::ProcessForceFieldZapMessage(Game& game, HostNetwork& host, con
             if (killed) {
                 playerManager->IncrementPlayerKills(normalizedZapperID);
             }
-            
+            std::string killMsg = MessageHandler::FormatKillMessage(normalizedZapperID, enemyId);
+            game.GetNetworkManager().BroadcastMessage(killMsg);
             // Apply visual effect if this isn't our own zap
             if (normalizedZapperID != normalizedLocalID) {
                 // Get the player who owns the force field

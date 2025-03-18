@@ -39,6 +39,7 @@ enum class MessageType {
     ChunkStart, 
     ChunkPart,   
     ChunkEnd,
+    Kill,
     ForceFieldZap,
     ForceFieldUpdate  // New message type for force field updates
 };
@@ -120,7 +121,8 @@ public:
     static ParsedMessage ParsePlayerRespawnMessage(const std::vector<std::string>& parts);
     static ParsedMessage ParseStartGameMessage(const std::vector<std::string>& parts);
     static ParsedMessage ParsePlayerDamageMessage(const std::vector<std::string>& parts);
-
+    static ParsedMessage ParseKillMessage(const std::vector<std::string>& parts);
+    static std::string FormatKillMessage(const std::string& killerID, int enemyId);
     // Enemy message parsing functions
     static ParsedMessage ParseEnemyAddMessage(const std::vector<std::string>& parts);
     static ParsedMessage ParseEnemyRemoveMessage(const std::vector<std::string>& parts);

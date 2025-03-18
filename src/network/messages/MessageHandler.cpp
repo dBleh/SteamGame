@@ -308,6 +308,14 @@ void MessageHandler::Initialize() {
                           // Handle force field update on host
                           host.ProcessForceFieldUpdateMessage(game, host, parsed, sender);
                       });
+        RegisterMessageType("KL", 
+                        ParseKillMessage,
+                        [](Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
+                            client.ProcessKillMessage(game, client, parsed);
+                        },
+                        [](Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender) {
+                            host.ProcessKillMessage(game, host, parsed, sender);
+                        });
 }
 
 void MessageHandler::RegisterMessageType(
@@ -344,6 +352,7 @@ std::string MessageHandler::GetPrefixForType(MessageType type) {
         case MessageType::ChunkEnd: return "CHUNK_END";
         case MessageType::ForceFieldZap: return "FZ";  // New type for force field zap
         case MessageType::ForceFieldUpdate: return "FFU"; // New case
+        case MessageType::Kill: return "KL";
         case MessageType::Unknown: 
         default: return "";
     }
@@ -407,7 +416,21 @@ ParsedMessage MessageHandler::ParseChunkStartMessage(const std::vector<std::stri
     parsed.type = MessageType::ChunkStart;
     return parsed;
 }
+ParsedMessage MessageHandler::ParseKillMessage(const std::vector<std::string>& parts) {
+    ParsedMessage parsed;
+    parsed.type = MessageType::Kill;
+    if (parts.size() >= 3) {
+        parsed.steamID = parts[1];  // Killer ID
+        parsed.enemyId = std::stoi(parts[2]);  // Enemy ID
+    }
+    return parsed;
+}
 
+std::string MessageHandler::FormatKillMessage(const std::string& killerID, int enemyId) {
+    std::ostringstream oss;
+    oss << "KL|" << killerID << "|" << enemyId;
+    return oss.str();
+}
 ParsedMessage MessageHandler::ParseChunkPartMessage(const std::vector<std::string>& parts) {
     ParsedMessage parsed;
     parsed.type = MessageType::ChunkPart;

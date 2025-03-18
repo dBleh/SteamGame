@@ -110,7 +110,12 @@ void ClientNetwork::ProcessForceFieldUpdateMessage(Game& game, ClientNetwork& cl
 void ClientNetwork::ProcessChatMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
     std::cout << "[CLIENT] Received chat message from " << parsed.steamID << ": " << parsed.chatMessage << "\n";
 }
-
+void ClientNetwork::ProcessKillMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
+    std::string killerID = parsed.steamID;
+    
+    // Update kill count based on host's authoritative message
+    playerManager->IncrementPlayerKills(killerID);
+}
 void ClientNetwork::ProcessConnectionMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
     // Create a new RemotePlayer directly with its fields set, don't copy
     RemotePlayer rp;

@@ -40,6 +40,7 @@ public:
     void ProcessUnknownMessage(Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender);
     void ProcessForceFieldZapMessage(Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender);
     void ProcessForceFieldUpdateMessage(Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender);
+    void ProcessKillMessage(Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender);
 private:
     Game* game;
     PlayerManager* playerManager;
