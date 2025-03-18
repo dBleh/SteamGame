@@ -61,10 +61,25 @@ void Enemy::UpdateMovement(float dt, PlayerManager& playerManager) {
         direction.x /= distance;
         direction.y /= distance;
         
-        // Apply velocity
-        velocity = direction * speed;
+        // Apply velocity with smoother acceleration
+        const float acceleration = 10.0f; // Adjust as needed
+        sf::Vector2f targetVelocity = direction * speed;
+        
+        // Interpolate current velocity toward target velocity
+        velocity.x += (targetVelocity.x - velocity.x) * dt * acceleration;
+        velocity.y += (targetVelocity.y - velocity.y) * dt * acceleration;
+        
+        // Apply velocity to position
+        position += velocity * dt;
+    } else {
+        // Gradually slow down when near target
+        velocity *= 0.95f;
         position += velocity * dt;
     }
+    
+    // Apply a small amount of position correction based on target position
+    // to prevent drift over time
+    position += (targetPosition - position) * 0.01f;
 }
 
 void Enemy::UpdateVisualRepresentation() {

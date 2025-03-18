@@ -42,7 +42,8 @@ public:
     
     // Damage handling
     bool TakeDamage(float amount);
-    
+    sf::Vector2f GetVelocity() const { return velocity; }
+void SetVelocity(const sf::Vector2f& vel) { velocity = vel; }
 protected:
     // Core properties
     int id;

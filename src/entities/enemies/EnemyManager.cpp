@@ -50,16 +50,16 @@ void EnemyManager::Update(float dt) {
     CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
     
     if (myID == hostID) {
-        // Sync enemy positions periodically
+        // Sync enemy positions more frequently
         syncTimer += dt;
-        if (syncTimer >= ENEMY_SYNC_INTERVAL) {
+        if (syncTimer >= 0.05f) { // Reduced from ENEMY_SYNC_INTERVAL to 50ms
             SyncEnemyPositions();
             syncTimer = 0.0f;
         }
         
-        // Send full state less frequently
+        // Send full state more frequently as well
         fullSyncTimer += dt;
-        if (fullSyncTimer >= FULL_SYNC_INTERVAL) {
+        if (fullSyncTimer >= 0.5f) { // Reduced from FULL_SYNC_INTERVAL to 500ms
             SyncFullState();
             fullSyncTimer = 0.0f;
         }
@@ -212,43 +212,57 @@ void EnemyManager::SyncEnemyPositions() {
     // Get priority list of enemies to sync
     std::vector<int> priorities = GetEnemyUpdatePriorities();
     
-    // Limit to 10 enemies per update to avoid network congestion
-    size_t updateCount = std::min(priorities.size(), static_cast<size_t>(10));
+    // Increase limit to 20 enemies per update for better coverage
+    size_t updateCount = std::min(priorities.size(), static_cast<size_t>(20));
     
-    // Create batch position update message
-    std::ostringstream oss;
-    oss << "EP";
+    // Create vectors for batch update
+    std::vector<int> enemyIds;
+    std::vector<sf::Vector2f> positions;
+    std::vector<sf::Vector2f> velocities;
     
     for (size_t i = 0; i < updateCount; ++i) {
         int enemyId = priorities[i];
         auto it = enemies.find(enemyId);
         if (it != enemies.end()) {
-            const sf::Vector2f& pos = it->second->GetPosition();
-            oss << "|" << enemyId << "," << pos.x << "," << pos.y;
+            enemyIds.push_back(enemyId);
+            positions.push_back(it->second->GetPosition());
+            velocities.push_back(it->second->GetVelocity());
         }
     }
     
-    // Broadcast the message
-    game->GetNetworkManager().BroadcastMessage(oss.str());
+    // Send the message using the existing EP format
+    std::string epMessage = MessageHandler::FormatEnemyPositionUpdateMessage(enemyIds, positions);
+    game->GetNetworkManager().BroadcastMessage(epMessage);
 }
 
 void EnemyManager::SyncFullState() {
     if (enemies.empty()) return;
     
-    // Create a complete state update message
-    std::ostringstream oss;
-    oss << "ES";
+    // Create vectors for batch update
+    std::vector<int> enemyIds;
+    std::vector<EnemyType> types;
+    std::vector<sf::Vector2f> positions;
+    std::vector<float> healths;
     
+    // Include all enemies in the full state update
     for (const auto& pair : enemies) {
-        const Enemy& enemy = *pair.second;
-        oss << "|" << enemy.GetID() << ","
-            << static_cast<int>(enemy.GetType()) << ","
-            << enemy.GetPosition().x << "," << enemy.GetPosition().y << ","
-            << enemy.GetHealth();
+        enemyIds.push_back(pair.first);
+        types.push_back(pair.second->GetType());
+        positions.push_back(pair.second->GetPosition());
+        healths.push_back(pair.second->GetHealth());
     }
     
-    // Broadcast the message
-    game->GetNetworkManager().BroadcastMessage(oss.str());
+    // Use chunking for large updates
+    std::string fullStateMsg = MessageHandler::FormatEnemyStateMessage(enemyIds, types, positions, healths);
+    
+    if (fullStateMsg.length() > MAX_PACKET_SIZE) {
+        std::vector<std::string> chunks = MessageHandler::ChunkMessage(fullStateMsg, "ES");
+        for (const auto& chunk : chunks) {
+            game->GetNetworkManager().BroadcastMessage(chunk);
+        }
+    } else {
+        game->GetNetworkManager().BroadcastMessage(fullStateMsg);
+    }
 }
 
 void EnemyManager::ApplyNetworkUpdate(int enemyId, const sf::Vector2f& position, float health) {
