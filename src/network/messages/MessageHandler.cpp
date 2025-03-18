@@ -499,18 +499,20 @@ std::string MessageHandler::GetReconstructedMessage(const std::string& chunkId) 
     // Get the message type for this chunked message
     std::string messageType = chunkTypes[chunkId];
     
-    // Reconstruct with the correct prefix
-    std::string result = messageType + "|";
+    // Start with the message type as prefix
+    std::ostringstream result;
+    result << messageType;
     
-    // Append all chunks
-    for (const auto& chunk : chunkStorage[chunkId]) {
-        result += chunk;
+    // Join all chunks with the | delimiter
+    for (size_t i = 0; i < chunkStorage[chunkId].size(); ++i) {
+        result << "|" << chunkStorage[chunkId][i];
     }
     
+    std::string finalMessage = result.str();
     std::cout << "[MessageHandler] Reconstructed message with type " << messageType 
-              << ", length: " << result.length() << "\n";
+              << ", length: " << finalMessage.length() << "\n";
     
-    return result;
+    return finalMessage;
 }
 
 void MessageHandler::ClearChunks(const std::string& chunkId) {
@@ -782,46 +784,42 @@ ParsedMessage MessageHandler::ParseEnemyStateMessage(const std::vector<std::stri
     
     std::cout << "[MessageHandler] Parsing ES message with " << parts.size() << " parts\n";
     
-    // Skip the first part which is the message type "ES"
+    // First, let's handle the case where we have a full message with multiple entities
+    // Format might be: ES|entity1|entity2|entity3|...
     for (size_t i = 1; i < parts.size(); ++i) {
-        std::string chunk = parts[i];
+        std::string entityData = parts[i];
         
-        // Split the chunk into entity definitions (each entity is separated by a |)
-        std::vector<std::string> entities;
-        std::stringstream ss(chunk);
-        std::string entity;
+        // Skip empty parts
+        if (entityData.empty()) continue;
         
-        // Process each entity in the chunk
-        while (std::getline(ss, entity, '|')) {
-            if (entity.empty()) continue;
-            
-            // Split entity data (id,type,x,y,health)
-            std::vector<std::string> entityData = SplitString(entity, ',');
-            
-            if (entityData.size() >= 5) {
-                // Standard format: id,type,x,y,health
-                try {
-                    int id = std::stoi(entityData[0]);
-                    parsed.enemyIds.push_back(id);
-                    parsed.enemyTypes.push_back(std::stoi(entityData[1]));
-                    parsed.enemyPositions.push_back(sf::Vector2f(
-                        std::stof(entityData[2]),
-                        std::stof(entityData[3])
-                    ));
-                    parsed.enemyHealths.push_back(std::stof(entityData[4]));
-                    
-                    std::cout << "[MessageHandler] Parsed enemy: id=" << id 
-                              << ", pos=(" << entityData[2] << "," << entityData[3] << ")\n";
-                }
-                catch (const std::exception& e) {
-                    std::cout << "[MessageHandler] Error parsing entity: " << entity 
-                              << ", error: " << e.what() << "\n";
-                }
+        // Try to parse individual entity data
+        std::vector<std::string> fields = SplitString(entityData, ',');
+        
+        // Expected format: id,type,x,y,health
+        if (fields.size() >= 5) {
+            try {
+                int id = std::stoi(fields[0]);
+                int type = std::stoi(fields[1]);
+                float x = std::stof(fields[2]);
+                float y = std::stof(fields[3]);
+                float health = std::stof(fields[4]);
+                
+                parsed.enemyIds.push_back(id);
+                parsed.enemyTypes.push_back(type);
+                parsed.enemyPositions.push_back(sf::Vector2f(x, y));
+                parsed.enemyHealths.push_back(health);
+                
+                std::cout << "[MessageHandler] Parsed enemy: id=" << id 
+                          << ", pos=(" << x << "," << y << ")\n";
             }
-            else {
-                std::cout << "[MessageHandler] Skipping malformed entity data: " 
-                          << entity << " (fields: " << entityData.size() << ")\n";
+            catch (const std::exception& e) {
+                std::cout << "[MessageHandler] Error parsing enemy data: " << entityData 
+                          << " - Error: " << e.what() << "\n";
             }
+        }
+        else {
+            std::cout << "[MessageHandler] Skipping malformed enemy data: " << entityData 
+                      << " (fields: " << fields.size() << ")\n";
         }
     }
     
