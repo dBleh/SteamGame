@@ -258,16 +258,7 @@ void PlayingState::Update(float dt) {
                         // Update force field
                         rp.player.GetForceField()->Update(dt, *playerManager, *enemyManager);
                     }
-                    if (!rp.player.GetForceField()->HasZapCallback()) {
-                        // Recreate the zap callback if missing
-                        std::string playerID = pair.first;
-                        rp.player.GetForceField()->SetZapCallback([this, playerID](int enemyId, float damage, bool killed) {
-                            // Handle zap event
-                            playerManager->HandleForceFieldZap(playerID, enemyId, damage, killed);
-                        });
-                        
-                        std::cout << "[CLIENT] Restored missing zap callback for player " << rp.baseName << "\n";
-                    }
+                    
                 }
             }
         }
