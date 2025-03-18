@@ -3,54 +3,59 @@
 #include <cmath>
 
 Player::Player()
-    : movementSpeed(200.f), shootCooldown(0.f), health(PLAYER_HEALTH), isDead(false), respawnPosition(0.f, 0.f) {
+    : movementSpeed(200.f), shootCooldown(0.f), health(PLAYER_HEALTH), isDead(false), respawnPosition(0.f, 0.f),
+      bulletSpeedMultiplier(1.0f), moveSpeedMultiplier(1.0f), maxHealth(PLAYER_HEALTH) {
     shape.setSize(sf::Vector2f(50.f, 50.f));
     shape.setFillColor(sf::Color::Blue);
     shape.setPosition(100.f, 100.f);
 }
 
 Player::Player(const sf::Vector2f& startPosition, const sf::Color& color)
-    : movementSpeed(200.f), shootCooldown(0.f), health(PLAYER_HEALTH), isDead(false), respawnPosition(0.f, 0.f) {
+    : movementSpeed(200.f), shootCooldown(0.f), health(PLAYER_HEALTH), isDead(false), respawnPosition(startPosition),
+      bulletSpeedMultiplier(1.0f), moveSpeedMultiplier(1.0f), maxHealth(PLAYER_HEALTH) {
     shape.setSize(sf::Vector2f(50.f, 50.f));
     shape.setFillColor(color);
     shape.setPosition(startPosition);
 }
-// In src/entities/Player.cpp, replace the Update() method with this version
-// that properly uses InputManager instead of hardcoded keys
 
 void Player::Update(float dt) {
-    // This method is being replaced with the InputManager version
-    // We'll forward to a default implementation that doesn't move
-    // to prevent crashes when called without proper input handling
-    
-    // Only handle cooldowns
+    // Only handle cooldowns in the base update
     if (shootCooldown > 0.f) {
         shootCooldown -= dt;
     }
 }
 
 void Player::Update(float dt, const InputManager& inputManager) {
+    // First run the base update to handle cooldowns
+    Update(dt);
+    
+    // Then handle input-based movement
     sf::Vector2f movement(0.f, 0.f);
+    
+    // Skip movement if player is dead
+    if (isDead) return;
     
     // Use the input manager to check for key presses using the configured bindings
     if (sf::Keyboard::isKeyPressed(inputManager.GetKeyBinding(GameAction::MoveUp)))
-        movement.y -= movementSpeed * dt;
+        movement.y -= movementSpeed * moveSpeedMultiplier * dt;
     if (sf::Keyboard::isKeyPressed(inputManager.GetKeyBinding(GameAction::MoveDown)))
-        movement.y += movementSpeed * dt;
+        movement.y += movementSpeed * moveSpeedMultiplier * dt;
     if (sf::Keyboard::isKeyPressed(inputManager.GetKeyBinding(GameAction::MoveLeft)))
-        movement.x -= movementSpeed * dt;
+        movement.x -= movementSpeed * moveSpeedMultiplier * dt;
     if (sf::Keyboard::isKeyPressed(inputManager.GetKeyBinding(GameAction::MoveRight)))
-        movement.x += movementSpeed * dt;
+        movement.x += movementSpeed * moveSpeedMultiplier * dt;
     
     shape.move(movement);
-
-    if (shootCooldown > 0.f) {
-        shootCooldown -= dt;
-    }
 }
 
 Player::BulletParams Player::Shoot(const sf::Vector2f& mouseWorldPos) {
     BulletParams params{};
+    
+    // Skip shooting if player is dead
+    if (isDead) {
+        params.success = false;
+        return params;
+    }
     
     if (shootCooldown <= 0.f) {
         shootCooldown = SHOOT_COOLDOWN_DURATION;
@@ -93,11 +98,13 @@ void Player::SetPosition(const sf::Vector2f& pos) {
 sf::RectangleShape& Player::GetShape() {
     return shape;
 }
-float Player::GetShootCooldown() const {
-    return shootCooldown;
-}
+
 const sf::RectangleShape& Player::GetShape() const {
     return shape;
+}
+
+float Player::GetShootCooldown() const {
+    return shootCooldown;
 }
 
 void Player::SetSpeed(float speed) {
@@ -109,13 +116,23 @@ float Player::GetSpeed() const {
 }
 
 void Player::TakeDamage(int amount) {
+    // Skip if already dead
+    if (isDead) return;
+    
     health -= amount;
     if (health <= 0) {
         health = 0;
         isDead = true;
-        // Save current position as respawn position
-        respawnPosition = shape.getPosition();
+        // Only save respawn position if it's not already set
+        if (respawnPosition.x == 0.f && respawnPosition.y == 0.f) {
+            respawnPosition = shape.getPosition();
+        }
     }
+}
+
+void Player::SetHealth(float newHealth) {
+    health = std::min(newHealth, maxHealth);
+    isDead = (health <= 0);
 }
 
 bool Player::IsDead() const {
@@ -125,9 +142,14 @@ bool Player::IsDead() const {
 void Player::Respawn() {
     health = PLAYER_HEALTH;
     isDead = false;
+    // Move player to their respawn position
     shape.setPosition(respawnPosition);
 }
 
 void Player::SetRespawnPosition(const sf::Vector2f& position) {
     respawnPosition = position;
+}
+
+sf::Vector2f Player::GetRespawnPosition() const {
+    return respawnPosition;
 }

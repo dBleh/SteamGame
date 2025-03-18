@@ -186,6 +186,12 @@ struct HUDElement {
      * @param winSize Window size.
      */
     void configureStoreHUD(const sf::Vector2u& winSize);
+    /**
+     * @brief Animates a line with a shaking effect.
+     * @param lineId ID of the line to animate.
+     * @param intensity Intensity of the shake.
+     */
+    void animateLine(const std::string& lineId, float intensity);
 
 private:
     sf::Font& m_font; ///< Reference to the font used for HUD elements.
@@ -207,12 +213,7 @@ private:
      */
     bool isMouseOverText(const sf::RenderWindow& window, const sf::Text& text);
     
-    /**
-     * @brief Animates a line with a shaking effect.
-     * @param lineId ID of the line to animate.
-     * @param intensity Intensity of the shake.
-     */
-    void animateLine(const std::string& lineId, float intensity);
+    
     
     /**
      * @brief Converts window mouse coordinates to UI view coordinates.

@@ -1,13 +1,15 @@
 #include "PlayerManager.h"
 #include "../core/Game.h"
-#include "../network/messages/MessageHandler.h"  // Updated import
+#include "../network/messages/MessageHandler.h"
 #include <iostream>
+#include <algorithm>
 
 PlayerManager::PlayerManager(Game* game, const std::string& localID)
     : game(game), localPlayerID(localID), lastFrameTime(std::chrono::steady_clock::now()) {
 }
 
 PlayerManager::~PlayerManager() {
+    // Clean up if needed
 }
 
 void PlayerManager::Update(Game* game) {
@@ -15,194 +17,104 @@ void PlayerManager::Update(Game* game) {
     float dt = std::chrono::duration<float>(now - lastFrameTime).count();
     lastFrameTime = now;
 
-    for (auto& pair : players) {
-        RemotePlayer& rp = pair.second;
-
-        // Handle respawning for dead players
-        if (rp.player.IsDead()) {
-            // Output respawn status for debugging
-            static std::chrono::steady_clock::time_point lastDebugOutput = std::chrono::steady_clock::now();
-            float debugElapsed = std::chrono::duration<float>(now - lastDebugOutput).count();
-            
-            if (debugElapsed >= 1.0f) {  // Once per second
-                std::cout << "[PM] Player " << pair.first << " is dead. Respawn timer: " 
-                          << rp.respawnTimer << ", Health: " << rp.player.GetHealth() << "\n";
-                lastDebugOutput = now;
-            }
-            
-            if (rp.respawnTimer > 0.0f) {
-                rp.respawnTimer -= dt;
-                if (rp.respawnTimer <= 0.0f) {
-                    std::cout << "[PM] Respawn timer expired for " << pair.first << "\n";
-                    
-                 
-                    
-                    // Call respawn
-                    RespawnPlayer(pair.first);
-                    
-                    // Double-check health after respawn
-                    if (rp.player.GetHealth() < PLAYER_HEALTH) {
-                        std::cout << "[PM] WARNING: Player health not fully restored after respawn: " 
-                                  << rp.player.GetHealth() << "/100\n";
-                        
-                        // Force health to 100 as a fallback
-                        rp.player.Respawn();
-                    }
-                }
-            } else if (pair.first == localPlayerID) {
-                // If local player is dead but has no respawn timer, set one
-                if (rp.respawnTimer <= 0.0f) {
-                    std::cout << "[PM] Setting respawn timer for local player\n";
-                    rp.respawnTimer = 3.0f;
-                }
-            }
-        }
-        
-        sf::Vector2f pos;
-        if (pair.first == localPlayerID) {
-            // For local player, use the InputManager for movement
-            rp.player.Update(dt, game->GetInputManager());
-            pos = rp.player.GetPosition();
-        } else {
-            // For remote players, use interpolation
-            float elapsed = std::chrono::duration<float>(now - rp.lastUpdateTime).count();
-            float t = elapsed / rp.interpDuration;
-            if (t > 1.0f) t = 1.0f;
-            pos = rp.previousPosition + (rp.targetPosition - rp.previousPosition) * t;
-            rp.player.SetPosition(pos);
-        }
-        
-        // Only show ready status in Lobby state
-        if (game->GetCurrentState() == GameState::Lobby) {
-            std::string status = rp.isReady ? " ✓" : " X";
-            rp.nameText.setString(rp.baseName + status);
-        } else {
-            rp.nameText.setString(rp.baseName);
-        }
-        
-        rp.nameText.setPosition(pos.x, pos.y - 20.f);
-    }
-   
-    std::vector<size_t> bulletsToRemove;
-    
-    for (size_t i = 0; i < bullets.size(); i++) {
-        bullets[i].Update(dt);
-        
-        // Mark expired bullets or those far away from all players
-        if (bullets[i].IsExpired()) {
-            bulletsToRemove.push_back(i);
-        } else {
-            // Also remove bullets that are far away from any player
-            bool tooFarFromAllPlayers = true;
-            sf::Vector2f bulletPos = bullets[i].GetPosition();
-            
-            for (const auto& pair : players) {
-                if (pair.second.player.IsDead()) continue;
-                
-                sf::Vector2f playerPos = pair.second.player.GetPosition();
-                float distSquared = (bulletPos.x - playerPos.x) * (bulletPos.x - playerPos.x) +
-                                    (bulletPos.y - playerPos.y) * (bulletPos.y - playerPos.y);
-                
-                // If bullet is within reasonable distance of any player, keep it
-                if (distSquared < 1000*1000) {  // 1000 pixels
-                    tooFarFromAllPlayers = false;
-                    break;
-                }
-            }
-            
-            if (tooFarFromAllPlayers) {
-                bulletsToRemove.push_back(i);
-            }
-        }
-    }
-    
-    // Remove expired bullets safely (from back to front)
-    if (!bulletsToRemove.empty()) {
-        // Sort indices in descending order for safe removal
-        std::sort(bulletsToRemove.begin(), bulletsToRemove.end(), std::greater<size_t>());
-        
-        for (size_t idx : bulletsToRemove) {
-            if (idx < bullets.size()) {
-                bullets.erase(bullets.begin() + idx);
-            }
-        }
-    }
-    
+    UpdatePlayers(dt, game);
+    UpdateBullets(dt);
     CheckBulletCollisions();
 }
 
 void PlayerManager::Update() {
-    auto now = std::chrono::steady_clock::now();
-    float dt = std::chrono::duration<float>(now - lastFrameTime).count();
-    lastFrameTime = now;
+    // Legacy method for backward compatibility
+    Update(game);
+}
 
+void PlayerManager::UpdatePlayers(float dt, Game* game) {
     for (auto& pair : players) {
+        std::string playerID = pair.first;
         RemotePlayer& rp = pair.second;
 
         // Handle respawning for dead players
-        if (rp.player.IsDead()) {
-            // Output respawn status for debugging
-            static std::chrono::steady_clock::time_point lastDebugOutput = std::chrono::steady_clock::now();
-            float debugElapsed = std::chrono::duration<float>(now - lastDebugOutput).count();
-            
-            if (debugElapsed >= 1.0f) {  // Once per second
-                std::cout << "[PM] Player " << pair.first << " is dead. Respawn timer: " 
-                          << rp.respawnTimer << ", Health: " << rp.player.GetHealth() << "\n";
-                lastDebugOutput = now;
-            }
-            
-            if (rp.respawnTimer > 0.0f) {
-                rp.respawnTimer -= dt;
-                if (rp.respawnTimer <= 0.0f) {
-                    std::cout << "[PM] Respawn timer expired for " << pair.first << "\n";
-                    
-                    // Set respawn position to origin
-                    rp.player.SetRespawnPosition(sf::Vector2f(0.f, 0.f));
-                    
-                    // Call respawn
-                    RespawnPlayer(pair.first);
-                    
-                    // Double-check health after respawn
-                    if (rp.player.GetHealth() < 100) {
-                        std::cout << "[PM] WARNING: Player health not fully restored after respawn: " 
-                                  << rp.player.GetHealth() << "/100\n";
-                        
-                        // Force health to 100 as a fallback
-                        rp.player.Respawn();
-                    }
-                }
-            } else if (pair.first == localPlayerID) {
-                // If local player is dead but has no respawn timer, set one
-                if (rp.respawnTimer <= 0.0f) {
-                    std::cout << "[PM] Setting respawn timer for local player\n";
-                    rp.respawnTimer = 3.0f;
-                }
-            }
-        }
+        HandlePlayerRespawn(dt, playerID, rp);
         
-        sf::Vector2f pos;
-        if (pair.first == localPlayerID) {
-            rp.player.Update(dt);  // Use the old Update method without InputManager
-            pos = rp.player.GetPosition();
-        } else {
-            float elapsed = std::chrono::duration<float>(now - rp.lastUpdateTime).count();
-            float t = elapsed / rp.interpDuration;
-            if (t > 1.0f) t = 1.0f;
-            pos = rp.previousPosition + (rp.targetPosition - rp.previousPosition) * t;
-            rp.player.SetPosition(pos);
-        }
+        // Update player position based on whether it's local or remote
+        UpdatePlayerPosition(dt, playerID, rp, game);
         
-        // Only show ready status in Lobby state
-        if (game->GetCurrentState() == GameState::Lobby) {
-            std::string status = rp.isReady ? " ✓" : " X";
-            rp.nameText.setString(rp.baseName + status);
-        } else {
-            rp.nameText.setString(rp.baseName);
-        }
-        
-        rp.nameText.setPosition(pos.x, pos.y - 20.f);
+        // Update player name display
+        UpdatePlayerNameDisplay(playerID, rp, game);
     }
-   
+}
+
+void PlayerManager::HandlePlayerRespawn(float dt, const std::string& playerID, RemotePlayer& rp) {
+    if (rp.player.IsDead()) {
+        // Debug output (once per second)
+        static std::chrono::steady_clock::time_point lastDebugOutput = std::chrono::steady_clock::now();
+        auto now = std::chrono::steady_clock::now();
+        float debugElapsed = std::chrono::duration<float>(now - lastDebugOutput).count();
+        
+        if (debugElapsed >= 1.0f) {
+            std::cout << "[PM] Player " << playerID << " is dead. Respawn timer: " 
+                      << rp.respawnTimer << ", Health: " << rp.player.GetHealth() << "\n";
+            lastDebugOutput = now;
+        }
+        
+        if (rp.respawnTimer > 0.0f) {
+            rp.respawnTimer -= dt;
+            if (rp.respawnTimer <= 0.0f) {
+                std::cout << "[PM] Respawn timer expired for " << playerID << "\n";
+                
+                // Call respawn
+                RespawnPlayer(playerID);
+                
+                // Double-check health after respawn
+                if (rp.player.GetHealth() < PLAYER_HEALTH) {
+                    std::cout << "[PM] WARNING: Player health not fully restored after respawn: " 
+                              << rp.player.GetHealth() << "/100\n";
+                    
+                    // Force health to full as a fallback
+                    rp.player.Respawn();
+                }
+            }
+        } else if (playerID == localPlayerID) {
+            // If local player is dead but has no respawn timer, set one
+            if (rp.respawnTimer <= 0.0f) {
+                std::cout << "[PM] Setting respawn timer for local player\n";
+                rp.respawnTimer = 3.0f;
+            }
+        }
+    }
+}
+
+void PlayerManager::UpdatePlayerPosition(float dt, const std::string& playerID, RemotePlayer& rp, Game* game) {
+    sf::Vector2f pos;
+    
+    if (playerID == localPlayerID) {
+        // For local player, use the InputManager for movement
+        rp.player.Update(dt, game->GetInputManager());
+        pos = rp.player.GetPosition();
+    } else {
+        // For remote players, use interpolation
+        auto now = std::chrono::steady_clock::now();
+        float elapsed = std::chrono::duration<float>(now - rp.lastUpdateTime).count();
+        float t = elapsed / rp.interpDuration;
+        if (t > 1.0f) t = 1.0f;
+        pos = rp.previousPosition + (rp.targetPosition - rp.previousPosition) * t;
+        rp.player.SetPosition(pos);
+    }
+    
+    // Update player name position to follow the player
+    rp.nameText.setPosition(pos.x, pos.y - 20.f);
+}
+
+void PlayerManager::UpdatePlayerNameDisplay(const std::string& playerID, RemotePlayer& rp, Game* game) {
+    // Only show ready status in Lobby state
+    if (game->GetCurrentState() == GameState::Lobby) {
+        std::string status = rp.isReady ? " ✓" : " X";
+        rp.nameText.setString(rp.baseName + status);
+    } else {
+        rp.nameText.setString(rp.baseName);
+    }
+}
+
+void PlayerManager::UpdateBullets(float dt) {
     std::vector<size_t> bulletsToRemove;
     
     for (size_t i = 0; i < bullets.size(); i++) {
@@ -237,27 +149,19 @@ void PlayerManager::Update() {
     }
     
     // Remove expired bullets safely (from back to front)
-    if (!bulletsToRemove.empty()) {
-        
-        // Sort indices in descending order for safe removal
-        std::sort(bulletsToRemove.begin(), bulletsToRemove.end(), std::greater<size_t>());
-        
-        for (size_t idx : bulletsToRemove) {
-            if (idx < bullets.size()) {
-                bullets.erase(bullets.begin() + idx);
-            }
-        }
-    }
-    
-    CheckBulletCollisions();
+    RemoveBullets(bulletsToRemove);
 }
+
 void PlayerManager::AddOrUpdatePlayer(const std::string& id, const RemotePlayer& player) {
     if (id.empty()) {
         std::cout << "[ERROR] Attempted to add player with empty ID!\n";
         return;
     }
+    
     auto now = std::chrono::steady_clock::now();
+    
     if (players.find(id) == players.end()) {
+        // New player
         players[id] = player;
         players[id].playerID = id;
         players[id].previousPosition = player.player.GetPosition();
@@ -267,6 +171,7 @@ void PlayerManager::AddOrUpdatePlayer(const std::string& id, const RemotePlayer&
         players[id].kills = player.kills;
         players[id].money = player.money;
     } else if (id != localPlayerID) {
+        // Update existing remote player
         players[id].previousPosition = players[id].player.GetPosition();
         players[id].targetPosition = player.player.GetPosition();
         players[id].lastUpdateTime = now;
@@ -278,7 +183,8 @@ void PlayerManager::AddOrUpdatePlayer(const std::string& id, const RemotePlayer&
     }
 }
 
-void PlayerManager::AddLocalPlayer(const std::string& id, const std::string& name, const sf::Vector2f& position, const sf::Color& color) {
+void PlayerManager::AddLocalPlayer(const std::string& id, const std::string& name, 
+                                   const sf::Vector2f& position, const sf::Color& color) {
     RemotePlayer rp;
     rp.player = Player(position, color);
     rp.nameText.setFont(game->GetFont());
@@ -307,7 +213,17 @@ void PlayerManager::SetReadyStatus(const std::string& id, bool ready) {
     }
 }
 
-void PlayerManager::AddBullet(const std::string& shooterID, const sf::Vector2f& position, const sf::Vector2f& direction, float velocity) {
+bool PlayerManager::AreAllPlayersReady() const {
+    for (const auto& pair : players) {
+        if (!pair.second.isReady) {
+            return false;
+        }
+    }
+    return !players.empty(); // Only true if there are players and all are ready
+}
+
+void PlayerManager::AddBullet(const std::string& shooterID, const sf::Vector2f& position, 
+                              const sf::Vector2f& direction, float velocity) {
     // Validate input parameters
     if (direction.x == 0.f && direction.y == 0.f) {
         return;
@@ -320,7 +236,6 @@ void PlayerManager::AddBullet(const std::string& shooterID, const sf::Vector2f& 
     // For debugging: print the ID being added and local ID for comparison
     std::string localSteamIDStr = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
 
-    
     // Ensure we use the exact same string format for IDs
     std::string normalizedID = shooterID;
     try {
@@ -331,9 +246,15 @@ void PlayerManager::AddBullet(const std::string& shooterID, const sf::Vector2f& 
         std::cout << "[PM] Error normalizing shooter ID: " << e.what() << "\n";
     }
     
+    // Apply bullet speed multiplier from player if available
+    float adjustedVelocity = velocity;
+    auto it = players.find(normalizedID);
+    if (it != players.end()) {
+        adjustedVelocity *= it->second.player.GetBulletSpeedMultiplier();
+    }
+    
     // Add the bullet with the normalized ID
-    bullets.emplace_back(position, direction, velocity, normalizedID);
-
+    bullets.emplace_back(position, direction, adjustedVelocity, normalizedID);
 }
 
 RemotePlayer& PlayerManager::GetLocalPlayer() {
@@ -358,14 +279,15 @@ void PlayerManager::IncrementPlayerKills(const std::string& playerID) {
     if (players.find(playerID) != players.end()) {
         players[playerID].kills++;
         
-        // Also reward the player with some money (already set in the original code)
+        // Also reward the player with some money
         players[playerID].money += 50;
     }
 }
+
 const std::vector<Bullet>& PlayerManager::GetAllBullets() const {
-    // Simply return the bullets collection
     return bullets;
 }
+
 void PlayerManager::CheckBulletCollisions() {
     for (auto bulletIt = bullets.begin(); bulletIt != bullets.end();) {
         bool bulletHit = false;
@@ -381,6 +303,7 @@ void PlayerManager::CheckBulletCollisions() {
             if (bulletIt->BelongsToPlayer(playerID)) continue;
             
             if (bulletIt->CheckCollision(remotePlayer.player.GetShape(), playerID)) {
+                // Apply damage to player
                 remotePlayer.player.TakeDamage(25); // 4 hits to kill
                 
                 if (remotePlayer.player.IsDead()) {
@@ -402,7 +325,6 @@ void PlayerManager::CheckBulletCollisions() {
     }
 }
 
-// Replace the PlayerDied method in PlayerManager.cpp to fix respawn issues
 void PlayerManager::PlayerDied(const std::string& playerID, const std::string& killerID) {
     // Lookup player in map
     auto it = players.find(playerID);
@@ -475,7 +397,7 @@ void PlayerManager::RespawnPlayer(const std::string& playerID) {
         bool wasDead = it->second.player.IsDead();
         
         // Get the current saved respawn position before calling respawn
-        sf::Vector2f respawnPos = it->second.player.GetPosition();  // Use current position as fallback
+        sf::Vector2f respawnPos = it->second.player.GetRespawnPosition();
         
         // Call respawn
         it->second.player.Respawn();
@@ -517,6 +439,7 @@ void PlayerManager::RespawnPlayer(const std::string& playerID) {
         std::cout << "[PM] Could not find player " << normalizedID << " to respawn\n";
     }
 }
+
 void PlayerManager::RemoveBullets(const std::vector<size_t>& indicesToRemove) {
     if (indicesToRemove.empty()) {
         return;

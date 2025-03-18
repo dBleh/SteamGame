@@ -15,6 +15,7 @@ class PlayerRenderer;
 class HostNetwork;
 class ClientNetwork;
 class Shop; // Forward declaration for Shop
+class PlayingStateUI; // Forward declaration for UI
 
 class PlayingState : public State {
 public:
@@ -38,28 +39,22 @@ private:
     static Shop* shopInstance;
     
     void AttemptShoot(int mouseX, int mouseY);
-    void ProcessEvents(const sf::Event& event);
-    void UpdatePlayerStats();
-    void UpdateLeaderboard();
+    void ProcessGameplayEvents(const sf::Event& event);
     void CheckBulletEnemyCollisions();
-    void UpdateWaveInfo();
-    bool isPointInRect(const sf::Vector2f& point, const sf::FloatRect& rect);
-    void updateButtonHoverState(sf::RectangleShape& button, const sf::Vector2f& mousePos, bool& isHovered);
     
+    // Game components
     std::unique_ptr<PlayerManager> playerManager;
     std::unique_ptr<PlayerRenderer> playerRenderer;
     std::unique_ptr<HostNetwork> hostNetwork;
     std::unique_ptr<ClientNetwork> clientNetwork;
     std::unique_ptr<EnemyManager> enemyManager;
+    std::unique_ptr<PlayingStateUI> ui;
     
     // Wave management
     float waveTimer;
     bool waitingForNextWave;
     
-    sf::Text menuTitle;
-    sf::RectangleShape continueButton;
-    sf::Text continueButtonText;
-    
+    // Game state
     Grid grid;
     bool showGrid;
     bool playerLoaded;
@@ -68,15 +63,12 @@ private:
     bool mouseHeld;
     float shootTimer;
     bool showEscapeMenu;
-    sf::RectangleShape menuBackground;
-    sf::RectangleShape returnButton;
-    sf::Text returnButtonText;
 
     // Cursor locking
     bool cursorLocked;
     sf::Vector2i windowCenter;
-    sf::Text deathTimerText;
-    bool isDeathTimerVisible;   
+    bool isDeathTimerVisible;
+    
     // Leaderboard
     bool showLeaderboard;
 

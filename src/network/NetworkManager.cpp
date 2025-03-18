@@ -122,10 +122,7 @@ bool NetworkManager::BroadcastMessage(const std::string& msg) {
     if (msg.size() > MAX_PACKET_SIZE) {
         std::string messageType = msg.substr(0, msg.find('|'));
         std::vector<std::string> chunks = MessageHandler::ChunkMessage(msg.substr(msg.find('|') + 1), messageType);
-        
-        std::cout << "[NETWORK] Large message (" << msg.size() << " bytes) split into " 
-                  << chunks.size() << " chunks\n";
-        
+                
         int numMembers = SteamMatchmaking()->GetNumLobbyMembers(m_currentLobbyID);
         for (int i = 0; i < numMembers; ++i) {
             CSteamID memberID = SteamMatchmaking()->GetLobbyMemberByIndex(m_currentLobbyID, i);

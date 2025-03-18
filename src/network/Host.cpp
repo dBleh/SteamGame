@@ -127,8 +127,7 @@ void HostNetwork::ProcessBulletMessage(Game& game, HostNetwork& host, const Pars
     }
     std::string broadcastMsg = MessageHandler::FormatBulletMessage(normalizedShooterID, parsed.position, parsed.direction, parsed.velocity);
     bool sent = game.GetNetworkManager().BroadcastMessage(broadcastMsg);
-    if (sent) std::cout << "[HOST] Broadcast bullet from " << normalizedShooterID << "\n";
-    else std::cout << "[HOST] Failed to broadcast bullet message\n";
+    
     if (normalizedShooterID == normalizedLocalID) {
         std::cout << "[HOST] Ignoring own bullet that was received as a message\n";
         return;

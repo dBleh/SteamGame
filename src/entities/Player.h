@@ -7,61 +7,79 @@
 #include "../utils/input/InputManager.h" 
 #include "../utils/config/Config.h"
 
+
+
 class Player {
 public:
     static constexpr float SHOOT_COOLDOWN_DURATION = 0.1f; // seconds between shots
+    
+    // Structure to hold bullet creation parameters
     struct BulletParams {
         sf::Vector2f position;
         sf::Vector2f direction;
-        bool success = false; // Added flag to indicate if shot was successful
+        bool success = false; // Flag to indicate if shot was successful
     };
+    
+    // Constructors
     Player();
     Player(const sf::Vector2f& startPosition, const sf::Color& color);
-    void SetHealth(int newHealth) {
-        health = newHealth;
-        isDead = (health <= 0);
-    }
-    void Update(float dt, const InputManager& inputManager);
+    
+    // Update methods
+    void Update(float dt); // Base update for cooldowns only
+    void Update(float dt, const InputManager& inputManager); // Full update with input handling
+    
+    // Combat methods
     BulletParams Shoot(const sf::Vector2f& mouseWorldPos);
-    void Update(float dt);
-    sf::Vector2f GetPosition() const;
-    void SetPosition(const sf::Vector2f& pos);
-    sf::RectangleShape& GetShape();
-    const sf::RectangleShape& GetShape() const;
-    
-    void SetSpeed(float speed);
-    float GetSpeed() const;
-    
     void TakeDamage(int amount);
     bool IsDead() const;
     void Respawn();
-    void SetRespawnPosition(const sf::Vector2f& position);
     
-    // New getter for health
-    int GetHealth() const { return health; }
+    // Position methods
+    sf::Vector2f GetPosition() const;
+    void SetPosition(const sf::Vector2f& pos);
+    void SetRespawnPosition(const sf::Vector2f& position);
+    sf::Vector2f GetRespawnPosition() const;
+    
+    // Shape access
+    sf::RectangleShape& GetShape();
+    const sf::RectangleShape& GetShape() const;
+    
+    // Movement properties
+    void SetSpeed(float speed);
+    float GetSpeed() const;
+    float GetMoveSpeedMultiplier() const { return moveSpeedMultiplier; }
+    void SetMoveSpeedMultiplier(float multiplier) { moveSpeedMultiplier = multiplier; }
+    
+    // Shooting properties
     float GetShootCooldown() const;
     float GetBulletSpeedMultiplier() const { return bulletSpeedMultiplier; }
     void SetBulletSpeedMultiplier(float multiplier) { bulletSpeedMultiplier = multiplier; }
     
-    float GetMoveSpeedMultiplier() const { return moveSpeedMultiplier; }
-    void SetMoveSpeedMultiplier(float multiplier) { moveSpeedMultiplier = multiplier; }
-    
+    // Health related methods
+    int GetHealth() const { return health; }
+    void SetHealth(float newHealth);
     float GetMaxHealth() const { return maxHealth; }
     void SetMaxHealth(float newMaxHealth) { maxHealth = newMaxHealth; }
     
-    // Also make sure there's a SetHealth method to update the player's health directly
-    void SetHealth(float newHealth) { health = std::min(newHealth, maxHealth); }
 private:
-    float bulletSpeedMultiplier = 1.0f;
-    float moveSpeedMultiplier = 1.0f;
-    float maxHealth = PLAYER_HEALTH;
+    // Visual representation
     sf::RectangleShape shape;
-    float movementSpeed;
-    float shootCooldown;
-    int health;
-    bool isDead;
-    sf::Vector2f respawnPosition;
     
+    // Movement properties
+    float movementSpeed;
+    float moveSpeedMultiplier;
+    
+    // Combat properties
+    float shootCooldown;
+    float bulletSpeedMultiplier;
+    
+    // Health properties
+    float health;
+    float maxHealth;
+    bool isDead;
+    
+    // Respawn property
+    sf::Vector2f respawnPosition;
 };
 
 #endif // PLAYER_H
