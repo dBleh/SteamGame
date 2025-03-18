@@ -305,6 +305,39 @@ void PlayingState::Update(float dt) {
                 }
             }
         }
+
+        if (!showEscapeMenu && playerLoaded && enemyManager && playerManager) {
+            // When we're a client, make sure force field zaps are properly synced
+            bool isClient = false;
+            CSteamID myID = SteamUser()->GetSteamID();
+            CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+            
+            if (myID != hostID) {
+                isClient = true;
+            }
+            
+            // Only run this check on clients
+            if (isClient) {
+                for (auto& pair : playerManager->GetPlayers()) {
+                    RemotePlayer& rp = pair.second;
+                    if (rp.player.HasForceField() && !rp.player.IsDead() && rp.player.GetForceField()) {
+                        // Make sure the force field has a zap callback set
+                        if (!rp.player.GetForceField()->HasZapCallback()) {
+                            // Recreate the zap callback if missing
+                            std::string playerID = pair.first;
+                            rp.player.GetForceField()->SetZapCallback([this, playerID](int enemyId, float damage, bool killed) {
+                                // Handle zap event
+                                if (playerManager) {
+                                    playerManager->HandleForceFieldZap(playerID, enemyId, damage, killed);
+                                }
+                            });
+                            
+                            std::cout << "[CLIENT] Restored missing zap callback for player " << rp.baseName << "\n";
+                        }
+                    }
+                }
+            }
+        }
         
         // Handle cursor lock if enabled
         if (cursorLocked && !showEscapeMenu) {
