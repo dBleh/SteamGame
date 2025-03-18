@@ -360,21 +360,21 @@ void EnemyManager::ApplyNetworkUpdate(int enemyId, const sf::Vector2f& position,
         sf::Vector2f posDiff = position - currentPos;
         float distanceSquared = posDiff.x * posDiff.x + posDiff.y * posDiff.y;
         
-        // If very close, snap to position; otherwise, interpolate
-        if (distanceSquared < 25.0f) {  // Less than 5 units
-            it->second->SetPosition(position);
-        } else {
-            // Blend toward target position (30% per frame, assuming 60 FPS)
-            sf::Vector2f newPos = currentPos + posDiff * 0.3f;
-            it->second->SetPosition(newPos);
+        if (distanceSquared > 25.0f) {  // Only adjust velocity for significant differences
+            // Calculate velocity needed to reach target position in ~0.2 seconds
+            float smoothingTime = 0.2f;  // Time to reach target (adjustable)
+            sf::Vector2f newVelocity = posDiff / smoothingTime;
+            float speed = it->second->GetSpeed();
+            float velLength = std::sqrt(newVelocity.x * newVelocity.x + newVelocity.y * newVelocity.y);
             
-            // Update velocity based on the movement direction
-            sf::Vector2f vel = posDiff;
-            float len = std::sqrt(vel.x * vel.x + vel.y * vel.y);
-            if (len > 0) {
-                vel = vel / len * it->second->GetSpeed();  // Normalize and scale by speed
-                it->second->SetVelocity(vel);
+            // Cap velocity at enemy's speed to maintain natural movement
+            if (velLength > speed) {
+                newVelocity = newVelocity / velLength * speed;
             }
+            it->second->SetVelocity(newVelocity);
+        } else {
+            it->second->SetPosition(position);  // Snap if close
+            it->second->SetVelocity(sf::Vector2f(0.0f, 0.0f));  // Reset velocity
         }
         it->second->SetHealth(health);
     } else {
@@ -414,15 +414,12 @@ void EnemyManager::RemoteAddEnemy(int enemyId, EnemyType type, const sf::Vector2
 }
 
 void EnemyManager::RemoteAddEnemyWithVelocity(int enemyId, EnemyType type, const sf::Vector2f& position, 
-                                          const sf::Vector2f& velocity, float health) {
-    // Use the same smooth spawning logic
-    SmoothAddEnemy(enemyId, type, position, health);
-    
-    // Set velocity after spawning
-    auto it = enemies.find(enemyId);
-    if (it != enemies.end()) {
-        it->second->SetVelocity(velocity);
-    }
+    const sf::Vector2f& velocity, float health) {
+SmoothAddEnemy(enemyId, type, position, health);
+auto it = enemies.find(enemyId);
+if (it != enemies.end()) {
+it->second->SetVelocity(velocity);  // Use host-provided velocity for initial movement
+}
 }
 
 void EnemyManager::RemoteRemoveEnemy(int enemyId) {

@@ -24,6 +24,18 @@ void Enemy::Update(float dt, PlayerManager& playerManager) {
     // Update movement based on target
     UpdateMovement(dt, playerManager);
     
+    // Smoothly adjust position if velocity was set by network update
+    sf::Vector2f predictedPos = position + velocity * dt;
+    float distanceSquared = (predictedPos.x - position.x) * (predictedPos.x - position.x) +
+                            (predictedPos.y - position.y) * (predictedPos.y - position.y);
+    
+    if (distanceSquared > 1.0f) {  // Only interpolate if velocity implies significant movement
+        // Blend toward predicted position (50% per frame, scaled by dt)
+        position += (predictedPos - position) * std::min(0.5f, dt * 10.0f);
+    } else {
+        position = predictedPos;  // Small movements can snap
+    }
+    
     // Update visual representation
     UpdateVisualRepresentation();
 }
