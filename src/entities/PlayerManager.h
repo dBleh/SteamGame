@@ -15,8 +15,6 @@
 
 class Game;
 
-
-
 class PlayerManager {
 public:
     PlayerManager(Game* game, const std::string& localPlayerID);
@@ -47,6 +45,10 @@ public:
     const std::vector<Bullet>& GetAllBullets() const;
     void RemoveBullets(const std::vector<size_t>& indicesToRemove);
     void CheckBulletCollisions();
+    
+    // New method for handling player shooting action
+    bool PlayerShoot(const sf::Vector2f& mouseWorldPos);
+    void SendBulletMessageToNetwork(const sf::Vector2f& position, const sf::Vector2f& direction, float bulletSpeed);
 
 private:
     // Helper methods for organization

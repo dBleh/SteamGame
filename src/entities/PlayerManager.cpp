@@ -183,8 +183,7 @@ void PlayerManager::AddOrUpdatePlayer(const std::string& id, const RemotePlayer&
     }
 }
 
-void PlayerManager::AddLocalPlayer(const std::string& id, const std::string& name, 
-                                   const sf::Vector2f& position, const sf::Color& color) {
+void PlayerManager::AddLocalPlayer(const std::string& id, const std::string& name, const sf::Vector2f& position, const sf::Color& color) {
     RemotePlayer rp;
     rp.player = Player(position, color);
     rp.nameText.setFont(game->GetFont());
@@ -222,8 +221,7 @@ bool PlayerManager::AreAllPlayersReady() const {
     return !players.empty(); // Only true if there are players and all are ready
 }
 
-void PlayerManager::AddBullet(const std::string& shooterID, const sf::Vector2f& position, 
-                              const sf::Vector2f& direction, float velocity) {
+void PlayerManager::AddBullet(const std::string& shooterID, const sf::Vector2f& position, const sf::Vector2f& direction, float velocity) {
     // Validate input parameters
     if (direction.x == 0.f && direction.y == 0.f) {
         return;
@@ -255,6 +253,49 @@ void PlayerManager::AddBullet(const std::string& shooterID, const sf::Vector2f& 
     
     // Add the bullet with the normalized ID
     bullets.emplace_back(position, direction, adjustedVelocity, normalizedID);
+}
+
+bool PlayerManager::PlayerShoot(const sf::Vector2f& mouseWorldPos) {
+    // Skip if the local player is dead
+    auto& localPlayer = GetLocalPlayer();
+    if (localPlayer.player.IsDead()) return false;
+    
+    // Call the player's AttemptShoot method
+    Player::BulletParams bulletParams = localPlayer.player.AttemptShoot(mouseWorldPos);
+    
+    // If shooting was successful, create a bullet and send network message
+    if (bulletParams.success) {
+        // Apply bullet speed multiplier
+        float bulletSpeed = BULLET_SPEED * localPlayer.player.GetBulletSpeedMultiplier();
+        
+        // Add the bullet locally
+        AddBullet(localPlayerID, bulletParams.position, bulletParams.direction, bulletSpeed);
+        
+        // Send the bullet creation to other players via network
+        SendBulletMessageToNetwork(bulletParams.position, bulletParams.direction, bulletSpeed);
+        
+        return true;
+    }
+    
+    return false;
+}
+
+void PlayerManager::SendBulletMessageToNetwork(const sf::Vector2f& position, const sf::Vector2f& direction, float bulletSpeed) {
+    // Create the bullet message
+    std::string bulletMsg = MessageHandler::FormatBulletMessage(
+        localPlayerID, position, direction, bulletSpeed);
+    
+    // Check if we're the host by comparing with the lobby owner
+    CSteamID localSteamID = SteamUser()->GetSteamID();
+    CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+    
+    if (localSteamID == hostID) {
+        // We are the host, broadcast to all clients
+        game->GetNetworkManager().BroadcastMessage(bulletMsg);
+    } else {
+        // We are a client, send to host
+        game->GetNetworkManager().SendMessage(hostID, bulletMsg);
+    }
 }
 
 RemotePlayer& PlayerManager::GetLocalPlayer() {

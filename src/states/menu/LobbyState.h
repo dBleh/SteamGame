@@ -7,7 +7,7 @@
 #include "../../network/messages/MessageHandler.h"
 #include "../../network/Host.h"
 #include "../../network/Client.h"
-#include "../../entities/Grid.h"
+#include "../../ui/Grid.h"
 #include <steam/steam_api.h>
 #include <SFML/Graphics.hpp>
 #include <array>

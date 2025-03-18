@@ -87,6 +87,34 @@ Player::BulletParams Player::Shoot(const sf::Vector2f& mouseWorldPos) {
     return params;
 }
 
+Player::BulletParams Player::AttemptShoot(const sf::Vector2f& mouseWorldPos) {
+    // Skip if player is dead
+    if (isDead) {
+        BulletParams params{};
+        params.success = false;
+        return params;
+    }
+    
+    // Get the current player position
+    sf::Vector2f playerPos = GetPosition();
+    sf::Vector2f playerCenter = playerPos + sf::Vector2f(shape.getSize().x / 2.f, shape.getSize().y / 2.f);
+    
+    // Calculate direction vector from player to mouse position
+    sf::Vector2f direction = mouseWorldPos - playerCenter;
+    
+    // Normalize the direction vector
+    float length = std::sqrt(direction.x * direction.x + direction.y * direction.y);
+    if (length > 0) {
+        direction /= length;
+    } else {
+        direction = sf::Vector2f(1.f, 0.f);  // Default right if mouse is on player
+    }
+    
+    // Call the Shoot method which handles cooldown checks
+    shootCooldown = 0.f; // Force cooldown to be ready for this call
+    return Shoot(mouseWorldPos);
+}
+
 sf::Vector2f Player::GetPosition() const {
     return shape.getPosition();
 }

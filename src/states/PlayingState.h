@@ -2,7 +2,7 @@
 #define PLAYING_STATE_H
 
 #include "base/State.h"
-#include "../entities/Grid.h"
+#include "../ui/Grid.h"
 #include "../entities/enemies/EnemyManager.h"
 #include "../entities/enemies/Enemy.h"
 #include <memory>
@@ -38,7 +38,6 @@ private:
     // Static shop instance
     static Shop* shopInstance;
     
-    void AttemptShoot(int mouseX, int mouseY);
     void ProcessGameplayEvents(const sf::Event& event);
     
     // Game components

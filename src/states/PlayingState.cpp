@@ -237,9 +237,15 @@ void PlayingState::Update(float dt) {
             if (game->GetInputHandler()->IsActionActive(InputAction::Shoot)) {
                 shootTimer -= dt;
                 if (shootTimer <= 0.f) {
-                    // Get current mouse position and attempt to shoot
+                    // Get current mouse position and convert to world coordinates
                     sf::Vector2i mousePos = sf::Mouse::getPosition(game->GetWindow());
-                    AttemptShoot(mousePos.x, mousePos.y);
+                    sf::Vector2f mouseWorldPos = game->GetWindow().mapPixelToCoords(mousePos, game->GetCamera());
+                    
+                    // Delegate shooting directly to PlayerManager
+                    if (playerManager) {
+                        playerManager->PlayerShoot(mouseWorldPos);
+                    }
+                    
                     shootTimer = 0.1f; // Shoot every 0.1 seconds when holding down
                 }
             }
@@ -375,7 +381,12 @@ void PlayingState::ProcessGameplayEvents(const sf::Event& event) {
             
             if (isLeftMouseShoot) {
                 mouseHeld = true;
-                AttemptShoot(mouseWindowPos.x, mouseWindowPos.y);
+                
+                // Convert mouse coords to world position and delegate to PlayerManager
+                sf::Vector2f mouseWorldPos = game->GetWindow().mapPixelToCoords(mouseWindowPos, game->GetCamera());
+                if (playerManager) {
+                    playerManager->PlayerShoot(mouseWorldPos);
+                }
             }
         }
     } 
@@ -407,49 +418,6 @@ void PlayingState::ProcessGameplayEvents(const sf::Event& event) {
         if (cursorLocked) {
             game->GetWindow().setMouseCursorGrabbed(true);
         }
-    }
-}
-
-void PlayingState::AttemptShoot(int mouseX, int mouseY) {
-    // Skip if the game is paused or not fully loaded
-    if (showEscapeMenu || !playerLoaded) return;
-    
-    // Get the current mouse position in world coordinates
-    sf::Vector2i mousePos(mouseX, mouseY);
-    sf::Vector2f worldPos = game->GetWindow().mapPixelToCoords(mousePos, game->GetCamera());
-    
-    // Get the local player
-    auto& localPlayer = playerManager->GetLocalPlayer();
-    
-    // Skip if player is dead
-    if (localPlayer.player.IsDead()) return;
-    
-    // Calculate direction vector from player to mouse position
-    sf::Vector2f playerPos = localPlayer.player.GetPosition();
-    sf::Vector2f direction = worldPos - playerPos;
-    
-    // Normalize the direction vector
-    float length = std::sqrt(direction.x * direction.x + direction.y * direction.y);
-    if (length > 0) {
-        direction /= length;
-    }
-    
-    // Get local player ID
-    std::string localPlayerID = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
-    
-    // Create a bullet
-    float bulletSpeed = BULLET_SPEED * localPlayer.player.GetBulletSpeedMultiplier();
-    playerManager->AddBullet(localPlayerID, playerPos, direction, bulletSpeed);
-    
-    // Send the bullet message to all other players
-    std::string bulletMsg = MessageHandler::FormatBulletMessage(
-        localPlayerID, playerPos, direction, bulletSpeed);
-    
-    // Send to host if client, broadcast if host
-    if (clientNetwork) {
-        game->GetNetworkManager().SendMessage(clientNetwork->GetHostID(), bulletMsg);
-    } else if (hostNetwork) {
-        game->GetNetworkManager().BroadcastMessage(bulletMsg);
     }
 }
 

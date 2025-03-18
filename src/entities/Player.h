@@ -7,8 +7,6 @@
 #include "../utils/input/InputManager.h" 
 #include "../utils/config/Config.h"
 
-
-
 class Player {
 public:
     static constexpr float SHOOT_COOLDOWN_DURATION = 0.1f; // seconds between shots
@@ -30,6 +28,10 @@ public:
     
     // Combat methods
     BulletParams Shoot(const sf::Vector2f& mouseWorldPos);
+    
+    // New method for shooting based on mouse world position
+    BulletParams AttemptShoot(const sf::Vector2f& mouseWorldPos);
+    
     void TakeDamage(int amount);
     bool IsDead() const;
     void Respawn();
