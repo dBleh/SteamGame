@@ -274,7 +274,7 @@ void MessageHandler::Initialize() {
                                 });
                             
                             // For ES (EnemyState) message
-        RegisterMessageType("ES", 
+                            RegisterMessageType("ES", 
                                 ParseEnemyStateMessage,
                                 [](Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
                                     PlayingState* state = GetPlayingState(&game);
@@ -290,12 +290,28 @@ void MessageHandler::Initialize() {
                                                 // Update existing enemy
                                                 enemy->SetPosition(parsed.enemyPositions[i]);
                                                 enemy->SetHealth(parsed.enemyHealths[i]);
+                                                
+                                                // Apply velocity if available
+                                                if (i < parsed.enemyVelocities.size()) {
+                                                    enemy->SetVelocity(parsed.enemyVelocities[i]);
+                                                }
                                             } else {
                                                 // Create new enemy
                                                 EnemyType type = static_cast<EnemyType>(parsed.enemyTypes[i]);
-                                                enemyManager->RemoteAddEnemy(id, type, parsed.enemyPositions[i], parsed.enemyHealths[i]);
+                                                
+                                                // Create with velocity if available
+                                                if (i < parsed.enemyVelocities.size()) {
+                                                    enemyManager->RemoteAddEnemyWithVelocity(
+                                                        id, type, parsed.enemyPositions[i], 
+                                                        parsed.enemyVelocities[i], parsed.enemyHealths[i]);
+                                                } else {
+                                                    enemyManager->RemoteAddEnemy(id, type, parsed.enemyPositions[i], parsed.enemyHealths[i]);
+                                                }
                                             }
                                         }
+                                        
+                                        // Reset prediction timer since we got a fresh update
+                                        enemyManager->ResetLastEnemyStateUpdateTime();
                                         
                                         // Mark enemies not in the update for removal
                                         enemyManager->RemoveEnemiesNotInList(parsed.enemyIds);
@@ -909,7 +925,7 @@ ParsedMessage MessageHandler::ParseEnemyStateMessage(const std::vector<std::stri
         // Try to parse individual entity data
         std::vector<std::string> fields = SplitString(entityData, ',');
         
-        // Expected format: id,type,x,y,health
+        // Expected format: id,type,x,y,health,vx,vy
         if (fields.size() >= 5) {
             try {
                 int id = std::stoi(fields[0]);
@@ -923,8 +939,23 @@ ParsedMessage MessageHandler::ParseEnemyStateMessage(const std::vector<std::stri
                 parsed.enemyPositions.push_back(sf::Vector2f(x, y));
                 parsed.enemyHealths.push_back(health);
                 
-                std::cout << "[MessageHandler] Parsed enemy: id=" << id 
-                          << ", pos=(" << x << "," << y << ")\n";
+                // Parse velocity if available (fields 5 and 6)
+                if (fields.size() >= 7) {
+                    float vx = std::stof(fields[5]);
+                    float vy = std::stof(fields[6]);
+                    parsed.enemyVelocities.push_back(sf::Vector2f(vx, vy));
+                    
+                    std::cout << "[MessageHandler] Parsed enemy: id=" << id 
+                              << ", pos=(" << x << "," << y << ")"
+                              << ", vel=(" << vx << "," << vy << ")\n";
+                } else {
+                    // Add a zero velocity if not available
+                    parsed.enemyVelocities.push_back(sf::Vector2f(0.0f, 0.0f));
+                    
+                    std::cout << "[MessageHandler] Parsed enemy: id=" << id 
+                              << ", pos=(" << x << "," << y << ")"
+                              << ", vel=(0,0) [default]\n";
+                }
             }
             catch (const std::exception& e) {
                 std::cout << "[MessageHandler] Error parsing enemy data: " << entityData 
