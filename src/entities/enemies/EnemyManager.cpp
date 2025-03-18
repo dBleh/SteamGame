@@ -92,17 +92,24 @@ void EnemyManager::Update(float dt) {
 }
 
 void EnemyManager::UpdateEnemyClientPrediction(float dt) {
-    // Update enemy positions on the client based on their current velocity
+    // Update enemy positions on the client based on their current velocity and AI
     for (auto& pair : enemies) {
         Enemy* enemy = pair.second.get();
         
-        // Get the enemy's velocity
+        // First apply velocity-based prediction 
         sf::Vector2f velocity = enemy->GetVelocity();
         sf::Vector2f position = enemy->GetPosition();
         
-        // Simple linear prediction based on velocity
-        position += velocity * dt;
-        enemy->SetPosition(position);
+        if (velocity.x != 0.0f || velocity.y != 0.0f) {
+            // Move based on current velocity
+            position += velocity * dt;
+            enemy->SetPosition(position);
+        } else {
+            // If no velocity, run the standard AI update logic
+            // This ensures enemies still move intelligently even when
+            // network updates are sparse
+            enemy->Update(dt, *playerManager);
+        }
     }
 }
 
@@ -392,24 +399,39 @@ void EnemyManager::ApplyNetworkUpdate(int enemyId, const sf::Vector2f& position,
 }
 
 void EnemyManager::ApplyNetworkUpdateWithVelocity(int enemyId, const sf::Vector2f& position, 
-                                               const sf::Vector2f& velocity, float health) {
-    auto it = enemies.find(enemyId);
-    if (it != enemies.end()) {
+    const sf::Vector2f& velocity, float health) {
+        auto it = enemies.find(enemyId);
+        if (it != enemies.end()) {
         // Update existing enemy
-        it->second->SetPosition(position);
-        it->second->SetVelocity(velocity);
-        it->second->SetHealth(health);
-        
+        Enemy* enemy = it->second.get();
+
+        // Calculate position difference
+        sf::Vector2f currentPos = enemy->GetPosition();
+        sf::Vector2f posDiff = position - currentPos;
+
+        // If position change is small, apply smoothly
+        float distanceSquared = posDiff.x * posDiff.x + posDiff.y * posDiff.y;
+        if (distanceSquared < 100.0f) { // Small movement (10 units squared)
+        // Apply half the correction now for smoother movement
+        enemy->SetPosition(currentPos + posDiff * 0.5f);
+        } else {
+        // Large jump detected, apply full update
+        enemy->SetPosition(position);
+        }
+
+        enemy->SetVelocity(velocity);
+        enemy->SetHealth(health);
+
         // Reset prediction timer since we got a fresh update
         lastEnemyStateUpdate = std::chrono::steady_clock::now();
-    } else {
+        } else {
         // Enemy doesn't exist, create it and set velocity
         RemoteAddEnemyWithVelocity(enemyId, EnemyType::Triangle, position, velocity, health);
-        
+
         std::cout << "[CLIENT] Created new enemy with velocity: ID=" << enemyId 
-                  << " at position (" << position.x << "," << position.y 
-                  << ") with velocity (" << velocity.x << "," << velocity.y << ")\n";
-    }
+        << " at position (" << position.x << "," << position.y 
+        << ") with velocity (" << velocity.x << "," << velocity.y << ")\n";
+        }
 }
 
 void EnemyManager::RemoteAddEnemy(int enemyId, EnemyType type, const sf::Vector2f& position, float health) {

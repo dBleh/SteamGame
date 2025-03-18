@@ -33,6 +33,7 @@ enum class MessageType {
     EnemyDamage,
     EnemyPositionUpdate,
     EnemyState,
+    EnemyStateRequest, 
     WaveStart,
     EnemyClear,
     ChunkStart, 
@@ -118,6 +119,7 @@ public:
     static ParsedMessage ParseEnemyStateMessage(const std::vector<std::string>& parts);
     static ParsedMessage ParseWaveStartMessage(const std::vector<std::string>& parts);
     static ParsedMessage ParseEnemyClearMessage(const std::vector<std::string>& parts);
+    static ParsedMessage ParseEnemyStateRequestMessage(const std::vector<std::string>& parts);
 
     void ProcessUnknownMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed);
 

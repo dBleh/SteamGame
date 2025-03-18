@@ -319,7 +319,19 @@ void MessageHandler::Initialize() {
                                 // Host initiates waves, not receives them
                                 std::cout << "[HOST] Received wave start from client, ignoring\n";
                             });
-        
+        RegisterMessageType("ESR", 
+                            ParseEnemyStateRequestMessage,
+                            [](Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
+                                // Clients don't need to handle ESR responses
+                            },
+                            [](Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender) {
+                                // Process enemy state request from a client
+                                PlayingState* state = GetPlayingState(&game);
+                                if (state && state->GetEnemyManager()) {
+                                    std::cout << "[HOST] Received enemy state request from " << sender.ConvertToUint64() << std::endl;
+                                    state->GetEnemyManager()->HandleStateRequest(sender);
+                                }
+                            });
         RegisterMessageType("EC", 
                             ParseEnemyClearMessage,
                             [](Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
@@ -383,6 +395,7 @@ std::string MessageHandler::GetPrefixForType(MessageType type) {
         case MessageType::EnemyDamage: return "ED";
         case MessageType::EnemyPositionUpdate: return "EP";
         case MessageType::EnemyState: return "ES";
+        case MessageType::EnemyStateRequest: return "ESR";  // Add this line
         case MessageType::WaveStart: return "WS";
         case MessageType::EnemyClear: return "EC";
         case MessageType::ChunkStart: return "CHUNK_START";
@@ -391,7 +404,6 @@ std::string MessageHandler::GetPrefixForType(MessageType type) {
         case MessageType::Unknown: 
         default: return "";
     }
-
 }
 
 const MessageHandler::MessageDescriptor* MessageHandler::GetDescriptorByType(MessageType type) {
@@ -432,7 +444,11 @@ std::vector<std::string> MessageHandler::SplitString(const std::string& str, cha
     }
     return parts;
 }
-
+ParsedMessage MessageHandler::ParseEnemyStateRequestMessage(const std::vector<std::string>& parts) {
+    ParsedMessage parsed;
+    parsed.type = MessageType::EnemyStateRequest;
+    return parsed;
+}
 // Message parsing
 ParsedMessage MessageHandler::ParseMessage(const std::string& msg) {
     std::vector<std::string> parts = SplitString(msg, '|');
