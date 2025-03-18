@@ -38,7 +38,8 @@ enum class MessageType {
     EnemyClear,
     ChunkStart, 
     ChunkPart,   
-    ChunkEnd  
+    ChunkEnd,
+    ForceFieldZap 
 };
 
 struct ParsedMessage {
@@ -120,9 +121,9 @@ public:
     static ParsedMessage ParseWaveStartMessage(const std::vector<std::string>& parts);
     static ParsedMessage ParseEnemyClearMessage(const std::vector<std::string>& parts);
     static ParsedMessage ParseEnemyStateRequestMessage(const std::vector<std::string>& parts);
-
+    static ParsedMessage ParseForceFieldZapMessage(const std::vector<std::string>& parts);
     void ProcessUnknownMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed);
-
+    static std::string FormatForceFieldZapMessage(const std::string& playerID, int enemyId, float damage);
     static ParsedMessage ParseChunkStartMessage(const std::vector<std::string>& parts);
     static ParsedMessage ParseChunkPartMessage(const std::vector<std::string>& parts);
     static ParsedMessage ParseChunkEndMessage(const std::vector<std::string>& parts);

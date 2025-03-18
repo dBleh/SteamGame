@@ -39,6 +39,7 @@ public:
     void ProcessStartGameMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed);
     void ProcessPlayerDamageMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed);
     void ProcessUnknownMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed);
+    void ProcessForceFieldZapMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed);
 
 private:
     Game* game;

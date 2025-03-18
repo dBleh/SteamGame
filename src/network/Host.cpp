@@ -53,16 +53,15 @@ void HostNetwork::ProcessConnectionMessage(Game& game, HostNetwork& host, const 
         rp.baseName = parsed.steamName;
         rp.nameText.setCharacterSize(16);
         rp.nameText.setFillColor(sf::Color::Black);
-        playerManager->AddOrUpdatePlayer(parsed.steamID, rp);
+        playerManager->AddOrUpdatePlayer(parsed.steamID, std::move(rp));
         std::cout << "[HOST] New player connected: " << parsed.steamName << " (" << parsed.steamID << ")\n";
     } else {
-        RemotePlayer& rp = it->second;
-        rp.isHost = false;
-        rp.player.SetPosition(sf::Vector2f(200.f, 200.f));
-        rp.cubeColor = parsed.color;
-        if (rp.baseName != parsed.steamName) {
-            rp.baseName = parsed.steamName;
-            rp.nameText.setString(parsed.steamName);
+        // Update existing player's position
+        it->second.player.SetPosition(sf::Vector2f(200.f, 200.f));
+        it->second.cubeColor = parsed.color;
+        if (it->second.baseName != parsed.steamName) {
+            it->second.baseName = parsed.steamName;
+            it->second.nameText.setString(parsed.steamName);
             std::cout << "[HOST] Updated name for " << parsed.steamID << " to " << parsed.steamName << "\n";
         }
     }
@@ -75,13 +74,28 @@ void HostNetwork::ProcessMovementMessage(Game& game, HostNetwork& host, const Pa
         std::cout << "[HOST] Invalid movement message from " << sender.ConvertToUint64() << "\n";
         return;
     }
-    RemotePlayer rp;
-    rp.player = Player(parsed.position, sf::Color::Blue);
-    rp.nameText.setFont(game.GetFont());
+    
+    // Look up the player
     auto& playersMap = playerManager->GetPlayers();
-    rp.nameText.setCharacterSize(16);
-    rp.nameText.setFillColor(sf::Color::Black);
-    playerManager->AddOrUpdatePlayer(parsed.steamID, rp);
+    auto playerIt = playersMap.find(parsed.steamID);
+    
+    if (playerIt != playersMap.end()) {
+        // Update existing player's position
+        playerIt->second.previousPosition = playerIt->second.player.GetPosition();
+        playerIt->second.targetPosition = parsed.position;
+        playerIt->second.lastUpdateTime = std::chrono::steady_clock::now();
+    } else {
+        // Create a new player if needed
+        RemotePlayer rp;
+        rp.playerID = parsed.steamID;
+        rp.player = Player(parsed.position, sf::Color::Blue);
+        rp.nameText.setFont(game.GetFont());
+        rp.nameText.setCharacterSize(16);
+        rp.nameText.setFillColor(sf::Color::Black);
+        playerManager->AddOrUpdatePlayer(parsed.steamID, std::move(rp));
+    }
+    
+    // Broadcast the movement to all clients
     std::string broadcastMsg = MessageHandler::FormatMovementMessage(parsed.steamID, parsed.position);
     game.GetNetworkManager().BroadcastMessage(broadcastMsg);
 }
@@ -203,4 +217,77 @@ void HostNetwork::ProcessPlayerDamageMessage(Game& game, HostNetwork& host, cons
 
 void HostNetwork::ProcessUnknownMessage(Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender) {
     std::cout << "[HOST] Unknown message type received\n";
+}
+
+void HostNetwork::ProcessForceFieldZapMessage(Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender) {
+    std::string zapperID = parsed.steamID;
+    int enemyId = parsed.enemyId;
+    float damage = parsed.damage;
+    
+    // Normalize player ID for consistent comparison
+    std::string normalizedZapperID;
+    try {
+        uint64_t zapperIdNum = std::stoull(zapperID);
+        normalizedZapperID = std::to_string(zapperIdNum);
+    } catch (const std::exception& e) {
+        std::cout << "[HOST] Error normalizing zapper ID: " << e.what() << "\n";
+        normalizedZapperID = zapperID;
+    }
+    
+    // Get the local player ID
+    std::string localID = std::to_string(game.GetLocalSteamID().ConvertToUint64());
+    std::string normalizedLocalID;
+    try {
+        uint64_t localIdNum = std::stoull(localID);
+        normalizedLocalID = std::to_string(localIdNum);
+    } catch (const std::exception& e) {
+        std::cout << "[HOST] Error normalizing local ID: " << e.what() << "\n";
+        normalizedLocalID = localID;
+    }
+    
+    // Get the playing state to access the enemy manager
+    PlayingState* playingState = GetPlayingState(&game);
+    if (playingState && playingState->GetEnemyManager()) {
+        EnemyManager* enemyManager = playingState->GetEnemyManager();
+        
+        // Apply damage to the enemy
+        bool killed = false;
+        Enemy* enemy = enemyManager->FindEnemy(enemyId);
+        if (enemy) {
+            killed = enemyManager->InflictDamage(enemyId, damage);
+            
+            // If the enemy was killed, update player kills
+            if (killed) {
+                playerManager->IncrementPlayerKills(normalizedZapperID);
+            }
+            
+            // Apply visual effect if this isn't our own zap
+            if (normalizedZapperID != normalizedLocalID) {
+                // Get the player who owns the force field
+                auto& players = playerManager->GetPlayers();
+                auto it = players.find(normalizedZapperID);
+                if (it != players.end()) {
+                    RemotePlayer& rp = it->second;
+                    
+                    // Make sure the player has a force field
+                    if (!rp.player.HasForceField()) {
+                        rp.player.InitializeForceField();
+                    }
+                    
+                    // Get player and enemy positions
+                    sf::Vector2f playerPos = rp.player.GetPosition() + sf::Vector2f(25.0f, 25.0f); // Assuming 50x50 player
+                    sf::Vector2f enemyPos = enemy->GetPosition();
+                    
+                    // Create the zap effect
+                    rp.player.GetForceField()->CreateZapEffect(playerPos, enemyPos);
+                    rp.player.GetForceField()->SetIsZapping(true);
+                    rp.player.GetForceField()->SetZapEffectTimer(0.3f); // Show effect for 0.3 seconds
+                }
+            }
+        }
+        
+        // Broadcast this zap to all clients (even if we don't find the enemy)
+        std::string zapMsg = MessageHandler::FormatForceFieldZapMessage(normalizedZapperID, enemyId, damage);
+        game.GetNetworkManager().BroadcastMessage(zapMsg);
+    }
 }

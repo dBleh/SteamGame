@@ -136,7 +136,15 @@ void PlayingStateUI::InitializeUI() {
                   HUD::RenderMode::ScreenSpace, true,
                   "bottomBarLine", "");
     hud.updateBaseColor("shopHint", sf::Color::Black);
-    
+
+    // Force field hint
+    hud.addElement("forceFieldHint", "F - Toggle Force Field", 16, 
+        sf::Vector2f(30.0f + spacing * 5, controlsY), 
+        GameState::Playing, 
+        HUD::RenderMode::ScreenSpace, true,
+        "bottomBarLine", "");
+    hud.updateBaseColor("forceFieldHint", sf::Color::Black);
+
     // ===== LEADERBOARD (initially hidden) =====
     hud.addElement("leaderboard", "", 20, 
                   sf::Vector2f(centerX - 180.0f, BASE_HEIGHT * 0.25f), 
@@ -369,6 +377,7 @@ bool PlayingStateUI::ProcessUIEvent(const sf::Event& event, bool& showEscapeMenu
             m_game->GetWindow().setMouseCursorGrabbed(cursorLocked);
             uiEventProcessed = true;
         }
+        
         else if (m_game->GetInputManager().IsActionTriggered(GameAction::OpenMenu, event)) {
             // Toggle escape menu
             showEscapeMenu = !showEscapeMenu;
@@ -447,6 +456,22 @@ bool PlayingStateUI::ProcessUIEvent(const sf::Event& event, bool& showEscapeMenu
                                 m_game->GetWindow().setMouseCursorGrabbed(cursorLocked);
                                 break;
                             }
+                            else if (id == "forceFieldHint") {
+                                // Toggle force field for local player
+                                auto& localPlayer = m_playerManager->GetLocalPlayer();
+                                
+                                // Initialize force field if not already done
+                                if (!localPlayer.player.HasForceField()) {
+                                    localPlayer.player.InitializeForceField();
+                                }
+                                
+                                // Toggle the force field
+                                localPlayer.player.EnableForceField(!localPlayer.player.HasForceField());
+                                
+                                // Update UI
+                                SetButtonState("forceFieldHint", localPlayer.player.HasForceField());
+                                break;
+                            }
                             // Handle other UI elements...
                         }
                     }
@@ -461,6 +486,10 @@ bool PlayingStateUI::ProcessUIEvent(const sf::Event& event, bool& showEscapeMenu
 void PlayingStateUI::SetButtonState(const std::string& id, bool active) {
     if (id == "gridToggle" || id == "cursorLockHint" || id == "shopHint") {
         m_game->GetHUD().updateBaseColor(id, active ? sf::Color::Black : sf::Color(150, 150, 150));
+    }
+    else if (id == "forceFieldHint") {
+        // Use a special color for the force field when active
+        m_game->GetHUD().updateBaseColor(id, active ? sf::Color(100, 100, 255) : sf::Color(150, 150, 150));
     }
 }
 
@@ -575,3 +604,4 @@ void PlayingStateUI::CenterTextInButton(sf::Text& text, const sf::RectangleShape
         button.getPosition().y + button.getSize().y / 2.0f - 5.0f
     );
 }
+

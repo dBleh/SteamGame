@@ -1,6 +1,8 @@
 #include "PlayerManager.h"
 #include "../core/Game.h"
 #include "../network/messages/MessageHandler.h"
+#include "ForceField.h"
+
 #include <iostream>
 #include <algorithm>
 
@@ -161,21 +163,29 @@ void PlayerManager::AddOrUpdatePlayer(const std::string& id, const RemotePlayer&
     auto now = std::chrono::steady_clock::now();
     
     if (players.find(id) == players.end()) {
-        // New player
-        players[id] = player;
-        players[id].playerID = id;
-        players[id].previousPosition = player.player.GetPosition();
-        players[id].targetPosition = player.player.GetPosition();
-        players[id].lastUpdateTime = now;
-        players[id].baseName = player.nameText.getString().toAnsiString();
-        players[id].kills = player.kills;
-        players[id].money = player.money;
+        // New player - create using constructor, not copy
+        RemotePlayer newPlayer;
+        newPlayer.playerID = id;
+        newPlayer.isHost = player.isHost;
+        // Create a new player with the same parameters, don't copy
+        newPlayer.player = Player(player.player.GetPosition(), player.cubeColor);
+        newPlayer.nameText = player.nameText;
+        newPlayer.cubeColor = player.cubeColor;
+        newPlayer.previousPosition = player.player.GetPosition();
+        newPlayer.targetPosition = player.player.GetPosition();
+        newPlayer.lastUpdateTime = now;
+        newPlayer.baseName = player.nameText.getString().toAnsiString();
+        newPlayer.kills = player.kills;
+        newPlayer.money = player.money;
+        
+        // Insert the new player
+        players[id] = std::move(newPlayer);
     } else if (id != localPlayerID) {
-        // Update existing remote player
+        // Update existing remote player - update fields individually, don't copy the Player object
         players[id].previousPosition = players[id].player.GetPosition();
         players[id].targetPosition = player.player.GetPosition();
         players[id].lastUpdateTime = now;
-        players[id].player = player.player;
+        players[id].player.SetPosition(player.player.GetPosition());
         players[id].cubeColor = player.cubeColor;
         players[id].isHost = player.isHost;
         players[id].nameText = player.nameText;
@@ -183,8 +193,38 @@ void PlayerManager::AddOrUpdatePlayer(const std::string& id, const RemotePlayer&
     }
 }
 
+void PlayerManager::AddOrUpdatePlayer(const std::string& id, RemotePlayer&& player) {
+    if (id.empty()) {
+        std::cout << "[ERROR] Attempted to add player with empty ID!\n";
+        return;
+    }
+    
+    auto now = std::chrono::steady_clock::now();
+    
+    if (players.find(id) == players.end()) {
+        // New player - move it directly into the map
+        player.previousPosition = player.player.GetPosition();
+        player.targetPosition = player.player.GetPosition();
+        player.lastUpdateTime = now;
+        
+        // Move the player into the map
+        players[id] = std::move(player);
+    } else if (id != localPlayerID) {
+        // Update existing remote player
+        // We can't move the whole player since it exists, so update fields
+        players[id].previousPosition = players[id].player.GetPosition();
+        players[id].targetPosition = player.player.GetPosition();
+        players[id].lastUpdateTime = now;
+        players[id].player.SetPosition(player.player.GetPosition());
+        players[id].cubeColor = player.cubeColor;
+        players[id].isHost = player.isHost;
+        players[id].nameText = player.nameText;
+        // Don't override stats when updating position
+    }
+}
 void PlayerManager::AddLocalPlayer(const std::string& id, const std::string& name, const sf::Vector2f& position, const sf::Color& color) {
     RemotePlayer rp;
+    // Create a new Player directly, don't copy
     rp.player = Player(position, color);
     rp.nameText.setFont(game->GetFont());
     rp.nameText.setString(name);
@@ -197,10 +237,13 @@ void PlayerManager::AddLocalPlayer(const std::string& id, const std::string& nam
     rp.interpDuration = 0.1f;
     rp.kills = 0;
     rp.money = 0;
-    players[id] = rp;
+    rp.cubeColor = color;
+    rp.playerID = id;
+    
+    // Move to the map (don't copy)
+    players[id] = std::move(rp);
     localPlayerID = id;
 }
-
 void PlayerManager::SetReadyStatus(const std::string& id, bool ready) {
     if (players.find(id) != players.end()) {
         players[id].isReady = ready;        
@@ -482,6 +525,7 @@ void PlayerManager::RespawnPlayer(const std::string& playerID) {
 }
 
 void PlayerManager::RemoveBullets(const std::vector<size_t>& indicesToRemove) {
+
     if (indicesToRemove.empty()) {
         return;
     }
@@ -494,6 +538,69 @@ void PlayerManager::RemoveBullets(const std::vector<size_t>& indicesToRemove) {
     for (size_t index : sortedIndices) {
         if (index < bullets.size()) {
             bullets.erase(bullets.begin() + index);
+        }
+    }
+}
+
+void PlayerManager::InitializeForceFields() {
+    std::cout << "[PlayerManager] Initializing force fields for " << players.size() << " players" << std::endl;
+    
+    for (auto& pair : players) {
+        std::string playerID = pair.first;
+        RemotePlayer& rp = pair.second;
+        
+        // Initialize force field if not already done
+        if (!rp.player.HasForceField()) {
+            std::cout << "[PlayerManager] Creating force field for player " << rp.baseName << std::endl;
+            rp.player.InitializeForceField();
+            
+            // Set up callback for zap events for the local player
+            if (playerID == localPlayerID) {
+                std::cout << "[PlayerManager] Setting up zap callback for local player" << std::endl;
+                rp.player.GetForceField()->SetZapCallback([this, playerID](int enemyId, float damage, bool killed) {
+                    // Handle zap event
+                    HandleForceFieldZap(playerID, enemyId, damage, killed);
+                });
+            }
+        } else {
+            std::cout << "[PlayerManager] Player " << rp.baseName << " already has a force field" << std::endl;
+        }
+        
+        // Ensure force field is enabled for local player
+        if (playerID == localPlayerID) {
+            rp.player.EnableForceField(true);
+            std::cout << "[PlayerManager] Force field for local player is " 
+                      << (rp.player.HasForceField() ? "ENABLED" : "DISABLED") << std::endl;
+        }
+    }
+}
+void PlayerManager::HandleForceFieldZap(const std::string& playerID, int enemyId, float damage, bool killed) {
+    if (killed) {
+        // Update kill count
+        IncrementPlayerKills(playerID);
+        
+        // Also reward the player with some money for the kill
+        auto it = players.find(playerID);
+        if (it != players.end()) {
+            it->second.money += 50;
+        }
+    }
+    
+    // If this is the local player, send a network message
+    if (playerID == localPlayerID) {
+        // Send force field zap message
+        std::string zapMsg = "FZ|" + playerID + "|" + std::to_string(enemyId) + "|" + std::to_string(damage);
+        
+        // Check if we're the host
+        CSteamID localSteamID = SteamUser()->GetSteamID();
+        CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+        
+        if (localSteamID == hostID) {
+            // We are the host, broadcast to all clients
+            game->GetNetworkManager().BroadcastMessage(zapMsg);
+        } else {
+            // We are a client, send to host
+            game->GetNetworkManager().SendMessage(hostID, zapMsg);
         }
     }
 }

@@ -88,6 +88,8 @@ PlayingState::PlayingState(Game* game)
     shop = std::make_unique<Shop>(game, playerManager.get());
     shopInstance = shop.get();
 
+    playerManager->InitializeForceFields();
+
     // ===== NETWORK SETUP =====
     // Create networking components last, so they can use the other managers
     if (myID == hostIDSteam) {
@@ -249,6 +251,15 @@ void PlayingState::Update(float dt) {
             if (!waitingForNextWave && ui) {
                 ui->UpdateWaveInfo();
             }
+            if (playerLoaded && enemyManager && playerManager) {
+                for (auto& pair : playerManager->GetPlayers()) {
+                    RemotePlayer& rp = pair.second;
+                    if (rp.player.HasForceField() && rp.player.HasForceField() && !rp.player.IsDead()) {
+                        // Update force field
+                        rp.player.GetForceField()->Update(dt, *playerManager, *enemyManager);
+                    }
+                }
+            }
         }
         
         // Update UI components
@@ -265,6 +276,13 @@ void PlayingState::Update(float dt) {
             // Update button states based on toggles
             ui->SetButtonState("gridToggle", showGrid);
             ui->SetButtonState("cursorLockHint", cursorLocked);
+            
+            // Update force field button state
+            if (playerManager->GetLocalPlayer().player.HasForceField()) {
+                bool forceFieldEnabled = playerManager->GetLocalPlayer().player.HasForceField();
+                ui->SetButtonState("forceFieldHint", forceFieldEnabled);
+                
+            }
         }
         
         // Handle continuous shooting if mouse button is held down
@@ -342,6 +360,14 @@ void PlayingState::Render() {
             // Render all players
             if (playerRenderer) {
                 playerRenderer->Render(game->GetWindow());
+            }
+            
+            // THIS IS THE IMPORTANT PART: Render force fields for all players
+            for (auto& pair : playerManager->GetPlayers()) {
+                RemotePlayer& rp = pair.second;
+                if (rp.player.HasForceField() && rp.player.HasForceField() && !rp.player.IsDead()) {                
+                    rp.player.GetForceField()->Render(game->GetWindow());
+                }
             }
             
             // Render enemies after players
@@ -442,6 +468,25 @@ void PlayingState::ProcessGameplayEvents(const sf::Event& event) {
                 shop->Close();
             }
         }
+    }
+    else if (event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::F) {
+        // Toggle force field for local player
+        auto& localPlayer = playerManager->GetLocalPlayer();
+        
+        // Initialize force field if not already done
+        if (!localPlayer.player.HasForceField()) {
+            localPlayer.player.InitializeForceField();
+        }
+        
+        // Toggle the force field
+        localPlayer.player.EnableForceField(!localPlayer.player.HasForceField());
+        
+        // Display a message about the force field status
+        std::string statusMsg = localPlayer.player.HasForceField() ? 
+                               "Force Field Activated" : 
+                               "Force Field Deactivated";
+        
+        // You can add UI feedback here if needed
     }
     else if (event.type == sf::Event::LostFocus) {
         // Release mouse if window loses focus

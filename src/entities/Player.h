@@ -5,8 +5,9 @@
 #include <iostream>
 #include "../utils/input/InputHandler.h"
 #include "../utils/input/InputManager.h" 
+#include "ForceField.h"
 #include "../utils/config/Config.h"
-
+class ForceField;
 class Player {
 public:
     static constexpr float SHOOT_COOLDOWN_DURATION = 0.1f; // seconds between shots
@@ -21,7 +22,12 @@ public:
     // Constructors
     Player();
     Player(const sf::Vector2f& startPosition, const sf::Color& color);
+    Player(Player&& other) noexcept;
+    Player& operator=(Player&& other) noexcept;
     
+    // Delete copy constructor and assignment
+    Player(const Player&) = delete;
+    Player& operator=(const Player&) = delete;
     // Update methods
     void Update(float dt); // Base update for cooldowns only
     void Update(float dt, const InputManager& inputManager); // Full update with input handling
@@ -62,7 +68,10 @@ public:
     void SetHealth(float newHealth);
     float GetMaxHealth() const { return maxHealth; }
     void SetMaxHealth(float newMaxHealth) { maxHealth = newMaxHealth; }
-    
+    void InitializeForceField();
+    void EnableForceField(bool enable);
+    bool HasForceField(){ return forceFieldEnabled;}
+    ForceField* GetForceField() const { return forceField.get(); }
 private:
     // Visual representation
     sf::RectangleShape shape;
@@ -82,6 +91,9 @@ private:
     
     // Respawn property
     sf::Vector2f respawnPosition;
+
+    std::unique_ptr<ForceField> forceField;
+    bool forceFieldEnabled = false;
 };
 
 #endif // PLAYER_H

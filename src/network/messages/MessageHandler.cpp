@@ -288,6 +288,16 @@ void MessageHandler::Initialize() {
                                 [](Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender) {
                                     // Host should process the reconstructed message
                                 });
+        RegisterMessageType("FZ", 
+                                    ParseForceFieldZapMessage,
+                                    [](Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
+                                        // Handle force field zap on client
+                                        client.ProcessForceFieldZapMessage(game, client, parsed);
+                                    },
+                                    [](Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender) {
+                                        // Handle force field zap on host
+                                        host.ProcessForceFieldZapMessage(game, host, parsed, sender);
+                                    });
 }
 
 void MessageHandler::RegisterMessageType(
@@ -316,12 +326,13 @@ std::string MessageHandler::GetPrefixForType(MessageType type) {
         case MessageType::EnemyDamage: return "ED";
         case MessageType::EnemyPositionUpdate: return "EP";
         case MessageType::EnemyState: return "ES";
-        case MessageType::EnemyStateRequest: return "ESR";  // Add this line
+        case MessageType::EnemyStateRequest: return "ESR";
         case MessageType::WaveStart: return "WS";
         case MessageType::EnemyClear: return "EC";
         case MessageType::ChunkStart: return "CHUNK_START";
         case MessageType::ChunkPart: return "CHUNK_PART";
         case MessageType::ChunkEnd: return "CHUNK_END";
+        case MessageType::ForceFieldZap: return "FZ";  // New type for force field zap
         case MessageType::Unknown: 
         default: return "";
     }
@@ -989,4 +1000,23 @@ std::string MessageHandler::FormatWaveStartMessage(int waveNumber, int enemyCoun
 
 std::string MessageHandler::FormatEnemyClearMessage() {
     return "EC";
+}
+
+ParsedMessage MessageHandler::ParseForceFieldZapMessage(const std::vector<std::string>& parts) {
+    ParsedMessage parsed;
+    parsed.type = MessageType::ForceFieldZap;
+    
+    if (parts.size() >= 4) {
+        parsed.steamID = parts[1];  // Player ID who owns the force field
+        parsed.enemyId = std::stoi(parts[2]);  // Enemy ID that was zapped
+        parsed.damage = std::stof(parts[3]);  // Damage applied
+    }
+    
+    return parsed;
+}
+
+std::string MessageHandler::FormatForceFieldZapMessage(const std::string& playerID, int enemyId, float damage) {
+    std::ostringstream oss;
+    oss << "FZ|" << playerID << "|" << enemyId << "|" << damage;
+    return oss.str();
 }

@@ -26,9 +26,10 @@ public:
 
     // Player management
     void AddLocalPlayer(const std::string& id, const std::string& name, 
-                        const sf::Vector2f& position, const sf::Color& color);
-    void AddOrUpdatePlayer(const std::string& playerID, const RemotePlayer& player);
-    void RemovePlayer(const std::string& id);
+        const sf::Vector2f& position, const sf::Color& color);
+void AddOrUpdatePlayer(const std::string& playerID, const RemotePlayer& player);
+void AddOrUpdatePlayer(const std::string& playerID, RemotePlayer&& player);
+void RemovePlayer(const std::string& id);
     RemotePlayer& GetLocalPlayer();
     std::unordered_map<std::string, RemotePlayer>& GetPlayers();
     
@@ -49,6 +50,9 @@ public:
     // New method for handling player shooting action
     bool PlayerShoot(const sf::Vector2f& mouseWorldPos);
     void SendBulletMessageToNetwork(const sf::Vector2f& position, const sf::Vector2f& direction, float bulletSpeed);
+
+    void InitializeForceFields();
+    void HandleForceFieldZap(const std::string& playerID, int enemyId, float damage, bool killed);
 
 private:
     // Helper methods for organization

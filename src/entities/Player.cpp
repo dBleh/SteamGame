@@ -1,4 +1,5 @@
 #include "Player.h"
+
 #include <iostream>
 #include <cmath>
 
@@ -18,6 +19,36 @@ Player::Player(const sf::Vector2f& startPosition, const sf::Color& color)
     shape.setPosition(startPosition);
 }
 
+Player::Player(Player&& other) noexcept
+    : shape(std::move(other.shape)),
+      movementSpeed(other.movementSpeed),
+      moveSpeedMultiplier(other.moveSpeedMultiplier),
+      shootCooldown(other.shootCooldown),
+      bulletSpeedMultiplier(other.bulletSpeedMultiplier),
+      health(other.health),
+      maxHealth(other.maxHealth),
+      isDead(other.isDead),
+      respawnPosition(other.respawnPosition),
+      forceField(std::move(other.forceField)),
+      forceFieldEnabled(other.forceFieldEnabled) {
+}
+
+Player& Player::operator=(Player&& other) noexcept {
+    if (this != &other) {
+        shape = std::move(other.shape);
+        movementSpeed = other.movementSpeed;
+        moveSpeedMultiplier = other.moveSpeedMultiplier;
+        shootCooldown = other.shootCooldown;
+        bulletSpeedMultiplier = other.bulletSpeedMultiplier;
+        health = other.health;
+        maxHealth = other.maxHealth;
+        isDead = other.isDead;
+        respawnPosition = other.respawnPosition;
+        forceField = std::move(other.forceField);
+        forceFieldEnabled = other.forceFieldEnabled;
+    }
+    return *this;
+}
 void Player::Update(float dt) {
     // Only handle cooldowns in the base update
     if (shootCooldown > 0.f) {
@@ -181,3 +212,39 @@ void Player::SetRespawnPosition(const sf::Vector2f& position) {
 sf::Vector2f Player::GetRespawnPosition() const {
     return respawnPosition;
 }
+
+void Player::InitializeForceField() {
+    float radius = 100.0f;
+    forceField = std::make_unique<ForceField>(this, radius);
+    forceFieldEnabled = true;
+}
+
+void Player::EnableForceField(bool enable) {
+    // Only change state if we have a force field
+    if (forceField) {
+        
+        forceFieldEnabled = enable;
+        
+        // Create a visual pulse effect when toggling
+        if (enable) {
+            // Make it pulse by temporarily increasing size
+            float originalRadius = forceField->GetRadius();
+            forceField->SetRadius(originalRadius * 1.2f); // 20% larger
+            
+            // Return to normal size after 0.2 seconds
+            sf::Clock timer;
+            sf::Time duration = sf::seconds(0.2f);
+            
+            // This is a simple approach; in a real implementation,
+            // you'd want to add this to a queue of effects to apply during update
+            while (timer.getElapsedTime() < duration) {
+                // Wait for the pulse effect
+                sf::sleep(sf::milliseconds(10));
+            }
+            
+            // Return to normal size
+            forceField->SetRadius(originalRadius);
+        }
+    }
+}
+

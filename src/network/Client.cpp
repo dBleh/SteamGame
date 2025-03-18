@@ -57,9 +57,11 @@ void ClientNetwork::ProcessChatMessage(Game& game, ClientNetwork& client, const 
 }
 
 void ClientNetwork::ProcessConnectionMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
+    // Create a new RemotePlayer directly with its fields set, don't copy
     RemotePlayer rp;
     rp.playerID = parsed.steamID;
     rp.isHost = parsed.isHost;
+    // Create player with position and color
     rp.player = Player(parsed.position, parsed.color);
     rp.cubeColor = parsed.color;
     rp.nameText.setFont(game.GetFont());
@@ -67,10 +69,11 @@ void ClientNetwork::ProcessConnectionMessage(Game& game, ClientNetwork& client, 
     rp.baseName = parsed.steamName;
     rp.nameText.setCharacterSize(16);
     rp.nameText.setFillColor(sf::Color::Black);
-    playerManager->AddOrUpdatePlayer(parsed.steamID, rp);
+    
+    // Move into the players map
+    playerManager->AddOrUpdatePlayer(parsed.steamID, std::move(rp));
     playerManager->SetReadyStatus(parsed.steamID, parsed.isReady);
 }
-
 void ClientNetwork::ProcessReadyStatusMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
     playerManager->SetReadyStatus(parsed.steamID, parsed.isReady);
 }
@@ -81,10 +84,12 @@ void ClientNetwork::ProcessMovementMessage(Game& game, ClientNetwork& client, co
         auto& playersMap = playerManager->GetPlayers();
         auto existingPlayer = playersMap.find(parsed.steamID);
         if (existingPlayer != playersMap.end()) {
-            RemotePlayer rp = existingPlayer->second;
-            rp.player.SetPosition(parsed.position);
-            playerManager->AddOrUpdatePlayer(parsed.steamID, rp);
+            // Update existing player's position
+            existingPlayer->second.previousPosition = existingPlayer->second.player.GetPosition();
+            existingPlayer->second.targetPosition = parsed.position;
+            existingPlayer->second.lastUpdateTime = std::chrono::steady_clock::now();
         } else {
+            // Create a new player
             RemotePlayer rp;
             rp.playerID = parsed.steamID;
             rp.player = Player(parsed.position, sf::Color::Blue);
@@ -96,11 +101,11 @@ void ClientNetwork::ProcessMovementMessage(Game& game, ClientNetwork& client, co
             std::string steamName = name ? name : "Unknown Player";
             rp.nameText.setString(steamName);
             rp.baseName = steamName;
-            playerManager->AddOrUpdatePlayer(parsed.steamID, rp);
+            // Add to the player manager using move semantics
+            playerManager->AddOrUpdatePlayer(parsed.steamID, std::move(rp));
         }
     }
 }
-
 void ClientNetwork::ProcessBulletMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
     std::string localSteamIDStr = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
     std::string normalizedShooterID, normalizedLocalID;
@@ -271,4 +276,74 @@ void ClientNetwork::ProcessPlayerDamageMessage(Game& game, ClientNetwork& client
 
 void ClientNetwork::ProcessUnknownMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
     std::cout << "[CLIENT] Unknown message type received\n";
+}
+
+void ClientNetwork::ProcessForceFieldZapMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
+    std::string zapperID = parsed.steamID;
+    int enemyId = parsed.enemyId;
+    float damage = parsed.damage;
+    
+    // Normalize player ID for consistent comparison
+    std::string normalizedZapperID;
+    try {
+        uint64_t zapperIdNum = std::stoull(zapperID);
+        normalizedZapperID = std::to_string(zapperIdNum);
+    } catch (const std::exception& e) {
+        std::cout << "[CLIENT] Error normalizing zapper ID: " << e.what() << "\n";
+        normalizedZapperID = zapperID;
+    }
+    
+    // Get the local player ID
+    std::string localID = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
+    std::string normalizedLocalID;
+    try {
+        uint64_t localIdNum = std::stoull(localID);
+        normalizedLocalID = std::to_string(localIdNum);
+    } catch (const std::exception& e) {
+        std::cout << "[CLIENT] Error normalizing local ID: " << e.what() << "\n";
+        normalizedLocalID = localID;
+    }
+    
+    // Don't process our own zap messages that are echoed back from host
+    if (normalizedZapperID == normalizedLocalID) {
+        return;
+    }
+    
+    // Apply damage to the enemy (if we have access to it)
+    PlayingState* playingState = GetPlayingState(&game);
+    if (playingState && playingState->GetEnemyManager()) {
+        EnemyManager* enemyManager = playingState->GetEnemyManager();
+        Enemy* enemy = enemyManager->FindEnemy(enemyId);
+        
+        // If we found the enemy, apply the visual effect
+        if (enemy) {
+            // Get the player who owns the force field
+            auto& players = playerManager->GetPlayers();
+            auto it = players.find(normalizedZapperID);
+            if (it != players.end()) {
+                RemotePlayer& rp = it->second;
+                
+                // Make sure the player has a force field
+                if (!rp.player.HasForceField()) {
+                    rp.player.InitializeForceField();
+                }
+                
+                // Get player and enemy positions
+                sf::Vector2f playerPos = rp.player.GetPosition() + sf::Vector2f(25.0f, 25.0f); // Assuming 50x50 player
+                sf::Vector2f enemyPos = enemy->GetPosition();
+                
+                // Create the zap effect
+                rp.player.GetForceField()->CreateZapEffect(playerPos, enemyPos);
+                rp.player.GetForceField()->SetIsZapping(true);
+                rp.player.GetForceField()->SetZapEffectTimer(0.3f); // Show effect for 0.3 seconds
+                
+                // Check if enemy was killed by this zap
+                bool killed = enemy->GetHealth() <= damage;
+                if (killed) {
+                    // Increment kill count for the zapper
+                    playerManager->IncrementPlayerKills(normalizedZapperID);
+                }
+            }
+        }
+    }
 }
