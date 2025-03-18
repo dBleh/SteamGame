@@ -62,7 +62,7 @@ void Enemy::UpdateMovement(float dt, PlayerManager& playerManager) {
         direction.y /= distance;
         
         // Apply velocity with smoother acceleration
-        const float acceleration = 10.0f; // Adjust as needed
+        const float acceleration = 1.0f; // Adjust as needed
         sf::Vector2f targetVelocity = direction * speed;
         
         // Interpolate current velocity toward target velocity
