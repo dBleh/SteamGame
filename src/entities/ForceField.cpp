@@ -30,7 +30,8 @@ ForceField::ForceField(Player* player, float radius)
       fieldColor(sf::Color(100, 100, 255, 50)),
       chainLightningEnabled(true),
       chainLightningTargets(3),
-      fieldType(FieldType::STANDARD) {
+      fieldType(FieldType::STANDARD), 
+      zapCallback(nullptr) {
     
     // Add more field types that can be selected
     const int randomFieldType = rand() % 100;
@@ -327,6 +328,8 @@ void ForceField::Render(sf::RenderWindow& window) {
     renderPowerIndicator(window, playerCenter);
 }
 
+// This method needs to be updated in ForceField.cpp to properly handle kills
+
 void ForceField::FindAndZapEnemy(PlayerManager& playerManager, EnemyManager& enemyManager) {
     // Get player position
     sf::Vector2f playerCenter = player->GetPosition() + sf::Vector2f(25.0f, 25.0f);
@@ -394,7 +397,7 @@ void ForceField::FindAndZapEnemy(PlayerManager& playerManager, EnemyManager& ene
         float damageMultiplier = 1.0f + 0.2f * (powerLevel - 1) + 0.1f * consecutiveHits;
         float effectiveDamage = zapDamage * damageMultiplier;
         
-        // Apply damage to primary target
+        // Apply damage to primary target and check if killed
         bool killed = enemyManager.InflictDamage(closestEnemyId, effectiveDamage);
         
         // Increment consecutive hits and reset combo timer

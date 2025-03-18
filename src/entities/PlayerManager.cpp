@@ -609,25 +609,25 @@ void PlayerManager::InitializeForceFields() {
             std::cout << "[PlayerManager] Creating force field for player " << rp.baseName << std::endl;
             rp.player.InitializeForceField();
             
-            // Set up callback for zap events for the local player
-            if (playerID == localPlayerID) {
-                std::cout << "[PlayerManager] Setting up zap callback for local player" << std::endl;
-                rp.player.GetForceField()->SetZapCallback([this, playerID](int enemyId, float damage, bool killed) {
-                    // Handle zap event
-                    HandleForceFieldZap(playerID, enemyId, damage, killed);
-                });
-            }
+            // Always make sure the force field is enabled after initialization
+            rp.player.EnableForceField(true);
+            
+            // Set up callback for zap events
+            // We set this for all players, not just local, to ensure kill tracking works for all
+            rp.player.GetForceField()->SetZapCallback([this, playerID](int enemyId, float damage, bool killed) {
+                // Handle zap event
+                HandleForceFieldZap(playerID, enemyId, damage, killed);
+            });
+            
+            std::cout << "[PlayerManager] Force field initialized for player " << rp.baseName << std::endl;
         } else {
             std::cout << "[PlayerManager] Player " << rp.baseName << " already has a force field" << std::endl;
-        }
-        
-        // Ensure force field is enabled for local player
-        if (playerID == localPlayerID) {
-            // Simply enable the force field by default
-            // The player can toggle it with the F key during gameplay
-            rp.player.EnableForceField(true);
-            std::cout << "[PlayerManager] Force field for local player is " 
-                      << (rp.player.HasForceField() ? "ENABLED" : "DISABLED") << std::endl;
+            
+            // Make sure callback is set even for existing force fields
+            rp.player.GetForceField()->SetZapCallback([this, playerID](int enemyId, float damage, bool killed) {
+                // Handle zap event
+                HandleForceFieldZap(playerID, enemyId, damage, killed);
+            });
         }
     }
 }
@@ -639,6 +639,9 @@ void PlayerManager::HandleForceFieldZap(const std::string& playerID, int enemyId
         if (it != players.end()) {
             it->second.money += 10; // 10 money for hitting an enemy with force field
         }
+    } else {
+        // If the enemy was killed, use the centralized kill handling
+        HandleKill(playerID, enemyId);
     }
     
     // If this is the local player, send a network message
