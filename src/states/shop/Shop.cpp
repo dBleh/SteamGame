@@ -3,6 +3,10 @@
 #include <steam/steam_api.h>
 #include <iostream>
 
+// Constants for shop layout and scrolling
+const float ITEM_Y_OFFSET = 110.0f;
+const float ITEM_SPACING = 90.0f;
+
 // ShopItem implementation
 ShopItem::ShopItem(ShopItemType type, const std::string& name, const std::string& description, 
                    int baseCost, int level, int maxLevel)
@@ -83,10 +87,10 @@ void ShopItem::Render(sf::RenderWindow& window, sf::Vector2f position, bool isHi
 
 // Shop implementation
 Shop::Shop(Game* game, PlayerManager* playerManager)
-    : game(game), playerManager(playerManager), isOpen(false), selectedIndex(0) {
+    : game(game), playerManager(playerManager), isOpen(false), selectedIndex(0), scrollOffset(0.0f) {
     
     // Set up shop background
-    shopBackground.setSize(sf::Vector2f(400.f, 500.f));
+    shopBackground.setSize(sf::Vector2f(400.f, 650.f)); // Made taller for more items
     shopBackground.setFillColor(sf::Color(40, 40, 40, 230));
     shopBackground.setOutlineColor(sf::Color(100, 100, 255, 150));
     shopBackground.setOutlineThickness(2.f);
@@ -109,7 +113,7 @@ Shop::Shop(Game* game, PlayerManager* playerManager)
     instructionsText.setCharacterSize(14);
     instructionsText.setFillColor(sf::Color(180, 180, 180));
     
-    // Initialize shop items using constants from Config.h
+    // Initialize original shop items
     items.push_back(ShopItem(ShopItemType::BulletSpeed, "Bullet Speed", 
                              "Increases bullet velocity", 
                              SHOP_BULLET_SPEED_BASE_COST, 0, SHOP_DEFAULT_MAX_LEVEL));
@@ -121,6 +125,27 @@ Shop::Shop(Game* game, PlayerManager* playerManager)
     items.push_back(ShopItem(ShopItemType::Health, "Health Boost", 
                              "Increases maximum health", 
                              SHOP_HEALTH_BASE_COST, 0, SHOP_DEFAULT_MAX_LEVEL));
+    
+    // Add new ForceField upgrade items
+    items.push_back(ShopItem(ShopItemType::ForceFieldRadius, "Force Field Radius", 
+                             "Increases the size of your force field", 
+                             100, 0, 5));
+    
+    items.push_back(ShopItem(ShopItemType::ForceFieldDamage, "Force Field Damage", 
+                             "Increases damage dealt to enemies", 
+                             150, 0, 5));
+    
+    items.push_back(ShopItem(ShopItemType::ForceFieldCooldown, "Force Field Speed", 
+                             "Reduces time between zaps", 
+                             200, 0, 5));
+    
+    items.push_back(ShopItem(ShopItemType::ForceFieldChain, "Chain Lightning", 
+                             "Increases chain lightning targets", 
+                             250, 0, 3));
+    
+    items.push_back(ShopItem(ShopItemType::ForceFieldType, "Force Field Type", 
+                             "Upgrade to more powerful field types", 
+                             300, 0, 3));
     
     // Set font for all items
     for (auto& item : items) {
@@ -212,17 +237,71 @@ void Shop::Render(sf::RenderWindow& window) {
     window.draw(playerMoneyText);
     window.draw(instructionsText);
     
-    // Draw shop items
-    float itemYOffset = 120.0f;
-    float itemSpacing = 90.0f;
-    
     float centerX = BASE_WIDTH / 2.0f;
-    float startY = (BASE_HEIGHT - shopBackground.getSize().y) / 2.0f + itemYOffset;
+    float startY = (BASE_HEIGHT - shopBackground.getSize().y) / 2.0f + ITEM_Y_OFFSET;
     
+    // Calculate scrolling parameters
+    float visibleAreaHeight = shopBackground.getSize().y - 200.0f;
+    float contentHeight = items.size() * ITEM_SPACING;
+    float maxScroll = std::max(0.0f, contentHeight - visibleAreaHeight);
+    
+    // Calculate visible item range
+    int maxVisibleItems = static_cast<int>(visibleAreaHeight / ITEM_SPACING) + 1;
+    
+    // Calculate target scroll position based on selected index,
+    // but only update when using keyboard or mouse wheel (not mouse position)
+    if (contentHeight > visibleAreaHeight) {
+        // Only adjust scroll when the item would be out of view
+        float itemTopPos = selectedIndex * ITEM_SPACING;
+        float itemBottomPos = itemTopPos + ITEM_SPACING;
+        
+        // Ensure selected item is visible
+        if (itemTopPos < scrollOffset) {
+            // Item is above visible area - scroll up to show it
+            scrollOffset = itemTopPos;
+        } else if (itemBottomPos > scrollOffset + visibleAreaHeight) {
+            // Item is below visible area - scroll down to show it
+            scrollOffset = itemBottomPos - visibleAreaHeight;
+        }
+        
+        // Clamp scroll offset to valid range
+        scrollOffset = std::max(0.0f, std::min(scrollOffset, maxScroll));
+    } else {
+        scrollOffset = 0.0f; // No need to scroll for small lists
+    }
+    
+    // Create a scissor rectangle to clip items outside the visible area
+    sf::FloatRect shopBounds = shopBackground.getGlobalBounds();
+    float shopTop = shopBounds.top + ITEM_Y_OFFSET - 20.0f; // Add some padding
+    float shopBottom = shopBounds.top + shopBounds.height - 60.0f; // Leave space for instructions
+    
+    // Render visible items with scroll offset
     for (size_t i = 0; i < items.size(); i++) {
-        float itemY = startY + (i * itemSpacing);
-        sf::Vector2f itemPos(centerX - 190.0f, itemY);
-        items[i].Render(window, itemPos, i == selectedIndex);
+        float itemY = startY + (i * ITEM_SPACING) - scrollOffset;
+        
+        // Only render if within visible area
+        if (itemY + ITEM_SPACING > shopTop && itemY < shopBottom) {
+            sf::Vector2f itemPos(centerX - 190.0f, itemY);
+            items[i].Render(window, itemPos, i == selectedIndex);
+        }
+    }
+    
+    // Draw scrollbar if needed
+    if (contentHeight > visibleAreaHeight) {
+        float scrollbarHeight = visibleAreaHeight * (visibleAreaHeight / contentHeight);
+        float scrollbarY = shopTop + (scrollOffset / maxScroll) * (visibleAreaHeight - scrollbarHeight);
+        
+        sf::RectangleShape scrollbarTrack;
+        scrollbarTrack.setSize(sf::Vector2f(8.0f, visibleAreaHeight));
+        scrollbarTrack.setPosition(shopBounds.left + shopBounds.width - 20.0f, shopTop);
+        scrollbarTrack.setFillColor(sf::Color(40, 40, 40, 150));
+        window.draw(scrollbarTrack);
+        
+        sf::RectangleShape scrollbar;
+        scrollbar.setSize(sf::Vector2f(8.0f, scrollbarHeight));
+        scrollbar.setPosition(shopBounds.left + shopBounds.width - 20.0f, scrollbarY);
+        scrollbar.setFillColor(sf::Color(150, 150, 255, 200));
+        window.draw(scrollbar);
     }
     
     // Restore original view
@@ -232,12 +311,18 @@ void Shop::Render(sf::RenderWindow& window) {
 void Shop::ProcessEvent(const sf::Event& event) {
     if (!isOpen) return;
     
+    // Calculate scrolling parameters (moved here from Render to be accessible)
+    float visibleAreaHeight = shopBackground.getSize().y - 200.0f;
+    float contentHeight = items.size() * ITEM_SPACING;
+    
     if (event.type == sf::Event::KeyPressed) {
         if (event.key.code == sf::Keyboard::B || event.key.code == sf::Keyboard::Escape) {
             Close();
         } else if (event.key.code == sf::Keyboard::Up) {
+            // Move selection up
             selectedIndex = (selectedIndex > 0) ? selectedIndex - 1 : items.size() - 1;
         } else if (event.key.code == sf::Keyboard::Down) {
+            // Move selection down
             selectedIndex = (selectedIndex < items.size() - 1) ? selectedIndex + 1 : 0;
         } else if (event.key.code == sf::Keyboard::Return || event.key.code == sf::Keyboard::Space) {
             PurchaseSelectedItem();
@@ -248,11 +333,33 @@ void Shop::ProcessEvent(const sf::Event& event) {
         sf::Vector2f mouseUIPos = game->WindowToUICoordinates(mousePos);
         
         // Check if any item was clicked
+        bool itemClicked = false;
         for (size_t i = 0; i < items.size(); i++) {
             if (items[i].GetBounds().contains(mouseUIPos)) {
                 selectedIndex = i;
                 PurchaseSelectedItem();
+                itemClicked = true;
                 break;
+            }
+        }
+        
+        // Check if scrollbar was clicked
+        if (!itemClicked) {
+            sf::FloatRect shopBounds = shopBackground.getGlobalBounds();
+            float scrollbarX = shopBounds.left + shopBounds.width - 20.0f;
+            float scrollbarWidth = 8.0f;
+            
+            if (mouseUIPos.x >= scrollbarX && mouseUIPos.x <= scrollbarX + scrollbarWidth) {
+                // Calculate visible area parameters
+                float itemYOffset = ITEM_Y_OFFSET;
+                float shopTop = shopBounds.top + itemYOffset - 20.0f;
+                
+                if (mouseUIPos.y >= shopTop && mouseUIPos.y <= shopTop + visibleAreaHeight) {
+                    // Calculate new scroll position based on click position
+                    float clickPosition = (mouseUIPos.y - shopTop) / visibleAreaHeight;
+                    float maxScroll = std::max(0.0f, contentHeight - visibleAreaHeight);
+                    scrollOffset = clickPosition * maxScroll;
+                }
             }
         }
     } else if (event.type == sf::Event::MouseMoved) {
@@ -260,13 +367,74 @@ void Shop::ProcessEvent(const sf::Event& event) {
         sf::Vector2i mousePos(event.mouseMove.x, event.mouseMove.y);
         sf::Vector2f mouseUIPos = game->WindowToUICoordinates(mousePos);
         
-        // Highlight item under mouse
+        // Highlight item under mouse but don't change scroll position
+        // Only check visible items to prevent selection through scrolling
+        bool itemFound = false;
         for (size_t i = 0; i < items.size(); i++) {
             if (items[i].GetBounds().contains(mouseUIPos)) {
+                // Set selection without changing scroll position
+                int oldSelection = selectedIndex;
                 selectedIndex = i;
+                
+                // If selection changed by mouse movement, maintain the same scroll position
+                if (oldSelection != selectedIndex) {
+                    // Don't update scroll position here - kept the same
+                }
+                
+                itemFound = true;
                 break;
             }
         }
+    } else if (event.type == sf::Event::MouseWheelScrolled) {
+        // Calculate scroll step - equivalent to moving roughly one item
+        float scrollStep = ITEM_SPACING; // Match the item spacing
+        
+        // Scroll through items - direct scrolling without changing selection
+        if (event.mouseWheelScroll.delta > 0) {
+            // Scroll up by one item
+            scrollOffset = std::max(0.0f, scrollOffset - scrollStep);
+        } else {
+            // Scroll down by one item
+            float maxScroll = std::max(0.0f, contentHeight - visibleAreaHeight);
+            scrollOffset = std::min(maxScroll, scrollOffset + scrollStep);
+        }
+    }
+}
+void Shop::SendForceFieldUpdateToNetwork(const Player& player) {
+    // Check if the player has a force field
+    ForceField* forceField = player.GetForceField();
+    if (!forceField) {
+        std::cout << "[SHOP] Cannot send update - player has no force field\n";
+        return;
+    }
+    
+    // Get the local player ID
+    std::string playerID = playerManager->GetLocalPlayer().playerID;
+    
+    // Create the force field update message
+    std::string updateMsg = MessageHandler::FormatForceFieldUpdateMessage(
+        playerID,
+        forceField->GetRadius(),
+        forceField->GetDamage(),
+        forceField->GetCooldown(),
+        forceField->GetChainLightningTargets(),
+        static_cast<int>(forceField->GetFieldType()),
+        forceField->GetPowerLevel(),
+        forceField->IsChainLightningEnabled()
+    );
+    
+    // Check if we're the host
+    CSteamID localSteamID = SteamUser()->GetSteamID();
+    CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+    
+    if (localSteamID == hostID) {
+        // We are the host, broadcast to all clients
+        game->GetNetworkManager().BroadcastMessage(updateMsg);
+        std::cout << "[SHOP] Broadcast force field update as host\n";
+    } else {
+        // We are a client, send to host
+        game->GetNetworkManager().SendMessage(hostID, updateMsg);
+        std::cout << "[SHOP] Sent force field update to host\n";
     }
 }
 
@@ -293,6 +461,22 @@ void Shop::PurchaseSelectedItem() {
         
         // Update display
         UpdateMoneyDisplay();
+        
+        // Send force field update to network if this was a force field upgrade
+        if (item.GetType() == ShopItemType::ForceFieldRadius || 
+            item.GetType() == ShopItemType::ForceFieldDamage ||
+            item.GetType() == ShopItemType::ForceFieldCooldown ||
+            item.GetType() == ShopItemType::ForceFieldChain ||
+            item.GetType() == ShopItemType::ForceFieldType) {
+            
+            // Make sure the force field is enabled
+            if (!localPlayer.player.HasForceField() && localPlayer.player.GetForceField()) {
+                localPlayer.player.EnableForceField(true);
+            }
+            
+            // Send the update to the network
+            SendForceFieldUpdateToNetwork(localPlayer.player);
+        }
     }
 }
 
@@ -310,21 +494,82 @@ void Shop::ApplyUpgrades(Player& player) {
         
         switch (item.GetType()) {
             case ShopItemType::BulletSpeed:
-                // Use constant for bullet speed multiplier
+                // Original bullet speed upgrade
                 player.SetBulletSpeedMultiplier(1.0f + (level * SHOP_BULLET_SPEED_MULTIPLIER));
                 break;
                 
             case ShopItemType::MoveSpeed:
-                // Use constant for move speed multiplier
+                // Original move speed upgrade
                 player.SetSpeed(PLAYER_SPEED * (1.0f + (level * SHOP_MOVE_SPEED_MULTIPLIER)));
                 break;
                 
             case ShopItemType::Health:
-                // Use constant for health increase per level
+                // Original health upgrade
                 player.SetMaxHealth(PLAYER_HEALTH + (level * SHOP_HEALTH_INCREASE));
-                // Also heal the player when they buy health upgrades
                 player.SetHealth(player.GetMaxHealth());
                 break;
+                
+            case ShopItemType::ForceFieldRadius:
+                // Force field radius upgrade
+                if (player.GetForceField()) {
+                    float newRadius = FORCE_FIELD_RADIUS_BASE + (level * FORCE_FIELD_RADIUS_INCREMENT);
+                    player.GetForceField()->SetRadius(newRadius);
+                }
+                break;
+                
+            case ShopItemType::ForceFieldDamage:
+                // Force field damage upgrade
+                if (player.GetForceField()) {
+                    float newDamage = FORCE_FIELD_DAMAGE_BASE + (level * FORCE_FIELD_DAMAGE_INCREMENT);
+                    player.GetForceField()->SetDamage(newDamage);
+                }
+                break;
+                
+            case ShopItemType::ForceFieldCooldown:
+                // Force field cooldown reduction upgrade
+                if (player.GetForceField()) {
+                    float newCooldown = std::max(0.1f, FORCE_FIELD_COOLDOWN_BASE - (level * FORCE_FIELD_COOLDOWN_DECREMENT));
+                    player.GetForceField()->SetCooldown(newCooldown);
+                }
+                break;
+                
+            case ShopItemType::ForceFieldChain:
+                // Force field chain lightning targets upgrade
+                if (player.GetForceField()) {
+                    int chainTargets = FORCE_FIELD_CHAIN_BASE + (level * FORCE_FIELD_CHAIN_INCREMENT);
+                    player.GetForceField()->SetChainLightningTargets(chainTargets);
+                    player.GetForceField()->SetChainLightningEnabled(true);
+                }
+                break;
+                
+            case ShopItemType::ForceFieldType:
+                // Force field type upgrade
+                if (player.GetForceField() && level > 0) {
+                    FieldType newType;
+                    switch (static_cast<int>(level)) {
+                        case 1:
+                            newType = FieldType::SHOCK;
+                            break;
+                        case 2:
+                            newType = FieldType::PLASMA;
+                            break;
+                        case 3:
+                            newType = FieldType::VORTEX;
+                            break;
+                        default:
+                            newType = FieldType::STANDARD;
+                    }
+                    player.GetForceField()->SetFieldType(newType);
+                    
+                    // Also increase power level with field type upgrades
+                    player.GetForceField()->SetPowerLevel(static_cast<int>(level) + 1);
+                }
+                break;
         }
+    }
+    
+    // Make sure the force field is enabled after purchasing upgrades
+    if (player.GetForceField() && !player.HasForceField()) {
+        player.EnableForceField(true);
     }
 }

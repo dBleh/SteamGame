@@ -298,6 +298,16 @@ void MessageHandler::Initialize() {
                                         // Handle force field zap on host
                                         host.ProcessForceFieldZapMessage(game, host, parsed, sender);
                                     });
+        RegisterMessageType("FFU", 
+                      ParseForceFieldUpdateMessage,
+                      [](Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
+                          // Handle force field update on client
+                          client.ProcessForceFieldUpdateMessage(game, client, parsed);
+                      },
+                      [](Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender) {
+                          // Handle force field update on host
+                          host.ProcessForceFieldUpdateMessage(game, host, parsed, sender);
+                      });
 }
 
 void MessageHandler::RegisterMessageType(
@@ -333,6 +343,7 @@ std::string MessageHandler::GetPrefixForType(MessageType type) {
         case MessageType::ChunkPart: return "CHUNK_PART";
         case MessageType::ChunkEnd: return "CHUNK_END";
         case MessageType::ForceFieldZap: return "FZ";  // New type for force field zap
+        case MessageType::ForceFieldUpdate: return "FFU"; // New case
         case MessageType::Unknown: 
         default: return "";
     }
@@ -348,6 +359,48 @@ const MessageHandler::MessageDescriptor* MessageHandler::GetDescriptorByType(Mes
     }
     return nullptr;
 }
+
+ParsedMessage MessageHandler::ParseForceFieldUpdateMessage(const std::vector<std::string>& parts) {
+    ParsedMessage parsed;
+    parsed.type = MessageType::ForceFieldUpdate;
+    
+    if (parts.size() >= 9) {
+        parsed.steamID = parts[1];                   // Player ID
+        parsed.ffRadius = std::stof(parts[2]);       // Force field radius
+        parsed.ffDamage = std::stof(parts[3]);       // Force field damage
+        parsed.ffCooldown = std::stof(parts[4]);     // Force field cooldown
+        parsed.ffChainTargets = std::stoi(parts[5]); // Chain lightning targets
+        parsed.ffType = std::stoi(parts[6]);         // Field type as integer
+        parsed.ffPowerLevel = std::stoi(parts[7]);   // Power level
+        parsed.ffChainEnabled = (parts[8] == "1");   // Chain lightning enabled flag
+    }
+    
+    return parsed;
+}
+
+// Add the implementation for formatting ForceField update messages
+std::string MessageHandler::FormatForceFieldUpdateMessage(
+    const std::string& playerID,
+    float radius,
+    float damage,
+    float cooldown,
+    int chainTargets,
+    int fieldType,
+    int powerLevel,
+    bool chainEnabled)
+{
+    std::ostringstream oss;
+    oss << "FFU|" << playerID 
+        << "|" << radius 
+        << "|" << damage 
+        << "|" << cooldown 
+        << "|" << chainTargets 
+        << "|" << fieldType 
+        << "|" << powerLevel
+        << "|" << (chainEnabled ? "1" : "0");
+    return oss.str();
+}
+
 // Add these ParseChunk* methods
 ParsedMessage MessageHandler::ParseChunkStartMessage(const std::vector<std::string>& parts) {
     ParsedMessage parsed;

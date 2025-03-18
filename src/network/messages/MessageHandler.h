@@ -39,7 +39,8 @@ enum class MessageType {
     ChunkStart, 
     ChunkPart,   
     ChunkEnd,
-    ForceFieldZap 
+    ForceFieldZap,
+    ForceFieldUpdate  // New message type for force field updates
 };
 
 struct ParsedMessage {
@@ -65,8 +66,16 @@ struct ParsedMessage {
     std::vector<float> enemyHealths;
     int health;
     std::vector<int> enemyTypes;
+    
+    // Force field update parameters
+    float ffRadius;
+    float ffDamage;
+    float ffCooldown;
+    int ffChainTargets;
+    int ffType;
+    int ffPowerLevel;
+    bool ffChainEnabled;
 };
-
 class MessageHandler {
 public:
     // Message parser function type
@@ -151,7 +160,16 @@ public:
     static std::string FormatPlayerDamageMessage(const std::string& playerID, 
                                                int damage, 
                                                int enemyId);
-    
+    static ParsedMessage ParseForceFieldUpdateMessage(const std::vector<std::string>& parts);
+    static std::string FormatForceFieldUpdateMessage(
+        const std::string& playerID,
+        float radius,
+        float damage,
+        float cooldown,
+        int chainTargets,
+        int fieldType,
+        int powerLevel,
+        bool chainEnabled);
     // Enemy message formatting functions
     static std::string FormatEnemyAddMessage(int enemyId, EnemyType type, const sf::Vector2f& position, float health);
     static std::string FormatEnemyRemoveMessage(int enemyId);

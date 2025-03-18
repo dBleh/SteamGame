@@ -40,7 +40,7 @@ public:
     void ProcessPlayerDamageMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed);
     void ProcessUnknownMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed);
     void ProcessForceFieldZapMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed);
-
+    void ProcessForceFieldUpdateMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed);
 private:
     Game* game;
     std::chrono::steady_clock::time_point lastSendTime;

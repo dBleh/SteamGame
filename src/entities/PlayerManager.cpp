@@ -542,6 +542,7 @@ void PlayerManager::RemoveBullets(const std::vector<size_t>& indicesToRemove) {
     }
 }
 
+// Updated implementation for PlayerManager::InitializeForceFields()
 void PlayerManager::InitializeForceFields() {
     std::cout << "[PlayerManager] Initializing force fields for " << players.size() << " players" << std::endl;
     
@@ -568,6 +569,8 @@ void PlayerManager::InitializeForceFields() {
         
         // Ensure force field is enabled for local player
         if (playerID == localPlayerID) {
+            // Simply enable the force field by default
+            // The player can toggle it with the F key during gameplay
             rp.player.EnableForceField(true);
             std::cout << "[PlayerManager] Force field for local player is " 
                       << (rp.player.HasForceField() ? "ENABLED" : "DISABLED") << std::endl;

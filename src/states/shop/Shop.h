@@ -8,12 +8,16 @@
 #include "../core/Game.h"
 #include "../entities/PlayerManager.h"
 
-// Enum to define the different shop item types
+// Expanded enum to include ForceField upgrades
 enum class ShopItemType {
     BulletSpeed,
     MoveSpeed,
     Health,
-    // Add more types as needed
+    ForceFieldRadius,
+    ForceFieldDamage,
+    ForceFieldCooldown,
+    ForceFieldChain,
+    ForceFieldType
 };
 
 // Class to represent a single item in the shop
@@ -37,7 +41,7 @@ public:
     sf::FloatRect GetBounds() const { return bounds; }
     void SetBounds(const sf::FloatRect& newBounds) { bounds = newBounds; }
     
-private:
+    private:
     ShopItemType type;
     std::string name;
     std::string description;
@@ -70,7 +74,7 @@ public:
     
     // Apply purchased upgrades to the player
     void ApplyUpgrades(Player& player);
-    
+    void SendForceFieldUpdateToNetwork(const Player& player);
 private:
     Game* game;
     PlayerManager* playerManager;
@@ -83,11 +87,26 @@ private:
     sf::Text shopTitle;
     sf::Text playerMoneyText;
     sf::Text instructionsText;
+    float scrollOffset = 0.0f;
+    
+    // Layout constants
+    static constexpr float ITEM_Y_OFFSET = 110.0f;
+    static constexpr float ITEM_SPACING = 90.0f;
     
     void UpdateLayout();
     void PurchaseSelectedItem();
     bool CanAffordItem(const ShopItem& item) const;
     void UpdateMoneyDisplay();
+    
+    // Constants for ForceField upgrades
+    static constexpr float FORCE_FIELD_RADIUS_BASE = 150.0f;
+    static constexpr float FORCE_FIELD_RADIUS_INCREMENT = 50.0f;
+    static constexpr float FORCE_FIELD_DAMAGE_BASE = 25.0f;
+    static constexpr float FORCE_FIELD_DAMAGE_INCREMENT = 5.0f;
+    static constexpr float FORCE_FIELD_COOLDOWN_BASE = 0.3f;
+    static constexpr float FORCE_FIELD_COOLDOWN_DECREMENT = 0.03f;
+    static constexpr int FORCE_FIELD_CHAIN_BASE = 3;
+    static constexpr int FORCE_FIELD_CHAIN_INCREMENT = 1;
 };
 
 #endif // SHOP_H

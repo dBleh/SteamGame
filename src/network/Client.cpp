@@ -51,7 +51,62 @@ void ClientNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
         ProcessUnknownMessage(*game, *this, parsed);
     }
 }
-
+void ClientNetwork::ProcessForceFieldUpdateMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
+    // Get the player ID from the message
+    std::string playerID = parsed.steamID;
+    
+    // Normalize player ID for consistent comparison
+    std::string normalizedPlayerID;
+    try {
+        uint64_t idNum = std::stoull(playerID);
+        normalizedPlayerID = std::to_string(idNum);
+    } catch (const std::exception& e) {
+        std::cout << "[CLIENT] Error normalizing player ID in ProcessForceFieldUpdateMessage: " << e.what() << "\n";
+        normalizedPlayerID = playerID;
+    }
+    
+    // Get the local player ID
+    std::string localPlayerID = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
+    
+    // Ignore updates for the local player (we already have the latest)
+    if (normalizedPlayerID == localPlayerID) {
+        std::cout << "[CLIENT] Ignoring force field update for local player\n";
+        return;
+    }
+    
+    // Look up the player in the players map
+    auto& players = playerManager->GetPlayers();
+    auto it = players.find(normalizedPlayerID);
+    
+    if (it != players.end()) {
+        RemotePlayer& rp = it->second;
+        
+        // Make sure the player has a force field
+        if (!rp.player.HasForceField()) {
+            rp.player.InitializeForceField();
+        }
+        
+        ForceField* forceField = rp.player.GetForceField();
+        if (forceField) {
+            // Update the force field parameters
+            forceField->SetRadius(parsed.ffRadius);
+            forceField->SetDamage(parsed.ffDamage);
+            forceField->SetCooldown(parsed.ffCooldown);
+            forceField->SetChainLightningTargets(parsed.ffChainTargets);
+            forceField->SetChainLightningEnabled(parsed.ffChainEnabled);
+            forceField->SetPowerLevel(parsed.ffPowerLevel);
+            forceField->SetFieldType(static_cast<FieldType>(parsed.ffType));
+            
+            std::cout << "[CLIENT] Updated force field for player " << normalizedPlayerID 
+                      << " - Radius: " << parsed.ffRadius
+                      << ", Damage: " << parsed.ffDamage
+                      << ", Type: " << parsed.ffType << "\n";
+            
+            // Make sure the force field is enabled for this player
+            rp.player.EnableForceField(true);
+        }
+    }
+}
 void ClientNetwork::ProcessChatMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
     std::cout << "[CLIENT] Received chat message from " << parsed.steamID << ": " << parsed.chatMessage << "\n";
 }

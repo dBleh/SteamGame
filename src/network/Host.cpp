@@ -21,8 +21,14 @@ HostNetwork::HostNetwork(Game* game, PlayerManager* manager)
     hostPlayer.nameText.setCharacterSize(16);
     hostPlayer.nameText.setFillColor(sf::Color::Black);
     hostPlayer.isReady = false;
-    playerManager->AddOrUpdatePlayer(hostIDStr, hostPlayer);
+    playerManager->AddOrUpdatePlayer(hostIDStr, std::move(hostPlayer));
     std::cout << "[HOST] Added host to player list: " << hostName << " (" << hostIDStr << ")\n";
+    
+    // Initialize force fields for the host player
+    playerManager->InitializeForceFields();
+    
+    
+    
     BroadcastFullPlayerList();
 }
 
@@ -54,6 +60,14 @@ void HostNetwork::ProcessConnectionMessage(Game& game, HostNetwork& host, const 
         rp.nameText.setCharacterSize(16);
         rp.nameText.setFillColor(sf::Color::Black);
         playerManager->AddOrUpdatePlayer(parsed.steamID, std::move(rp));
+        
+        // Initialize force field for the newly connected client
+        auto& playerRef = players.find(parsed.steamID)->second;
+        if (!playerRef.player.HasForceField()) {
+            playerRef.player.InitializeForceField();
+            std::cout << "[HOST] Initialized force field for new player: " << parsed.steamName << " (" << parsed.steamID << ")\n";
+        }
+        
         std::cout << "[HOST] New player connected: " << parsed.steamName << " (" << parsed.steamID << ")\n";
     } else {
         // Update existing player's position
@@ -63,6 +77,12 @@ void HostNetwork::ProcessConnectionMessage(Game& game, HostNetwork& host, const 
             it->second.baseName = parsed.steamName;
             it->second.nameText.setString(parsed.steamName);
             std::cout << "[HOST] Updated name for " << parsed.steamID << " to " << parsed.steamName << "\n";
+        }
+        
+        // Initialize force field if it doesn't exist
+        if (!it->second.player.HasForceField()) {
+            it->second.player.InitializeForceField();
+            std::cout << "[HOST] Initialized force field for existing player: " << parsed.steamName << " (" << parsed.steamID << ")\n";
         }
     }
     playerManager->SetReadyStatus(parsed.steamID, parsed.isReady);
@@ -108,7 +128,64 @@ void HostNetwork::ProcessChatMessage(const std::string& message, CSteamID sender
     std::string msg = MessageHandler::FormatChatMessage(std::to_string(sender.ConvertToUint64()), message);
     game->GetNetworkManager().BroadcastMessage(msg);
 }
-
+void HostNetwork::ProcessForceFieldUpdateMessage(Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender) {
+    // Get the player ID from the message
+    std::string playerID = parsed.steamID;
+    
+    // Normalize player ID for consistent comparison
+    std::string normalizedPlayerID;
+    try {
+        uint64_t idNum = std::stoull(playerID);
+        normalizedPlayerID = std::to_string(idNum);
+    } catch (const std::exception& e) {
+        std::cout << "[HOST] Error normalizing player ID in ProcessForceFieldUpdateMessage: " << e.what() << "\n";
+        normalizedPlayerID = playerID;
+    }
+    
+    // Look up the player in the players map
+    auto& players = playerManager->GetPlayers();
+    auto it = players.find(normalizedPlayerID);
+    
+    if (it != players.end()) {
+        RemotePlayer& rp = it->second;
+        
+        // Make sure the player has a force field
+        if (!rp.player.HasForceField()) {
+            rp.player.InitializeForceField();
+        }
+        
+        ForceField* forceField = rp.player.GetForceField();
+        if (forceField) {
+            // Update the force field parameters
+            forceField->SetRadius(parsed.ffRadius);
+            forceField->SetDamage(parsed.ffDamage);
+            forceField->SetCooldown(parsed.ffCooldown);
+            forceField->SetChainLightningTargets(parsed.ffChainTargets);
+            forceField->SetChainLightningEnabled(parsed.ffChainEnabled);
+            forceField->SetPowerLevel(parsed.ffPowerLevel);
+            forceField->SetFieldType(static_cast<FieldType>(parsed.ffType));
+            
+            std::cout << "[HOST] Updated force field for player " << normalizedPlayerID 
+                      << " - Radius: " << parsed.ffRadius
+                      << ", Damage: " << parsed.ffDamage
+                      << ", Type: " << parsed.ffType << "\n";
+        }
+    }
+    
+    // Broadcast the force field update to all clients
+    std::string updateMsg = MessageHandler::FormatForceFieldUpdateMessage(
+        normalizedPlayerID,
+        parsed.ffRadius,
+        parsed.ffDamage,
+        parsed.ffCooldown,
+        parsed.ffChainTargets,
+        parsed.ffType,
+        parsed.ffPowerLevel,
+        parsed.ffChainEnabled
+    );
+    
+    game.GetNetworkManager().BroadcastMessage(updateMsg);
+}
 void HostNetwork::ProcessReadyStatusMessage(Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender) {
     std::string localSteamIDStr = std::to_string(game.GetLocalSteamID().ConvertToUint64());
     if (localSteamIDStr != parsed.steamID) {

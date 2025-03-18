@@ -214,19 +214,41 @@ sf::Vector2f Player::GetRespawnPosition() const {
 }
 
 void Player::InitializeForceField() {
-    float radius = 100.0f;
-    forceField = std::make_unique<ForceField>(this, radius);
+    // Start with a smaller radius to make upgrades meaningful
+    float startingRadius = 100.0f;  // Smaller than the default 150.0f
+    
+    // Create the force field with reduced initial power
+    forceField = std::make_unique<ForceField>(this, startingRadius);
+    
+    // Set initial properties to be weaker than default
+    if (forceField) {
+        // Reduced damage
+        forceField->SetDamage(15.0f);  // Lower than DEFAULT_DAMAGE of 25.0f
+        
+        // Slower firing rate
+        forceField->SetCooldown(0.5f);  // Higher than DEFAULT_COOLDOWN of 0.3f
+        
+        // Disable chain lightning initially (player will unlock with upgrades)
+        forceField->SetChainLightningEnabled(false);
+        forceField->SetChainLightningTargets(1);
+        
+        // Set to lowest power level
+        forceField->SetPowerLevel(1);
+        
+        // Standard field type initially
+        forceField->SetFieldType(FieldType::STANDARD);
+    }
+    
     forceFieldEnabled = true;
 }
-
 void Player::EnableForceField(bool enable) {
     // Only change state if we have a force field
     if (forceField) {
-        
+        bool previousState = forceFieldEnabled;
         forceFieldEnabled = enable;
         
-        // Create a visual pulse effect when toggling
-        if (enable) {
+        // Create a visual pulse effect when toggling to enabled
+        if (enable && !previousState) {
             // Make it pulse by temporarily increasing size
             float originalRadius = forceField->GetRadius();
             forceField->SetRadius(originalRadius * 1.2f); // 20% larger

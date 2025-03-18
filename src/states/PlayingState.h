@@ -39,7 +39,12 @@ private:
     static Shop* shopInstance;
     
     void ProcessGameplayEvents(const sf::Event& event);
+    float currentZoom;
+   
     
+    // Zoom handling methods
+    void HandleZoom(float delta);
+    void AdjustViewToWindow();
     // Game components
     std::unique_ptr<PlayerManager> playerManager;
     std::unique_ptr<PlayerRenderer> playerRenderer;

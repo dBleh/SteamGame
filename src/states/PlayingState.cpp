@@ -428,7 +428,14 @@ void PlayingState::ProcessEvent(const sf::Event& event) {
 void PlayingState::ProcessGameplayEvents(const sf::Event& event) {
     // Only process gameplay events if menu is not active
     if (showEscapeMenu) return;
-    
+
+    if(!showShop){
+    if (event.type == sf::Event::MouseWheelScrolled && event.mouseWheelScroll.wheel == sf::Mouse::VerticalWheel) {
+        // Negative delta means scroll down (zoom out), positive means scroll up (zoom in)
+        HandleZoom(-event.mouseWheelScroll.delta * ZOOM_SPEED);
+        return;
+    }
+}
     if (event.type == sf::Event::MouseButtonPressed && event.mouseButton.button == sf::Mouse::Left) {
         // Get mouse position in window coordinates
         sf::Vector2i mouseWindowPos(event.mouseButton.x, event.mouseButton.y);
@@ -479,14 +486,42 @@ void PlayingState::ProcessGameplayEvents(const sf::Event& event) {
         }
         
         // Toggle the force field
-        localPlayer.player.EnableForceField(!localPlayer.player.HasForceField());
+        bool newState = !localPlayer.player.HasForceField();
+        localPlayer.player.EnableForceField(newState);
         
         // Display a message about the force field status
-        std::string statusMsg = localPlayer.player.HasForceField() ? 
-                               "Force Field Activated" : 
-                               "Force Field Deactivated";
+        std::string statusMsg = newState ? 
+                              "Force Field Activated" : 
+                              "Force Field Deactivated";
         
-        // You can add UI feedback here if needed
+        // Send force field update to network
+        if (localPlayer.player.GetForceField()) {
+            ForceField* forceField = localPlayer.player.GetForceField();
+            
+            // Create the force field update message
+            std::string updateMsg = MessageHandler::FormatForceFieldUpdateMessage(
+                localPlayer.playerID,
+                forceField->GetRadius(),
+                forceField->GetDamage(),
+                forceField->GetCooldown(),
+                forceField->GetChainLightningTargets(),
+                static_cast<int>(forceField->GetFieldType()),
+                forceField->GetPowerLevel(),
+                forceField->IsChainLightningEnabled()
+            );
+            
+            // Check if we're the host
+            CSteamID localSteamID = SteamUser()->GetSteamID();
+            CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+            
+            if (localSteamID == hostID) {
+                // We are the host, broadcast to all clients
+                game->GetNetworkManager().BroadcastMessage(updateMsg);
+            } else {
+                // We are a client, send to host
+                game->GetNetworkManager().SendMessage(hostID, updateMsg);
+            }
+        }
     }
     else if (event.type == sf::Event::LostFocus) {
         // Release mouse if window loses focus
@@ -516,4 +551,52 @@ void PlayingState::StartWave(int enemyCount) {
 
 bool PlayingState::IsFullyLoaded() {
     return playerLoaded;
+}
+
+void PlayingState::HandleZoom(float delta) {
+    // Get mouse position before zoom for centering
+    sf::Vector2i mousePos = sf::Mouse::getPosition(game->GetWindow());
+    sf::Vector2f worldPos = game->GetWindow().mapPixelToCoords(mousePos, game->GetCamera());
+    
+    // Apply zoom change
+    float newZoom = currentZoom + delta;
+    
+    // Clamp zoom to min/max values
+    newZoom = std::max(MIN_ZOOM, std::min(MAX_ZOOM, newZoom));
+    
+    // Only update if zoom actually changed
+    if (newZoom != currentZoom) {
+        // Store new zoom level
+        currentZoom = newZoom;
+        
+        // Update camera size based on zoom
+        sf::Vector2u windowSize = game->GetWindow().getSize();
+        float viewWidth = windowSize.x / currentZoom;
+        float viewHeight = windowSize.y / currentZoom;
+        
+        // Set new view size
+        game->GetCamera().setSize(viewWidth, viewHeight);
+        
+        // Center around mouse position
+        // Get the new world position of the mouse
+        sf::Vector2f newWorldPos = game->GetWindow().mapPixelToCoords(mousePos, game->GetCamera());
+        
+        // Adjust the camera position to keep the mouse over the same world position
+        sf::Vector2f cameraDelta = worldPos - newWorldPos;
+        game->GetCamera().setCenter(game->GetCamera().getCenter() + cameraDelta);
+        
+        std::cout << "Zoom level: " << currentZoom << std::endl;
+    }
+}
+
+void PlayingState::AdjustViewToWindow() {
+    sf::Vector2u windowSize = game->GetWindow().getSize();
+    
+    // Game world camera - shows more of the world when window is larger
+    // Apply zoom factor to the camera size
+    game->GetCamera().setSize(static_cast<float>(windowSize.x) / currentZoom, 
+                              static_cast<float>(windowSize.y) / currentZoom);
+    
+    // Preserve current center
+    game->GetCamera().setCenter(game->GetCamera().getCenter());
 }
