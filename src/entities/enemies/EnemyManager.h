@@ -31,6 +31,7 @@ public:
     
     // Collision detection
     void CheckPlayerCollisions();
+    void CheckBulletEnemyCollisions();
     bool CheckBulletCollision(const sf::Vector2f& bulletPos, float bulletRadius, int& outEnemyId);
     
     // Network synchronization
@@ -47,12 +48,14 @@ public:
     void SetCurrentWave(int wave) { currentWave = wave; }
     bool IsWaveComplete() const;
     bool IsWaveSpawning() const { return remainingEnemiesInWave > 0; }
-    void ProcessBatchSpawning(float dt);
+    
     // Performance optimization
     void OptimizeEnemyList();
+    void UpdatePlayerPositionsCache();
 
     Enemy* FindEnemy(int id);
     void RemoveEnemiesNotInList(const std::vector<int>& validIds);
+
 private:
     Game* game;
     PlayerManager* playerManager;
@@ -61,11 +64,12 @@ private:
     float syncTimer;
     float fullSyncTimer;
     int currentWave;
-    int remainingEnemiesInWave = 0;
-    float batchSpawnTimer = 0.0f;
-    EnemyType currentWaveEnemyType = EnemyType::Triangle;
+    int remainingEnemiesInWave;
+    float batchSpawnTimer;
+    EnemyType currentWaveEnemyType;
     std::vector<sf::Vector2f> playerPositionsCache;
-    int enemiesRemainingToSpawn  = 0;
+    int enemiesRemainingToSpawn;
+    
     // Spawn and position helpers
     sf::Vector2f GetRandomSpawnPosition(const sf::Vector2f& targetPosition, float minDistance, float maxDistance);
     bool IsValidSpawnPosition(const sf::Vector2f& position);

@@ -40,7 +40,6 @@ private:
     
     void AttemptShoot(int mouseX, int mouseY);
     void ProcessGameplayEvents(const sf::Event& event);
-    void CheckBulletEnemyCollisions();
     
     // Game components
     std::unique_ptr<PlayerManager> playerManager;

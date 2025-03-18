@@ -78,7 +78,7 @@ PlayingState::PlayingState(Game* game)
     // Create PlayerRenderer after PlayerManager
     playerRenderer = std::make_unique<PlayerRenderer>(playerManager.get());
 
-    // Initialize enemy manager
+    // Initialize enemy manager with player manager reference
     enemyManager = std::make_unique<EnemyManager>(game, playerManager.get());
     
     // Initialize the PlayingStateUI
@@ -174,9 +174,6 @@ void PlayingState::Update(float dt) {
         if (playerLoaded && enemyManager) {
             enemyManager->Update(dt);
             
-            // Check for bullet-enemy collisions
-            CheckBulletEnemyCollisions();
-            
             // Handle wave logic
             if (enemyManager->IsWaveComplete() && !waitingForNextWave) {
                 waitingForNextWave = true;
@@ -209,7 +206,7 @@ void PlayingState::Update(float dt) {
             CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
             
             if (myID == hostID && enemyManager->GetCurrentWave() == 0 && playerLoaded && !waitingForNextWave) {
-                StartWave(FIRST_WAVE_ENEMY_COUNT); // First wave with 5 enemies
+                StartWave(FIRST_WAVE_ENEMY_COUNT); // First wave with defined number of enemies
             }
             
             // Update wave info on HUD if not waiting for next wave
@@ -453,68 +450,6 @@ void PlayingState::AttemptShoot(int mouseX, int mouseY) {
         game->GetNetworkManager().SendMessage(clientNetwork->GetHostID(), bulletMsg);
     } else if (hostNetwork) {
         game->GetNetworkManager().BroadcastMessage(bulletMsg);
-    }
-}
-
-void PlayingState::CheckBulletEnemyCollisions() {
-    if (!playerManager || !enemyManager) return;
-    
-    // Get all bullets
-    const auto& bullets = playerManager->GetAllBullets();
-    std::vector<size_t> bulletsToRemove;
-    
-    // Check each bullet for collisions with enemies
-    for (size_t bulletIdx = 0; bulletIdx < bullets.size(); bulletIdx++) {
-        const Bullet& bullet = bullets[bulletIdx];
-        
-        // Skip already expired bullets
-        if (bullet.IsExpired()) {
-            bulletsToRemove.push_back(bulletIdx);
-            continue;
-        }
-        
-        sf::Vector2f bulletPos = bullet.GetPosition();
-        int enemyId = -1;
-        
-        // Check if bullet hits any enemy
-        if (enemyManager->CheckBulletCollision(bulletPos, 4.0f, enemyId)) {
-            // If we hit an enemy, add this bullet to remove list
-            bulletsToRemove.push_back(bulletIdx);
-            
-            // Apply damage to the enemy
-            std::string shooterId = bullet.GetShooterID();
-            
-            // Get local player ID
-            CSteamID myID = SteamUser()->GetSteamID();
-            CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
-            std::string localPlayerID = std::to_string(myID.ConvertToUint64());
-            
-            if (myID == hostID) {
-                // Host handles damage directly
-                bool killed = enemyManager->InflictDamage(enemyId, 20.0f); // 20 damage per bullet
-                
-                // If player killed an enemy, reward them
-                if (killed && !shooterId.empty()) {
-                    playerManager->IncrementPlayerKills(shooterId);
-                    
-                    // Add money reward
-                    auto& players = playerManager->GetPlayers();
-                    auto it = players.find(shooterId);
-                    if (it != players.end()) {
-                        it->second.money += TRIANGLE_KILL_REWARD;
-                    }
-                }
-            } else {
-                // Client sends damage message to host
-                std::string damageMsg = MessageHandler::FormatEnemyDamageMessage(enemyId, 20.0f, 0.0f);
-                game->GetNetworkManager().SendMessage(hostID, damageMsg);
-            }
-        }
-    }
-    
-    // Remove all collided bullets
-    if (!bulletsToRemove.empty()) {
-        playerManager->RemoveBullets(bulletsToRemove);
     }
 }
 

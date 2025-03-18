@@ -105,3 +105,7 @@ add_executable(CubeShooter
     src/utils/input/InputHandler.cpp
     src/utils/input/InputManager.cpp
 )
+
+ErrorAction
+
+[LOBBY] Failed to create lobby. EResult=16
