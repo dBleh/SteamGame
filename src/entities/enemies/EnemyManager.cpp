@@ -95,10 +95,8 @@ void EnemyManager::UpdateEnemyClientPrediction(float dt) {
     // Update enemy positions on the client based on their current velocity and AI
     for (auto& pair : enemies) {
         Enemy* enemy = pair.second.get();
-        
-       
+
             enemy->Update(dt, *playerManager);
-        
     }
 }
 
@@ -427,6 +425,24 @@ void EnemyManager::RemoteAddEnemy(int enemyId, EnemyType type, const sf::Vector2
     // Create the enemy with the given ID
     auto enemy = CreateEnemy(type, enemyId, position);
     enemy->SetHealth(health);
+    
+    // Apply a small random offset to the initial position for smoother appearance
+    sf::Vector2f spawnPos = position;
+    
+    // Only apply offset if this isn't the first creation of the enemy
+    if (enemies.find(enemyId) == enemies.end()) {
+        // Get unit vector in a random direction
+        float angle = static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * 2.0f * 3.14159f;
+        sf::Vector2f offset(std::cos(angle), std::sin(angle));
+        
+        // Scale the offset to a small distance (20-40 pixels)
+        float distance = 20.0f + static_cast<float>(rand() % 20);
+        spawnPos += offset * distance;
+        
+        // Set the actual spawn position
+        enemy->SetPosition(spawnPos);
+    }
+    
     enemies[enemyId] = std::move(enemy);
     
     // Update nextEnemyId if necessary
@@ -434,7 +450,6 @@ void EnemyManager::RemoteAddEnemy(int enemyId, EnemyType type, const sf::Vector2
         nextEnemyId = enemyId + 1;
     }
 }
-
 void EnemyManager::RemoteAddEnemyWithVelocity(int enemyId, EnemyType type, const sf::Vector2f& position, 
                                           const sf::Vector2f& velocity, float health) {
     // Create the enemy with the given ID
