@@ -219,9 +219,14 @@ void PlayingState::Update(float dt) {
                         
                         // If local player's bullet, give them money for the hit
                         std::string shooterId = bullet.GetShooterID();
+                        if (killed) {
+                            playerManager->IncrementPlayerKills(shooterId);
+                        }
+
+                        // If it's the local player's bullet, also update money
                         if (shooterId == playerManager->GetLocalPlayer().playerID) {
                             auto& localPlayer = playerManager->GetLocalPlayer();
-                            localPlayer.money += (killed ? 25 : 10); // More money for kills
+                            localPlayer.money += (killed ? 25 : 10); // More money for hits
                         }
                     }
                 }
