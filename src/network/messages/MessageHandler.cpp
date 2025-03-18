@@ -46,17 +46,46 @@ void MessageHandler::Initialize() {
     messageParsers["CHUNK_END"] = [](const std::vector<std::string>& parts) {
         if (parts.size() >= 2) {
             std::string chunkId = parts[1];
+            std::cout << "[MessageHandler] Processing CHUNK_END for " << chunkId << "\n";
+            
             if (chunkStorage.find(chunkId) != chunkStorage.end() && 
                 chunkCounts.find(chunkId) != chunkCounts.end()) {
+                
                 int expectedChunks = chunkCounts[chunkId];
                 if (IsChunkComplete(chunkId, expectedChunks)) {
-                    std::string fullMessage = GetReconstructedMessage(chunkId);
+                    // Get message type
                     std::string messageType = chunkTypes[chunkId];
+                    
+                    // Reconstruct the full message
+                    std::string fullMessage = GetReconstructedMessage(chunkId);
+                    
+                    // Clear chunks to free memory
                     ClearChunks(chunkId);
-                    return ParseMessage(fullMessage);
+                    
+                    // Debug output
+                    std::cout << "[MessageHandler] Reconstructed message: " << messageType 
+                              << " (length: " << fullMessage.length() << ")\n";
+                    
+                    // Find the appropriate parser for this message type
+                    auto parserIt = messageParsers.find(messageType);
+                    if (parserIt != messageParsers.end()) {
+                        // Re-parse the reconstructed message
+                        std::vector<std::string> messageParts = SplitString(fullMessage, '|');
+                        return parserIt->second(messageParts);
+                    }
+                    else {
+                        std::cout << "[MessageHandler] No parser found for message type: " << messageType << "\n";
+                    }
+                }
+                else {
+                    std::cout << "[MessageHandler] Chunks incomplete for " << chunkId << "\n";
                 }
             }
+            else {
+                std::cout << "[MessageHandler] Chunk storage or counts not found for " << chunkId << "\n";
+            }
         }
+        
         return ParsedMessage{MessageType::Unknown};
     };
     
@@ -433,22 +462,54 @@ void MessageHandler::AddChunk(const std::string& chunkId, int chunkNum, const st
 }
 
 bool MessageHandler::IsChunkComplete(const std::string& chunkId, int expectedChunks) {
-    if (chunkStorage.find(chunkId) == chunkStorage.end() ||
-        chunkStorage[chunkId].size() != static_cast<size_t>(expectedChunks)) {
+    if (chunkStorage.find(chunkId) == chunkStorage.end()) {
+        std::cout << "[MessageHandler] Chunk ID " << chunkId << " not found in storage\n";
         return false;
     }
-    for (const auto& chunk : chunkStorage[chunkId]) {
-        if (chunk.empty()) return false;
+    
+    if (chunkStorage[chunkId].size() != static_cast<size_t>(expectedChunks)) {
+        std::cout << "[MessageHandler] Chunk count mismatch for " << chunkId 
+                  << ": have " << chunkStorage[chunkId].size() 
+                  << ", need " << expectedChunks << "\n";
+        return false;
     }
-    return true;
+    
+    // Verify all chunks are present
+    bool complete = true;
+    for (size_t i = 0; i < chunkStorage[chunkId].size(); i++) {
+        if (chunkStorage[chunkId][i].empty()) {
+            std::cout << "[MessageHandler] Missing chunk " << i << " for " << chunkId << "\n";
+            complete = false;
+        }
+    }
+    
+    if (complete) {
+        std::cout << "[MessageHandler] All " << expectedChunks << " chunks received for " << chunkId << "\n";
+    }
+    
+    return complete;
 }
 
 std::string MessageHandler::GetReconstructedMessage(const std::string& chunkId) {
-    if (chunkStorage.find(chunkId) == chunkStorage.end()) return "";
-    std::string result;
+    if (chunkStorage.find(chunkId) == chunkStorage.end() || 
+        chunkTypes.find(chunkId) == chunkTypes.end()) {
+        return "";
+    }
+    
+    // Get the message type for this chunked message
+    std::string messageType = chunkTypes[chunkId];
+    
+    // Reconstruct with the correct prefix
+    std::string result = messageType + "|";
+    
+    // Append all chunks
     for (const auto& chunk : chunkStorage[chunkId]) {
         result += chunk;
     }
+    
+    std::cout << "[MessageHandler] Reconstructed message with type " << messageType 
+              << ", length: " << result.length() << "\n";
+    
     return result;
 }
 
@@ -719,39 +780,52 @@ ParsedMessage MessageHandler::ParseEnemyStateMessage(const std::vector<std::stri
     ParsedMessage parsed;
     parsed.type = MessageType::EnemyState;
     
-    // Handle the case of a chunked enemy state message more robustly
+    std::cout << "[MessageHandler] Parsing ES message with " << parts.size() << " parts\n";
+    
+    // Skip the first part which is the message type "ES"
     for (size_t i = 1; i < parts.size(); ++i) {
         std::string chunk = parts[i];
-        std::vector<std::string> subParts = SplitString(chunk, ',');
         
-        // Make sure we have at least the ID, type, X and Y position
-        if (subParts.size() >= 4) {
-            int id = std::stoi(subParts[0]);
+        // Split the chunk into entity definitions (each entity is separated by a |)
+        std::vector<std::string> entities;
+        std::stringstream ss(chunk);
+        std::string entity;
+        
+        // Process each entity in the chunk
+        while (std::getline(ss, entity, '|')) {
+            if (entity.empty()) continue;
             
-            // Handle both formats: either 5 values (id,type,x,y,health) or 3 values (id,x,y)
-            if (subParts.size() >= 5) {
-                parsed.enemyIds.push_back(id);
-                parsed.enemyTypes.push_back(std::stoi(subParts[1]));
-                parsed.enemyPositions.push_back(sf::Vector2f(
-                    std::stof(subParts[2]),
-                    std::stof(subParts[3])
-                ));
-                parsed.enemyHealths.push_back(std::stof(subParts[4]));
-            } else {
-                // Assume it's a position update only with no type or health
-                parsed.enemyIds.push_back(id);
-                parsed.enemyTypes.push_back(0); // Default type
-                parsed.enemyPositions.push_back(sf::Vector2f(
-                    std::stof(subParts[1]),
-                    std::stof(subParts[2])
-                ));
-                parsed.enemyHealths.push_back(40.0f); // Default health
+            // Split entity data (id,type,x,y,health)
+            std::vector<std::string> entityData = SplitString(entity, ',');
+            
+            if (entityData.size() >= 5) {
+                // Standard format: id,type,x,y,health
+                try {
+                    int id = std::stoi(entityData[0]);
+                    parsed.enemyIds.push_back(id);
+                    parsed.enemyTypes.push_back(std::stoi(entityData[1]));
+                    parsed.enemyPositions.push_back(sf::Vector2f(
+                        std::stof(entityData[2]),
+                        std::stof(entityData[3])
+                    ));
+                    parsed.enemyHealths.push_back(std::stof(entityData[4]));
+                    
+                    std::cout << "[MessageHandler] Parsed enemy: id=" << id 
+                              << ", pos=(" << entityData[2] << "," << entityData[3] << ")\n";
+                }
+                catch (const std::exception& e) {
+                    std::cout << "[MessageHandler] Error parsing entity: " << entity 
+                              << ", error: " << e.what() << "\n";
+                }
             }
-        } else {
-            std::cout << "[MessageHandler] Malformed enemy state chunk: " << chunk << "\n";
+            else {
+                std::cout << "[MessageHandler] Skipping malformed entity data: " 
+                          << entity << " (fields: " << entityData.size() << ")\n";
+            }
         }
     }
     
+    std::cout << "[MessageHandler] Successfully parsed " << parsed.enemyIds.size() << " enemies\n";
     return parsed;
 }
 
