@@ -32,61 +32,46 @@ EnemyManager::EnemyManager(Game* game, PlayerManager* playerManager)
 }
 
 void EnemyManager::Update(float dt) {
-    // Skip updates if paused or not in gameplay
     if (game->GetCurrentState() != GameState::Playing) return;
     
-    // Update batch spawning if needed
     if (remainingEnemiesInWave > 0) {
         UpdateSpawning(dt);
     }
     
-    // Determine if we're the host
     CSteamID myID = SteamUser()->GetSteamID();
     CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
     bool isHost = (myID == hostID);
     
-    // On the client, if we haven't received a full state update in a while, request one
     if (!isHost) {
         auto now = std::chrono::steady_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - lastEnemyStateUpdate).count();
-        
-        // If it's been more than 5 seconds since the last full update, request one
         if (elapsed > 5) {
-            // Send a request for a full state update
             std::ostringstream oss;
-            oss << "ESR"; // Enemy State Request
+            oss << "ESR";
             game->GetNetworkManager().SendMessage(hostID, oss.str());
-            lastEnemyStateUpdate = now; // Reset the timer to prevent spamming requests
+            lastEnemyStateUpdate = now;
         }
     }
     
-    // Always update all enemies with their AI logic - works for both host and clients
     for (auto& pair : enemies) {
         pair.second->Update(dt, *playerManager);
     }
     
-    // Host-specific network updates
     if (isHost) {
-        // Sync enemy positions periodically
+        // Increase frequency of position sync (e.g., every 0.1s instead of default)
         syncTimer += dt;
-        if (syncTimer >= ENEMY_SYNC_INTERVAL) {
+        if (syncTimer >= 0.1f) {  // Adjust ENEMY_SYNC_INTERVAL to 0.1f
             SyncEnemyPositions();
             syncTimer = 0.0f;
         }
         
-        // Send full state less frequently
-        fullSyncTimer += dt;
-        if (fullSyncTimer >= FULL_SYNC_INTERVAL) {
-            SyncFullState();
-            fullSyncTimer = 0.0f;
-        }
+        // Remove periodic full sync; only trigger on explicit conditions
+        // fullSyncTimer removed
     }
     
-    // These checks are done by both host and client
     CheckPlayerCollisions();
     CheckBulletEnemyCollisions();
     
-    // Optimize enemy list if we have a large number
     if (enemies.size() > 200) {
         OptimizeEnemyList();
     }
@@ -299,13 +284,9 @@ bool EnemyManager::CheckBulletCollision(const sf::Vector2f& bulletPos, float bul
 void EnemyManager::SyncEnemyPositions() {
     if (enemies.empty()) return;
     
-    // Get priority list of enemies to sync
     std::vector<int> priorities = GetEnemyUpdatePriorities();
+    size_t updateCount = std::min(priorities.size(), static_cast<size_t>(50));  // Increase to 50 enemies
     
-    // Increase to 20 enemies per update for better coverage
-    size_t updateCount = std::min(priorities.size(), static_cast<size_t>(20));
-    
-    // Create batch position update message
     std::ostringstream oss;
     oss << "EP";
     
@@ -319,7 +300,6 @@ void EnemyManager::SyncEnemyPositions() {
         }
     }
     
-    // Broadcast the message
     game->GetNetworkManager().BroadcastMessage(oss.str());
 }
 
@@ -376,30 +356,27 @@ void EnemyManager::SyncFullState() {
 void EnemyManager::ApplyNetworkUpdate(int enemyId, const sf::Vector2f& position, float health) {
     auto it = enemies.find(enemyId);
     if (it != enemies.end()) {
-        // Update existing enemy with smooth transition
         sf::Vector2f currentPos = it->second->GetPosition();
         sf::Vector2f posDiff = position - currentPos;
-        
-        // Apply smooth position update regardless of distance
-        // For small changes (< 10 units), apply half the change
-        // For medium changes, apply 75% of the change
-        // For large changes, apply 90% of the change
         float distanceSquared = posDiff.x * posDiff.x + posDiff.y * posDiff.y;
-        float transitionFactor;
         
-        if (distanceSquared < 100.0f) {         // < 10 units
-            transitionFactor = 0.5f;
-        } else if (distanceSquared < 400.0f) {  // < 20 units
-            transitionFactor = 0.75f;
+        // If the distance is small, apply full update; otherwise, interpolate using velocity
+        if (distanceSquared < 25.0f) {  // Less than 5 units
+            it->second->SetPosition(position);
         } else {
-            transitionFactor = 0.9f;
+            // Use velocity from last update or assume direction-based velocity
+            sf::Vector2f vel = it->second->GetVelocity();
+            if (vel.x == 0.f && vel.y == 0.f) {
+                vel = posDiff;  // Normalize if no velocity provided
+                float len = std::sqrt(vel.x * vel.x + vel.y * vel.y);
+                if (len > 0) vel = vel / len * it->second->GetSpeed();
+            }
+            // Interpolate toward target position (assuming 1/60th second frame time for simplicity)
+            it->second->SetPosition(currentPos + vel * 0.016f);
+            it->second->SetVelocity(vel);
         }
-        
-        // Apply the smoothed position
-        it->second->SetPosition(currentPos + posDiff * transitionFactor);
         it->second->SetHealth(health);
     } else {
-        // Enemy doesn't exist, create it with smooth spawning
         SmoothAddEnemy(enemyId, EnemyType::Triangle, position, health);
     }
 }
@@ -452,28 +429,20 @@ void EnemyManager::RemoteRemoveEnemy(int enemyId) {
 }
 
 void EnemyManager::StartNewWave(int enemyCount, EnemyType type) {
-    // Clear any remaining enemies
     ClearEnemies();
-    
-    // Increment wave counter
     currentWave++;
-    
-    // Set up enemy spawning
     currentWaveEnemyType = type;
     remainingEnemiesInWave = enemyCount;
     batchSpawnTimer = 0.0f;
-    
-    // Cache player positions for spawning
     UpdatePlayerPositionsCache();
     
-    // Broadcast wave start if we're the host
     CSteamID myID = SteamUser()->GetSteamID();
     CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
-    
     if (myID == hostID) {
         std::ostringstream oss;
         oss << "WS|" << currentWave << "|" << enemyCount;
         game->GetNetworkManager().BroadcastMessage(oss.str());
+        SyncFullState();  // Only full sync at wave start
     }
 }
 
@@ -668,14 +637,28 @@ void EnemyManager::HandleStateRequest(CSteamID requesterId) {
     
     CSteamID myID = SteamUser()->GetSteamID();
     CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
-    
-    // Only the host should respond to state requests
     if (myID != hostID) return;
     
     std::cout << "[HOST] Received state request from " << requesterId.ConvertToUint64() << "\n";
     
-    // Send a full state update directly to the requester
-    SyncFullStateForClient(requesterId);
+    // Send position updates for all enemies instead of full state
+    std::ostringstream oss;
+    oss << "EP";
+    int count = 0;
+    for (const auto& pair : enemies) {
+        const sf::Vector2f& pos = pair.second->GetPosition();
+        sf::Vector2f vel = pair.second->GetVelocity();
+        oss << "|" << pair.first << "," << pos.x << "," << pos.y << "," << vel.x << "," << vel.y;
+        count++;
+        // Send in batches of 50
+        if (count % 50 == 0) {
+            game->GetNetworkManager().SendMessage(requesterId, oss.str());
+            oss.str("EP");
+        }
+    }
+    if (count % 50 != 0) {  // Send remaining enemies
+        game->GetNetworkManager().SendMessage(requesterId, oss.str());
+    }
 }
 
 void EnemyManager::SyncFullStateForClient(CSteamID clientId) {

@@ -44,6 +44,8 @@ public:
     
     // Damage handling
     bool TakeDamage(float amount);
+
+    float GetSpeed() { return speed; }
     
 protected:
     // Core properties
