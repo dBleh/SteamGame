@@ -65,7 +65,9 @@ public:
 
     Enemy* FindEnemy(int id);
     void RemoveEnemiesNotInList(const std::vector<int>& validIds);
-
+    void ResetLastEnemyStateUpdateTime() { 
+        lastEnemyStateUpdate = std::chrono::steady_clock::now(); 
+    }
 private:
     Game* game;
     PlayerManager* playerManager;

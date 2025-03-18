@@ -236,22 +236,36 @@ void MessageHandler::Initialize() {
                                 });
                             
                             // For EP (EnemyPositionUpdate) message
-                            RegisterMessageType("EP", 
+            RegisterMessageType("EP", 
                                 ParseEnemyPositionUpdateMessage,
                                 [](Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
                                     PlayingState* state = GetPlayingState(&game);
                                     if (state && state->GetEnemyManager()) {
                                         EnemyManager* enemyManager = state->GetEnemyManager();
                                         
-                                        // Update each enemy position
+                                        // Update each enemy position and velocity
                                         for (size_t i = 0; i < parsed.enemyIds.size(); ++i) {
                                             int id = parsed.enemyIds[i];
-                                            // Use a method to find and update an enemy, rather than direct access
                                             auto enemy = enemyManager->FindEnemy(id);
+                                            
                                             if (enemy) {
+                                                // Update both position and velocity for proper prediction
                                                 enemy->SetPosition(parsed.enemyPositions[i]);
+                                                enemy->SetVelocity(parsed.enemyVelocities[i]);
+                                            } else {
+                                                // If enemy doesn't exist, create it with velocity
+                                                enemyManager->RemoteAddEnemyWithVelocity(
+                                                    id, 
+                                                    EnemyType::Triangle, // Default type
+                                                    parsed.enemyPositions[i],
+                                                    parsed.enemyVelocities[i],
+                                                    100.0f  // Default health until full update arrives
+                                                );
                                             }
                                         }
+                                        
+                                        // Reset client-side prediction timer as we received fresh data
+                                        enemyManager->ResetLastEnemyStateUpdateTime();
                                     }
                                 },
                                 [](Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender) {
@@ -834,17 +848,28 @@ ParsedMessage MessageHandler::ParseEnemyPositionUpdateMessage(const std::vector<
     ParsedMessage parsed;
     parsed.type = MessageType::EnemyPositionUpdate;
     
-    // Format: EP|id,x,y|id,x,y|...
+    // Format: EP|id,x,y,vx,vy|id,x,y,vx,vy|...
     for (size_t i = 1; i < parts.size(); ++i) {
         std::string chunk = parts[i];
         std::vector<std::string> subParts = SplitString(chunk, ',');
         
-        if (subParts.size() >= 3) {
-            parsed.enemyIds.push_back(std::stoi(subParts[0]));
-            parsed.enemyPositions.push_back(sf::Vector2f(
-                std::stof(subParts[1]),
-                std::stof(subParts[2])
-            ));
+        if (subParts.size() >= 5) {  // Now requiring 5 components (id,x,y,vx,vy)
+            int id = std::stoi(subParts[0]);
+            float x = std::stof(subParts[1]);
+            float y = std::stof(subParts[2]);
+            float vx = std::stof(subParts[3]);
+            float vy = std::stof(subParts[4]);
+            
+            parsed.enemyIds.push_back(id);
+            parsed.enemyPositions.push_back(sf::Vector2f(x, y));
+            parsed.enemyVelocities.push_back(sf::Vector2f(vx, vy));
+            
+            std::cout << "[MessageHandler] Parsed enemy position update: id=" << id 
+                      << ", pos=(" << x << "," << y << ")"
+                      << ", vel=(" << vx << "," << vy << ")" << std::endl;
+        } else {
+            std::cout << "[MessageHandler] Ignoring malformed enemy position data: " 
+                      << chunk << " (expected 5 components, got " << subParts.size() << ")" << std::endl;
         }
     }
     

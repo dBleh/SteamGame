@@ -59,6 +59,7 @@ struct ParsedMessage {
     int enemyCount;
     std::vector<int> enemyIds;
     std::vector<sf::Vector2f> enemyPositions;
+    std::vector<sf::Vector2f> enemyVelocities;
     std::vector<float> enemyHealths;
     int health;
     std::vector<int> enemyTypes;
