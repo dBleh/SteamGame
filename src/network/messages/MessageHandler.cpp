@@ -343,11 +343,23 @@ std::vector<std::string> MessageHandler::SplitString(const std::string& str, cha
 ParsedMessage MessageHandler::ParseMessage(const std::string& msg) {
     std::vector<std::string> parts = SplitString(msg, '|');
     if (parts.empty()) return ParsedMessage{MessageType::Unknown};
+    
     std::string prefix = parts[0];
+    
+    // Special handling for chunk messages
+    if (prefix == "CHUNK_START" || prefix == "CHUNK_PART" || prefix == "CHUNK_END") {
+        auto parserIt = messageParsers.find(prefix);
+        if (parserIt != messageParsers.end()) {
+            return parserIt->second(parts);
+        }
+    }
+    
+    // Regular message handling
     auto parserIt = messageParsers.find(prefix);
     if (parserIt != messageParsers.end()) {
         return parserIt->second(parts);
     }
+    
     std::cout << "[MessageHandler] Unknown message type: " << prefix << "\n";
     return ParsedMessage{MessageType::Unknown};
 }
@@ -394,10 +406,30 @@ std::string MessageHandler::FormatChunkEndMessage(const std::string& chunkId) {
 }
 
 void MessageHandler::AddChunk(const std::string& chunkId, int chunkNum, const std::string& chunkData) {
+    // Make sure the storage exists for this chunk ID
+    if (chunkStorage.find(chunkId) == chunkStorage.end()) {
+        chunkStorage[chunkId] = std::vector<std::string>();
+        // Try to get expected count from map
+        int expectedCount = chunkCounts[chunkId];
+        if (expectedCount > 0) {
+            chunkStorage[chunkId].resize(expectedCount);
+        } else {
+            // If we don't know how many chunks to expect, allocate enough for this one
+            chunkStorage[chunkId].resize(chunkNum + 1);
+        }
+    }
+    
+    // Ensure the vector is large enough
     if (chunkStorage[chunkId].size() <= static_cast<size_t>(chunkNum)) {
         chunkStorage[chunkId].resize(chunkNum + 1);
     }
+    
+    // Store the chunk
     chunkStorage[chunkId][chunkNum] = chunkData;
+    
+    // Debug output
+    std::cout << "[MessageHandler] Added chunk " << chunkNum << " of " << chunkCounts[chunkId] 
+              << " for ID " << chunkId << " (" << chunkData.substr(0, 20) << "...)\n";
 }
 
 bool MessageHandler::IsChunkComplete(const std::string& chunkId, int expectedChunks) {
@@ -687,23 +719,80 @@ ParsedMessage MessageHandler::ParseEnemyStateMessage(const std::vector<std::stri
     ParsedMessage parsed;
     parsed.type = MessageType::EnemyState;
     
-    // Format: ES|id,type,x,y,health|id,type,x,y,health|...
+    // Handle the case of a chunked enemy state message more robustly
     for (size_t i = 1; i < parts.size(); ++i) {
         std::string chunk = parts[i];
         std::vector<std::string> subParts = SplitString(chunk, ',');
         
-        if (subParts.size() >= 5) {
-            parsed.enemyIds.push_back(std::stoi(subParts[0]));
-            parsed.enemyTypes.push_back(std::stoi(subParts[1]));
-            parsed.enemyPositions.push_back(sf::Vector2f(
-                std::stof(subParts[2]),
-                std::stof(subParts[3])
-            ));
-            parsed.enemyHealths.push_back(std::stof(subParts[4]));
+        // Make sure we have at least the ID, type, X and Y position
+        if (subParts.size() >= 4) {
+            int id = std::stoi(subParts[0]);
+            
+            // Handle both formats: either 5 values (id,type,x,y,health) or 3 values (id,x,y)
+            if (subParts.size() >= 5) {
+                parsed.enemyIds.push_back(id);
+                parsed.enemyTypes.push_back(std::stoi(subParts[1]));
+                parsed.enemyPositions.push_back(sf::Vector2f(
+                    std::stof(subParts[2]),
+                    std::stof(subParts[3])
+                ));
+                parsed.enemyHealths.push_back(std::stof(subParts[4]));
+            } else {
+                // Assume it's a position update only with no type or health
+                parsed.enemyIds.push_back(id);
+                parsed.enemyTypes.push_back(0); // Default type
+                parsed.enemyPositions.push_back(sf::Vector2f(
+                    std::stof(subParts[1]),
+                    std::stof(subParts[2])
+                ));
+                parsed.enemyHealths.push_back(40.0f); // Default health
+            }
+        } else {
+            std::cout << "[MessageHandler] Malformed enemy state chunk: " << chunk << "\n";
         }
     }
     
     return parsed;
+}
+
+void MessageHandler::ProcessUnknownMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
+    // Check if it might be a chunked message that was incorrectly parsed
+    if (!parsed.steamID.empty()) {
+        std::cout << "[MessageHandler] Attempting to recover from unknown message, ID: " << parsed.steamID << "\n";
+        
+        // Try to interpret it as an enemy state update if it contains numbers and commas
+        if (parsed.steamID.find_first_of("0123456789,.") != std::string::npos) {
+            std::vector<std::string> parts;
+            parts.push_back("ES"); // Enemy State prefix
+            parts.push_back(parsed.steamID);
+            
+            // Try to parse as enemy state
+            ParsedMessage recoveredMessage = ParseEnemyStateMessage(parts);
+            
+            // If we recovered at least one enemy, process it
+            if (!recoveredMessage.enemyIds.empty()) {
+                std::cout << "[MessageHandler] Recovered " << recoveredMessage.enemyIds.size() << " enemy positions\n";
+                PlayingState* state = GetPlayingState(&game);
+                if (state && state->GetEnemyManager()) {
+                    for (size_t i = 0; i < recoveredMessage.enemyIds.size(); ++i) {
+                        int id = recoveredMessage.enemyIds[i];
+                        auto enemyManager = state->GetEnemyManager();
+                        auto enemy = enemyManager->FindEnemy(id);
+                        
+                        if (enemy) {
+                            // Update existing enemy
+                            enemy->SetPosition(recoveredMessage.enemyPositions[i]);
+                        } else {
+                            // Create new enemy
+                            EnemyType type = static_cast<EnemyType>(recoveredMessage.enemyTypes[i]);
+                            enemyManager->RemoteAddEnemy(id, type, recoveredMessage.enemyPositions[i], 
+                                                       recoveredMessage.enemyHealths[i]);
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 ParsedMessage MessageHandler::ParseWaveStartMessage(const std::vector<std::string>& parts) {

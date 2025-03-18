@@ -115,6 +115,8 @@ public:
     static ParsedMessage ParseWaveStartMessage(const std::vector<std::string>& parts);
     static ParsedMessage ParseEnemyClearMessage(const std::vector<std::string>& parts);
 
+    void ProcessUnknownMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed);
+
     
     // Message formatting functions (one for each type)
     static std::string FormatConnectionMessage(const std::string& steamID, 
