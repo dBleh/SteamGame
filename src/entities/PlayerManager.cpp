@@ -359,6 +359,8 @@ std::unordered_map<std::string, RemotePlayer>& PlayerManager::GetPlayers() {
     return players;
 }
 
+// Add these debug logging calls to PlayerManager::IncrementPlayerKills
+
 void PlayerManager::IncrementPlayerKills(const std::string& playerID) {
     // Normalize player ID for consistent comparison
     std::string normalizedPlayerID;
@@ -371,15 +373,27 @@ void PlayerManager::IncrementPlayerKills(const std::string& playerID) {
     }
     
     if (players.find(normalizedPlayerID) != players.end()) {
+        int oldKills = players[normalizedPlayerID].kills;
         players[normalizedPlayerID].kills++;
         
         // Also reward the player with some money
         players[normalizedPlayerID].money += 50;
         
-        std::cout << "[PM] Incremented kills for " << normalizedPlayerID 
-                  << " to " << players[normalizedPlayerID].kills << "\n";
+        // Enhanced logging
+        std::cout << "[KILL TRACKING] Incremented kills for " << normalizedPlayerID 
+                  << " from " << oldKills << " to " << players[normalizedPlayerID].kills 
+                  << " - Player name: " << players[normalizedPlayerID].baseName 
+                  << " - Is local: " << (normalizedPlayerID == localPlayerID ? "YES" : "NO")
+                  << " - Is host: " << (players[normalizedPlayerID].isHost ? "YES" : "NO") << "\n";
     } else {
         std::cout << "[PM] Could not find player " << normalizedPlayerID << " to increment kills\n";
+        
+        // Dump all player IDs for debugging
+        std::cout << "[PM] Current players: ";
+        for (const auto& pair : players) {
+            std::cout << pair.first << " (" << pair.second.baseName << "), ";
+        }
+        std::cout << "\n";
     }
 }
 
@@ -480,6 +494,8 @@ void PlayerManager::HandleKill(const std::string& killerID, int enemyId) {
         normalizedKillerID = killerID;
     }
     
+    std::cout << "[PM::HandleKill] Player " << normalizedKillerID << " got kill for enemy " << enemyId << "\n";
+    
     // Check if we're the host
     CSteamID localSteamID = SteamUser()->GetSteamID();
     CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
@@ -502,11 +518,13 @@ void PlayerManager::HandleKill(const std::string& killerID, int enemyId) {
         }
     } else {
         // Client logic - send kill message to host for validation
-        // The host will validate and broadcast the kill to all clients
+        // Note: Clients don't increment their own kills or award money here
+        // They wait for the host to broadcast the kill message back
         std::string killMsg = MessageHandler::FormatKillMessage(normalizedKillerID, enemyId);
         game->GetNetworkManager().SendMessage(hostID, killMsg);
         
-        std::cout << "[CLIENT] Sent kill claim to host for player " << normalizedKillerID << "\n";
+        std::cout << "[CLIENT] Sent kill claim to host for player " << normalizedKillerID 
+                  << " and enemy " << enemyId << "\n";
     }
 }
 void PlayerManager::RespawnPlayer(const std::string& playerID) {

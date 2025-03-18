@@ -254,9 +254,18 @@ void PlayingState::Update(float dt) {
             if (playerLoaded && enemyManager && playerManager) {
                 for (auto& pair : playerManager->GetPlayers()) {
                     RemotePlayer& rp = pair.second;
-                    if (rp.player.HasForceField() && rp.player.HasForceField() && !rp.player.IsDead()) {
-                        // Update force field
-                        rp.player.GetForceField()->Update(dt, *playerManager, *enemyManager);
+                    if (rp.player.HasForceField() && !rp.player.IsDead() && rp.player.GetForceField()) {
+                        // Make sure the force field has a zap callback set
+                        if (!rp.player.GetForceField()->HasZapCallback()) {
+                            // Recreate the zap callback if missing
+                            std::string playerID = pair.first;
+                            rp.player.GetForceField()->SetZapCallback([this, playerID](int enemyId, float damage, bool killed) {
+                                // Handle zap event
+                                playerManager->HandleForceFieldZap(playerID, enemyId, damage, killed);
+                            });
+                            
+                            std::cout << "[CLIENT] Restored missing zap callback for player " << rp.baseName << "\n";
+                        }
                     }
                 }
             }

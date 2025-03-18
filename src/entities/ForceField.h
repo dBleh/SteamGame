@@ -82,7 +82,7 @@ public:
     void renderZapEffects(sf::RenderWindow& window);
     void renderPowerIndicator(sf::RenderWindow& window, const sf::Vector2f& playerCenter);
     void updateFieldColor();
-    
+    bool HasZapCallback() const { return zapCallback != nullptr; }
     // Particle system
     void initializeParticles();
     void updateParticles(float dt, const sf::Vector2f& playerCenter);

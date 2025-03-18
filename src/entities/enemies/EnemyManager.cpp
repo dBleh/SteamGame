@@ -124,27 +124,35 @@ void EnemyManager::ClearEnemies() {
 
 bool EnemyManager::InflictDamage(int enemyId, float damage) {
     auto it = enemies.find(enemyId);
-    if (it != enemies.end()) {
-        bool killed = it->second->TakeDamage(damage);
-        
-        // If we're the host, broadcast this damage to all clients
-        CSteamID myID = SteamUser()->GetSteamID();
-        CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
-        
-        if (myID == hostID) {
-            std::ostringstream oss;
-            oss << "ED|" << enemyId << "|" << damage << "|" << it->second->GetHealth();
-            game->GetNetworkManager().BroadcastMessage(oss.str());
-            
-            if (killed) {
-                RemoveEnemy(enemyId);
-            }
-        }
-        
-        return killed;
+    if (it == enemies.end()) {
+        return false;
     }
     
-    return false;
+    bool killed = it->second->TakeDamage(damage);
+    
+    // If we're the host, broadcast this damage to all clients
+    CSteamID myID = SteamUser()->GetSteamID();
+    CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+    
+    if (myID == hostID) {
+        std::string damageMsg = MessageHandler::FormatEnemyDamageMessage(
+            enemyId, damage, it->second->GetHealth());
+        game->GetNetworkManager().BroadcastMessage(damageMsg);
+        
+        if (killed) {
+            // Host removes the enemy
+            std::cout << "[HOST] Enemy " << enemyId << " killed by damage " << damage << "\n";
+            RemoveEnemy(enemyId);
+        }
+    } else {
+        // Client behavior - don't remove enemies on kill, let the host decide
+        if (killed) {
+            std::cout << "[CLIENT] Enemy " << enemyId << " appears to be killed by damage " 
+                      << damage << " - Waiting for host confirmation\n";
+        }
+    }
+    
+    return killed;
 }
 
 void EnemyManager::CheckPlayerCollisions() {
