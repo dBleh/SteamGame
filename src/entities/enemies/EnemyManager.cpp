@@ -96,20 +96,9 @@ void EnemyManager::UpdateEnemyClientPrediction(float dt) {
     for (auto& pair : enemies) {
         Enemy* enemy = pair.second.get();
         
-        // First apply velocity-based prediction 
-        sf::Vector2f velocity = enemy->GetVelocity();
-        sf::Vector2f position = enemy->GetPosition();
-        
-        if (velocity.x != 0.0f || velocity.y != 0.0f) {
-            // Move based on current velocity
-            position += velocity * dt;
-            enemy->SetPosition(position);
-        } else {
-            // If no velocity, run the standard AI update logic
-            // This ensures enemies still move intelligently even when
-            // network updates are sparse
+       
             enemy->Update(dt, *playerManager);
-        }
+        
     }
 }
 
