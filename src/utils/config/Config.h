@@ -68,4 +68,17 @@ constexpr int BASE_HEIGHT = 720;
 #define ZOOM_SPEED 0.1f   // How quickly the zoom changes per scroll
 #define DEFAULT_ZOOM 1.0f // Default zoom level
 
+#define ENEMY_SPAWN_BATCH_INTERVAL 0.5f
+#define ENEMY_SPAWN_BATCH_SIZE 20
+
+#define SHOP_DEFAULT_MAX_LEVEL 10
+
+#define SHOP_BULLET_SPEED_MULTIPLIER 1
+#define SHOP_MOVE_SPEED_MULTIPLIER 1 
+#define SHOP_HEALTH_INCREASE 1
+
+#define SHOP_COST_INCREMENT 1
+#define SHOP_BULLET_SPEED_BASE_COST 1
+#define SHOP_MOVE_SPEED_BASE_COST 1
+#define SHOP_HEALTH_BASE_COST 1
 #endif // CONFIG_H
