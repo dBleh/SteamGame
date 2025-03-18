@@ -114,9 +114,6 @@ void ClientNetwork::ProcessKillMessage(Game& game, ClientNetwork& client, const 
     std::string killerID = parsed.steamID;
     int enemyId = parsed.enemyId;
     
-    std::cout << "[CLIENT] Received kill message from host - Player ID: " << killerID 
-              << ", Enemy ID: " << enemyId << "\n";
-    
     // Normalize killer ID
     std::string normalizedKillerID;
     try {
@@ -128,32 +125,9 @@ void ClientNetwork::ProcessKillMessage(Game& game, ClientNetwork& client, const 
     }
     
     // Update kill count based on host's authoritative message
-    auto& players = playerManager->GetPlayers();
-    auto it = players.find(normalizedKillerID);
-    if (it != players.end()) {
-        it->second.kills++;
-        it->second.money += 50; // Award money for the kill
-        
-        std::cout << "[CLIENT] Player " << normalizedKillerID << " awarded kill by host for enemy " 
-                  << enemyId << " - New kill count: " << it->second.kills << "\n";
-        
-        // If it's the local player, make sure we process any effects
-        std::string localID = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
-        if (normalizedKillerID == localID) {
-            std::cout << "[CLIENT] Local player received kill confirmation from host\n";
-        }
-    } else {
-        std::cout << "[CLIENT] WARNING: Kill message for unknown player ID: " << normalizedKillerID << "\n";
-    }
-    
-    // Make sure the enemy is removed locally too
-    PlayingState* playingState = GetPlayingState(&game);
-    if (playingState && playingState->GetEnemyManager()) {
-        EnemyManager* enemyManager = playingState->GetEnemyManager();
-        Enemy* enemy = enemyManager->FindEnemy(enemyId);
-        if (enemy) {
-            enemyManager->RemoveEnemy(enemyId);
-        }
+    if (playerManager->GetPlayers().find(normalizedKillerID) != playerManager->GetPlayers().end()) {
+        playerManager->IncrementPlayerKills(normalizedKillerID);
+        std::cout << "[CLIENT] Player " << normalizedKillerID << " awarded kill by host for enemy " << enemyId << "\n";
     }
 }
 void ClientNetwork::ProcessConnectionMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
