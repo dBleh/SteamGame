@@ -28,8 +28,6 @@ public:
     // Getters/Setters
     sf::Vector2f GetPosition() const { return position; }
     void SetPosition(const sf::Vector2f& pos) { position = pos; }
-    sf::Vector2f GetVelocity() const { return velocity; }
-    void SetVelocity(const sf::Vector2f& vel) { velocity = vel; }
     bool IsDead() const { return health <= 0.0f; }
     float GetHealth() const { return health; }
     void SetHealth(float newHealth) { health = newHealth; }
@@ -44,8 +42,6 @@ public:
     
     // Damage handling
     bool TakeDamage(float amount);
-
-    float GetSpeed() { return speed; }
     
 protected:
     // Core properties

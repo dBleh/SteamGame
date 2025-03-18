@@ -236,92 +236,9 @@ void MessageHandler::Initialize() {
                                 });
                             
                             // For EP (EnemyPositionUpdate) message
-            RegisterMessageType("EP", 
-                                ParseEnemyPositionUpdateMessage,
-                                [](Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
-                                    PlayingState* state = GetPlayingState(&game);
-                                    if (state && state->GetEnemyManager()) {
-                                        EnemyManager* enemyManager = state->GetEnemyManager();
-                                        
-                                        // Update each enemy position and velocity
-                                        for (size_t i = 0; i < parsed.enemyIds.size(); ++i) {
-                                            int id = parsed.enemyIds[i];
-                                            auto enemy = enemyManager->FindEnemy(id);
-                                            
-                                            if (enemy) {
-                                                // Update both position and velocity for proper prediction
-                                                enemy->SetPosition(parsed.enemyPositions[i]);
-                                                enemy->SetVelocity(parsed.enemyVelocities[i]);
-                                            } else {
-                                                // If enemy doesn't exist, create it with velocity
-                                                enemyManager->RemoteAddEnemyWithVelocity(
-                                                    id, 
-                                                    EnemyType::Triangle, // Default type
-                                                    parsed.enemyPositions[i],
-                                                    parsed.enemyVelocities[i],
-                                                    100.0f  // Default health until full update arrives
-                                                );
-                                            }
-                                        }
-                                        
-                                        // Reset client-side prediction timer as we received fresh data
-                                        enemyManager->ResetLastEnemyStateUpdateTime();
-                                    }
-                                },
-                                [](Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender) {
-                                    // Host should be the one updating positions, not receiving
-                                    std::cout << "[HOST] Received position update from client, ignoring\n";
-                                });
+           
                             
-                            // For ES (EnemyState) message
-                            RegisterMessageType("ES", 
-                                ParseEnemyStateMessage,
-                                [](Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
-                                    PlayingState* state = GetPlayingState(&game);
-                                    if (state && state->GetEnemyManager()) {
-                                        EnemyManager* enemyManager = state->GetEnemyManager();
-                                        
-                                        // Process all enemy states
-                                        for (size_t i = 0; i < parsed.enemyIds.size(); ++i) {
-                                            int id = parsed.enemyIds[i];
-                                            auto enemy = enemyManager->FindEnemy(id);
-                                            
-                                            if (enemy) {
-                                                // Update existing enemy
-                                                enemy->SetPosition(parsed.enemyPositions[i]);
-                                                enemy->SetHealth(parsed.enemyHealths[i]);
-                                                
-                                                // Apply velocity if available
-                                                if (i < parsed.enemyVelocities.size()) {
-                                                    enemy->SetVelocity(parsed.enemyVelocities[i]);
-                                                }
-                                            } else {
-                                                // Create new enemy
-                                                EnemyType type = static_cast<EnemyType>(parsed.enemyTypes[i]);
-                                                
-                                                // Create with velocity if available
-                                                if (i < parsed.enemyVelocities.size()) {
-                                                    enemyManager->RemoteAddEnemyWithVelocity(
-                                                        id, type, parsed.enemyPositions[i], 
-                                                        parsed.enemyVelocities[i], parsed.enemyHealths[i]);
-                                                } else {
-                                                    enemyManager->RemoteAddEnemy(id, type, parsed.enemyPositions[i], parsed.enemyHealths[i]);
-                                                }
-                                            }
-                                        }
-                                        
-                                        // Reset prediction timer since we got a fresh update
-                                        enemyManager->ResetLastEnemyStateUpdateTime();
-                                        
-                                        // Mark enemies not in the update for removal
-                                        enemyManager->RemoveEnemiesNotInList(parsed.enemyIds);
-                                    }
-                                },
-                                [](Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender) {
-                                    // Host sends full state, not receives it
-                                    std::cout << "[HOST] Received state update from client, ignoring\n";
-                                });
-        
+                           
         RegisterMessageType("WS", 
                             ParseWaveStartMessage,
                             [](Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
@@ -335,19 +252,7 @@ void MessageHandler::Initialize() {
                                 // Host initiates waves, not receives them
                                 std::cout << "[HOST] Received wave start from client, ignoring\n";
                             });
-        RegisterMessageType("ESR", 
-                            ParseEnemyStateRequestMessage,
-                            [](Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
-                                // Clients don't need to handle ESR responses
-                            },
-                            [](Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender) {
-                                // Process enemy state request from a client
-                                PlayingState* state = GetPlayingState(&game);
-                                if (state && state->GetEnemyManager()) {
-                                    std::cout << "[HOST] Received enemy state request from " << sender.ConvertToUint64() << std::endl;
-                                    state->GetEnemyManager()->HandleStateRequest(sender);
-                                }
-                            });
+      
         RegisterMessageType("EC", 
                             ParseEnemyClearMessage,
                             [](Game& game, ClientNetwork& client, const ParsedMessage& parsed) {

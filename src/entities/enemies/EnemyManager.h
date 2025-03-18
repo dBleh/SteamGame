@@ -4,7 +4,6 @@
 #include <memory>
 #include <vector>
 #include <unordered_map>
-#include <chrono>
 #include <SFML/Graphics.hpp>
 #include "Enemy.h"
 #include "../../utils/config/Config.h"
@@ -30,32 +29,16 @@ public:
     bool HasEnemies() const { return !enemies.empty(); }
     size_t GetEnemyCount() const { return enemies.size(); }
     
-    // Client-side prediction
-    void UpdateEnemyClientPrediction(float dt);
-    
     // Collision detection
     void CheckPlayerCollisions();
-    void CheckBulletEnemyCollisions();
     bool CheckBulletCollision(const sf::Vector2f& bulletPos, float bulletRadius, int& outEnemyId);
     
     // Network synchronization
     void SyncEnemyPositions();
     void SyncFullState();
-    void SyncFullStateForClient(CSteamID clientId);
-    void HandleStateRequest(CSteamID requesterId);
     void ApplyNetworkUpdate(int enemyId, const sf::Vector2f& position, float health);
-    void ApplyNetworkUpdateWithVelocity(int enemyId, const sf::Vector2f& position, 
-                                      const sf::Vector2f& velocity, float health);
     void RemoteAddEnemy(int enemyId, EnemyType type, const sf::Vector2f& position, float health);
-    void RemoteAddEnemyWithVelocity(int enemyId, EnemyType type, const sf::Vector2f& position, 
-                                  const sf::Vector2f& velocity, float health);
     void RemoteRemoveEnemy(int enemyId);
-    void SmoothAddEnemy(int enemyId, EnemyType type, const sf::Vector2f& position, float health);
-    
-    // Full state update batching support
-    void BeginFullStateUpdate();
-    void EndFullStateUpdate();
-    void AddToPendingValidIds(const std::vector<int>& ids);
     
     // Wave management
     void StartNewWave(int enemyCount, EnemyType type = EnemyType::Triangle);
@@ -64,14 +47,12 @@ public:
     void SetCurrentWave(int wave) { currentWave = wave; }
     bool IsWaveComplete() const;
     bool IsWaveSpawning() const { return remainingEnemiesInWave > 0; }
-    
+    void ProcessBatchSpawning(float dt);
     // Performance optimization
     void OptimizeEnemyList();
-    void UpdatePlayerPositionsCache();
 
     Enemy* FindEnemy(int id);
     void RemoveEnemiesNotInList(const std::vector<int>& validIds);
-    void ResetLastEnemyStateUpdateTime();
 private:
     Game* game;
     PlayerManager* playerManager;
@@ -80,17 +61,11 @@ private:
     float syncTimer;
     float fullSyncTimer;
     int currentWave;
-    int remainingEnemiesInWave;
-    float batchSpawnTimer;
-    EnemyType currentWaveEnemyType;
+    int remainingEnemiesInWave = 0;
+    float batchSpawnTimer = 0.0f;
+    EnemyType currentWaveEnemyType = EnemyType::Triangle;
     std::vector<sf::Vector2f> playerPositionsCache;
-    int enemiesRemainingToSpawn;
-    std::chrono::steady_clock::time_point lastEnemyStateUpdate;
-    
-    // State tracking for multi-batch full state updates
-    bool fullStateInProgress;
-    std::vector<int> pendingValidIds;
-    
+    int enemiesRemainingToSpawn  = 0;
     // Spawn and position helpers
     sf::Vector2f GetRandomSpawnPosition(const sf::Vector2f& targetPosition, float minDistance, float maxDistance);
     bool IsValidSpawnPosition(const sf::Vector2f& position);
