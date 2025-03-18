@@ -285,7 +285,7 @@ void EnemyManager::SyncEnemyPositions() {
     if (enemies.empty()) return;
     
     std::vector<int> priorities = GetEnemyUpdatePriorities();
-    size_t updateCount = std::min(priorities.size(), static_cast<size_t>(30));  // Reduce to 30 enemies
+    size_t updateCount = std::min(priorities.size(), static_cast<size_t>(20));  // Reduce to 20 enemies
     
     std::ostringstream oss;
     oss << "EP";
@@ -300,7 +300,11 @@ void EnemyManager::SyncEnemyPositions() {
         }
     }
     
-    game->GetNetworkManager().BroadcastMessage(oss.str());
+    std::string message = oss.str();
+    std::vector<std::string> chunks = MessageHandler::ChunkMessage(message, "EP");
+    for (const auto& chunk : chunks) {
+        game->GetNetworkManager().BroadcastMessage(chunk);
+    }
 }
 
 void EnemyManager::SyncFullState() {
@@ -644,7 +648,7 @@ void EnemyManager::HandleStateRequest(CSteamID requesterId) {
         allEnemyIds.push_back(pair.first);
     }
     
-    const size_t batchSize = 30;  // Reduce to 30 enemies per batch
+    const size_t batchSize = 20;  // Reduce to 20 enemies per batch
     for (size_t startIdx = 0; startIdx < allEnemyIds.size(); startIdx += batchSize) {
         std::ostringstream oss;
         oss << "EP";
@@ -660,9 +664,13 @@ void EnemyManager::HandleStateRequest(CSteamID requesterId) {
             }
         }
         
-        game->GetNetworkManager().SendMessage(requesterId, oss.str());
-        if (endIdx < allEnemyIds.size()) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));  // Small delay between batches
+        std::string message = oss.str();
+        std::vector<std::string> chunks = MessageHandler::ChunkMessage(message, "EP");
+        for (const auto& chunk : chunks) {
+            game->GetNetworkManager().SendMessage(requesterId, chunk);
+            if (endIdx < allEnemyIds.size() || !chunks.empty()) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));  // Delay between chunks/batches
+            }
         }
     }
 }

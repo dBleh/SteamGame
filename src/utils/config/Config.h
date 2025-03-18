@@ -25,7 +25,7 @@
 // Spawning configuration
 #define SPAWN_RADIUS 300.0f
 
-#define MAX_PACKET_SIZE 1024
+#define MAX_PACKET_SIZE 800
 
 // Triangle Enemy configuration
 #define TRIANGLE_MIN_SPAWN_DISTANCE 200.0f  // Minimum spawn distance from players

@@ -885,7 +885,7 @@ ParsedMessage MessageHandler::ParseEnemyPositionUpdateMessage(const std::vector<
         std::string chunk = parts[i];
         std::vector<std::string> subParts = SplitString(chunk, ',');
         
-        if (subParts.size() >= 5) {  // Now requiring 5 components (id,x,y,vx,vy)
+        if (subParts.size() >= 5) {  // id,x,y,vx,vy
             int id = std::stoi(subParts[0]);
             float x = std::stof(subParts[1]);
             float y = std::stof(subParts[2]);
