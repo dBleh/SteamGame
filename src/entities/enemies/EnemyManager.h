@@ -50,6 +50,12 @@ public:
     void RemoteAddEnemyWithVelocity(int enemyId, EnemyType type, const sf::Vector2f& position, 
                                   const sf::Vector2f& velocity, float health);
     void RemoteRemoveEnemy(int enemyId);
+    void SmoothAddEnemy(int enemyId, EnemyType type, const sf::Vector2f& position, float health);
+    
+    // Full state update batching support
+    void BeginFullStateUpdate();
+    void EndFullStateUpdate();
+    void AddToPendingValidIds(const std::vector<int>& ids);
     
     // Wave management
     void StartNewWave(int enemyCount, EnemyType type = EnemyType::Triangle);
@@ -65,9 +71,7 @@ public:
 
     Enemy* FindEnemy(int id);
     void RemoveEnemiesNotInList(const std::vector<int>& validIds);
-    void ResetLastEnemyStateUpdateTime() { 
-        lastEnemyStateUpdate = std::chrono::steady_clock::now(); 
-    }
+    void ResetLastEnemyStateUpdateTime();
 private:
     Game* game;
     PlayerManager* playerManager;
@@ -82,6 +86,10 @@ private:
     std::vector<sf::Vector2f> playerPositionsCache;
     int enemiesRemainingToSpawn;
     std::chrono::steady_clock::time_point lastEnemyStateUpdate;
+    
+    // State tracking for multi-batch full state updates
+    bool fullStateInProgress;
+    std::vector<int> pendingValidIds;
     
     // Spawn and position helpers
     sf::Vector2f GetRandomSpawnPosition(const sf::Vector2f& targetPosition, float minDistance, float maxDistance);

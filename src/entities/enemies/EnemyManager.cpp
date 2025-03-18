@@ -25,6 +25,7 @@ EnemyManager::EnemyManager(Game* game, PlayerManager* playerManager)
       batchSpawnTimer(0.0f),
       currentWaveEnemyType(EnemyType::Triangle),
       enemiesRemainingToSpawn(0),
+      fullStateInProgress(false),
       lastEnemyStateUpdate(std::chrono::steady_clock::now()) {
     // Initialize random seed
     std::srand(static_cast<unsigned int>(std::time(nullptr)));
@@ -57,15 +58,15 @@ void EnemyManager::Update(float dt) {
             game->GetNetworkManager().SendMessage(hostID, oss.str());
             lastEnemyStateUpdate = now; // Reset the timer to prevent spamming requests
         }
-        
-        // Apply client-side prediction for smoother movement
-        UpdateEnemyClientPrediction(dt);
-    } else {
-        // Host updates enemies normally
-        for (auto& pair : enemies) {
-            pair.second->Update(dt, *playerManager);
-        }
-        
+    }
+    
+    // Always update all enemies with their AI logic - works for both host and clients
+    for (auto& pair : enemies) {
+        pair.second->Update(dt, *playerManager);
+    }
+    
+    // Host-specific network updates
+    if (isHost) {
         // Sync enemy positions periodically
         syncTimer += dt;
         if (syncTimer >= ENEMY_SYNC_INTERVAL) {
@@ -88,15 +89,6 @@ void EnemyManager::Update(float dt) {
     // Optimize enemy list if we have a large number
     if (enemies.size() > 200) {
         OptimizeEnemyList();
-    }
-}
-
-void EnemyManager::UpdateEnemyClientPrediction(float dt) {
-    // Update enemy positions on the client based on their current velocity and AI
-    for (auto& pair : enemies) {
-        Enemy* enemy = pair.second.get();
-
-            enemy->Update(dt, *playerManager);
     }
 }
 
@@ -146,6 +138,8 @@ void EnemyManager::RemoveEnemy(int id) {
 
 void EnemyManager::ClearEnemies() {
     enemies.clear();
+    pendingValidIds.clear();
+    fullStateInProgress = false;
     
     // If we're the host, broadcast a clear command
     CSteamID myID = SteamUser()->GetSteamID();
@@ -340,15 +334,21 @@ void EnemyManager::SyncFullState() {
         allEnemyIds.push_back(pair.first);
     }
     
+    // Mark first batch as start of full state update
+    bool isFirstBatch = true;
+    
     // Process enemies in batches
     for (size_t startIdx = 0; startIdx < allEnemyIds.size(); startIdx += ENEMY_SPAWN_BATCH_SIZE) {
         // Calculate how many enemies to include in this batch
         size_t endIdx = std::min(startIdx + ENEMY_SPAWN_BATCH_SIZE, allEnemyIds.size());
         size_t count = endIdx - startIdx;
+        bool isLastBatch = (endIdx == allEnemyIds.size());
         
         // Create a batch state update message
         std::ostringstream oss;
-        oss << "ES";
+        
+        // Format: ES|isFirstBatch|isLastBatch|entity1|entity2|...
+        oss << "ES|" << (isFirstBatch ? "1" : "0") << "|" << (isLastBatch ? "1" : "0");
         
         for (size_t i = startIdx; i < endIdx; ++i) {
             int enemyId = allEnemyIds[i];
@@ -363,8 +363,11 @@ void EnemyManager::SyncFullState() {
         // Broadcast the message
         game->GetNetworkManager().BroadcastMessage(oss.str());
         
+        // Update batch markers
+        isFirstBatch = false;
+        
         // Add a small delay between batches to avoid overloading the network
-        if (count < allEnemyIds.size()) {
+        if (!isLastBatch) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
     }
@@ -373,55 +376,35 @@ void EnemyManager::SyncFullState() {
 void EnemyManager::ApplyNetworkUpdate(int enemyId, const sf::Vector2f& position, float health) {
     auto it = enemies.find(enemyId);
     if (it != enemies.end()) {
-        // Update existing enemy
-        it->second->SetPosition(position);
+        // Update existing enemy with smooth transition
+        sf::Vector2f currentPos = it->second->GetPosition();
+        sf::Vector2f posDiff = position - currentPos;
+        
+        // Apply smooth position update regardless of distance
+        // For small changes (< 10 units), apply half the change
+        // For medium changes, apply 75% of the change
+        // For large changes, apply 90% of the change
+        float distanceSquared = posDiff.x * posDiff.x + posDiff.y * posDiff.y;
+        float transitionFactor;
+        
+        if (distanceSquared < 100.0f) {         // < 10 units
+            transitionFactor = 0.5f;
+        } else if (distanceSquared < 400.0f) {  // < 20 units
+            transitionFactor = 0.75f;
+        } else {
+            transitionFactor = 0.9f;
+        }
+        
+        // Apply the smoothed position
+        it->second->SetPosition(currentPos + posDiff * transitionFactor);
         it->second->SetHealth(health);
     } else {
-        // Enemy doesn't exist, create it with default type until a full state update arrives
-        RemoteAddEnemy(enemyId, EnemyType::Triangle, position, health);
-        
-        std::cout << "[CLIENT] Created new enemy from position update: ID=" << enemyId 
-                  << " at position (" << position.x << "," << position.y << ")\n";
+        // Enemy doesn't exist, create it with smooth spawning
+        SmoothAddEnemy(enemyId, EnemyType::Triangle, position, health);
     }
 }
 
-void EnemyManager::ApplyNetworkUpdateWithVelocity(int enemyId, const sf::Vector2f& position, 
-    const sf::Vector2f& velocity, float health) {
-        auto it = enemies.find(enemyId);
-        if (it != enemies.end()) {
-        // Update existing enemy
-        Enemy* enemy = it->second.get();
-
-        // Calculate position difference
-        sf::Vector2f currentPos = enemy->GetPosition();
-        sf::Vector2f posDiff = position - currentPos;
-
-        // If position change is small, apply smoothly
-        float distanceSquared = posDiff.x * posDiff.x + posDiff.y * posDiff.y;
-        if (distanceSquared < 100.0f) { // Small movement (10 units squared)
-        // Apply half the correction now for smoother movement
-        enemy->SetPosition(currentPos + posDiff * 0.5f);
-        } else {
-        // Large jump detected, apply full update
-        enemy->SetPosition(position);
-        }
-
-        enemy->SetVelocity(velocity);
-        enemy->SetHealth(health);
-
-        // Reset prediction timer since we got a fresh update
-        lastEnemyStateUpdate = std::chrono::steady_clock::now();
-        } else {
-        // Enemy doesn't exist, create it and set velocity
-        RemoteAddEnemyWithVelocity(enemyId, EnemyType::Triangle, position, velocity, health);
-
-        std::cout << "[CLIENT] Created new enemy with velocity: ID=" << enemyId 
-        << " at position (" << position.x << "," << position.y 
-        << ") with velocity (" << velocity.x << "," << velocity.y << ")\n";
-        }
-}
-
-void EnemyManager::RemoteAddEnemy(int enemyId, EnemyType type, const sf::Vector2f& position, float health) {
+void EnemyManager::SmoothAddEnemy(int enemyId, EnemyType type, const sf::Vector2f& position, float health) {
     // Create the enemy with the given ID
     auto enemy = CreateEnemy(type, enemyId, position);
     enemy->SetHealth(health);
@@ -429,19 +412,16 @@ void EnemyManager::RemoteAddEnemy(int enemyId, EnemyType type, const sf::Vector2
     // Apply a small random offset to the initial position for smoother appearance
     sf::Vector2f spawnPos = position;
     
-    // Only apply offset if this isn't the first creation of the enemy
-    if (enemies.find(enemyId) == enemies.end()) {
-        // Get unit vector in a random direction
-        float angle = static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * 2.0f * 3.14159f;
-        sf::Vector2f offset(std::cos(angle), std::sin(angle));
-        
-        // Scale the offset to a small distance (20-40 pixels)
-        float distance = 20.0f + static_cast<float>(rand() % 20);
-        spawnPos += offset * distance;
-        
-        // Set the actual spawn position
-        enemy->SetPosition(spawnPos);
-    }
+    // Get unit vector in a random direction
+    float angle = static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * 2.0f * 3.14159f;
+    sf::Vector2f offset(std::cos(angle), std::sin(angle));
+    
+    // Scale the offset to a small distance (20-40 pixels)
+    float distance = 20.0f + static_cast<float>(rand() % 20);
+    spawnPos += offset * distance;
+    
+    // Set the actual spawn position
+    enemy->SetPosition(spawnPos);
     
     enemies[enemyId] = std::move(enemy);
     
@@ -450,17 +430,20 @@ void EnemyManager::RemoteAddEnemy(int enemyId, EnemyType type, const sf::Vector2
         nextEnemyId = enemyId + 1;
     }
 }
+
+void EnemyManager::RemoteAddEnemy(int enemyId, EnemyType type, const sf::Vector2f& position, float health) {
+    SmoothAddEnemy(enemyId, type, position, health);
+}
+
 void EnemyManager::RemoteAddEnemyWithVelocity(int enemyId, EnemyType type, const sf::Vector2f& position, 
                                           const sf::Vector2f& velocity, float health) {
-    // Create the enemy with the given ID
-    auto enemy = CreateEnemy(type, enemyId, position);
-    enemy->SetHealth(health);
-    enemy->SetVelocity(velocity);
-    enemies[enemyId] = std::move(enemy);
+    // Use the same smooth spawning logic
+    SmoothAddEnemy(enemyId, type, position, health);
     
-    // Update nextEnemyId if necessary
-    if (enemyId >= nextEnemyId) {
-        nextEnemyId = enemyId + 1;
+    // Set velocity after spawning
+    auto it = enemies.find(enemyId);
+    if (it != enemies.end()) {
+        it->second->SetVelocity(velocity);
     }
 }
 
@@ -633,6 +616,26 @@ sf::Vector2f EnemyManager::GetRandomSpawnPosition(const sf::Vector2f& targetPosi
     return sf::Vector2f(x, y);
 }
 
+void EnemyManager::BeginFullStateUpdate() {
+    pendingValidIds.clear();
+    fullStateInProgress = true;
+}
+
+void EnemyManager::EndFullStateUpdate() {
+    // Only remove enemies not in the complete state update
+    if (fullStateInProgress && !pendingValidIds.empty()) {
+        RemoveEnemiesNotInList(pendingValidIds);
+    }
+    
+    // Reset state tracking
+    fullStateInProgress = false;
+    pendingValidIds.clear();
+}
+
+void EnemyManager::AddToPendingValidIds(const std::vector<int>& ids) {
+    pendingValidIds.insert(pendingValidIds.end(), ids.begin(), ids.end());
+}
+
 void EnemyManager::RemoveEnemiesNotInList(const std::vector<int>& validIds) {
     std::vector<int> enemyIdsToRemove;
     
@@ -678,24 +681,27 @@ void EnemyManager::HandleStateRequest(CSteamID requesterId) {
 void EnemyManager::SyncFullStateForClient(CSteamID clientId) {
     if (enemies.empty()) return;
     
-    // Limit the number of enemies per state update
-   
-    
     // Get a list of all enemy IDs
     std::vector<int> allEnemyIds;
     for (const auto& pair : enemies) {
         allEnemyIds.push_back(pair.first);
     }
     
+    // Mark first batch as start of full state update
+    bool isFirstBatch = true;
+    
     // Process enemies in batches
     for (size_t startIdx = 0; startIdx < allEnemyIds.size(); startIdx += ENEMY_SPAWN_BATCH_SIZE) {
         // Calculate how many enemies to include in this batch
         size_t endIdx = std::min(startIdx + ENEMY_SPAWN_BATCH_SIZE, allEnemyIds.size());
         size_t count = endIdx - startIdx;
+        bool isLastBatch = (endIdx == allEnemyIds.size());
         
         // Create a batch state update message
         std::ostringstream oss;
-        oss << "ES";
+        
+        // Format: ES|isFirstBatch|isLastBatch|entity1|entity2|...
+        oss << "ES|" << (isFirstBatch ? "1" : "0") << "|" << (isLastBatch ? "1" : "0");
         
         for (size_t i = startIdx; i < endIdx; ++i) {
             int enemyId = allEnemyIds[i];
@@ -710,8 +716,11 @@ void EnemyManager::SyncFullStateForClient(CSteamID clientId) {
         // Send the message directly to the requesting client
         game->GetNetworkManager().SendMessage(clientId, oss.str());
         
+        // Update batch markers
+        isFirstBatch = false;
+        
         // Add a small delay between batches
-        if (count < allEnemyIds.size()) {
+        if (!isLastBatch) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
     }
@@ -761,4 +770,8 @@ void EnemyManager::UpdateSpawning(float dt) {
 bool EnemyManager::IsWaveComplete() const {
     // A wave is complete when all enemies have been spawned and eliminated
     return enemies.empty() && remainingEnemiesInWave == 0;
+}
+
+void EnemyManager::ResetLastEnemyStateUpdateTime() { 
+    lastEnemyStateUpdate = std::chrono::steady_clock::now(); 
 }
