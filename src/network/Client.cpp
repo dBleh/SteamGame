@@ -77,54 +77,32 @@ void ClientNetwork::ProcessMovementMessage(Game& game, ClientNetwork& client, co
 }
 
 void ClientNetwork::ProcessBulletMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
-    // Get the local player's Steam ID
-    CSteamID localSteamID = SteamUser()->GetSteamID();
-    std::string localSteamIDStr = std::to_string(localSteamID.ConvertToUint64());
-    
-    // Normalize both IDs for comparison - remove any leading zeroes or whitespace
+    std::string localSteamIDStr = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
     std::string normalizedShooterID, normalizedLocalID;
-    
     try {
-        // Convert both IDs to integers and back to strings to ensure consistent format
         uint64_t shooterNum = std::stoull(parsed.steamID);
         normalizedShooterID = std::to_string(shooterNum);
-        
         uint64_t localNum = std::stoull(localSteamIDStr);
         normalizedLocalID = std::to_string(localNum);
-        
-        std::cout << "[CLIENT] Bullet ownership check - Message ID: '" << normalizedShooterID 
-                  << "', Local ID: '" << normalizedLocalID 
-                  << "', Same? " << (normalizedShooterID == normalizedLocalID ? "YES" : "NO") << "\n";
-                  
-        // Check if this is our own bullet
-        if (normalizedShooterID == normalizedLocalID) {
-            std::cout << "[CLIENT] Ignoring own bullet that was bounced back from server\n";
-            return;
-        }
-    } 
-    catch (const std::exception& e) {
+    } catch (const std::exception& e) {
         std::cout << "[CLIENT] Error normalizing IDs: " << e.what() << "\n";
-        // Continue with original IDs if conversion fails
         normalizedShooterID = parsed.steamID;
         normalizedLocalID = localSteamIDStr;
-        
-        // Still check for ownership in case the string comparison works
-        if (normalizedShooterID == normalizedLocalID) {
-            std::cout << "[CLIENT] Ignoring own bullet (string comparison) that was bounced back from server\n";
-            return;
-        }
     }
-    
-    // Validate bullet direction - don't create bullets with zero direction
-    if (parsed.direction.x == 0.f && parsed.direction.y == 0.f) {
-        std::cout << "[CLIENT] Received bullet with invalid direction\n";
+    std::cout << "[CLIENT] Bullet ownership check - Message ID: '" << normalizedShooterID 
+              << "', Local ID: '" << normalizedLocalID 
+              << "', Same? " << (normalizedShooterID == normalizedLocalID ? "YES" : "NO") << "\n";
+    if (normalizedShooterID == normalizedLocalID) {
+        std::cout << "[CLIENT] Ignoring own bullet that was bounced back from server\n";
         return;
     }
-    
-    // Add the bullet using the normalized shooter ID
-    playerManager->AddBullet(normalizedShooterID, parsed.position, parsed.direction, parsed.velocity);
-    std::cout << "[CLIENT] Added bullet from " << normalizedShooterID 
-              << " at pos (" << parsed.position.x << "," << parsed.position.y << ")\n";
+    if (parsed.direction.x != 0.f || parsed.direction.y != 0.f) {
+        playerManager->AddBullet(normalizedShooterID, parsed.position, parsed.direction, parsed.velocity);
+        std::cout << "[CLIENT] Added bullet from " << normalizedShooterID 
+                  << " at pos (" << parsed.position.x << "," << parsed.position.y << ")\n";
+    } else {
+        std::cout << "[CLIENT] Received bullet with invalid direction\n";
+    }
 }
 
 void ClientNetwork::SendMovementUpdate(const sf::Vector2f& position) {

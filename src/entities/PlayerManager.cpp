@@ -224,16 +224,17 @@ bool PlayerManager::AreAllPlayersReady() const {
 void PlayerManager::AddBullet(const std::string& shooterID, const sf::Vector2f& position, const sf::Vector2f& direction, float velocity) {
     // Validate input parameters
     if (direction.x == 0.f && direction.y == 0.f) {
-        std::cout << "[PM] Rejecting bullet with zero direction vector\n";
         return;
     }
     
     if (shooterID.empty()) {
-        std::cout << "[PM] Rejecting bullet with empty shooter ID\n";
         return;
     }
     
-    // Normalize the shooter ID for consistent comparison
+    // For debugging: print the ID being added and local ID for comparison
+    std::string localSteamIDStr = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
+
+    // Ensure we use the exact same string format for IDs
     std::string normalizedID = shooterID;
     try {
         // Convert to uint64, then back to string to normalize format
@@ -241,14 +242,6 @@ void PlayerManager::AddBullet(const std::string& shooterID, const sf::Vector2f& 
         normalizedID = std::to_string(idNum);
     } catch (const std::exception& e) {
         std::cout << "[PM] Error normalizing shooter ID: " << e.what() << "\n";
-        // Continue with original ID if conversion fails
-    }
-    
-    // Check if this is our own bullet again (double check)
-    std::string localSteamIDStr = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
-    if (normalizedID == localSteamIDStr) {
-        std::cout << "[PM] Skipping adding own bullet\n";
-        return;
     }
     
     // Apply bullet speed multiplier from player if available
