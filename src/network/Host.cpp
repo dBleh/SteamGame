@@ -100,8 +100,17 @@ void HostNetwork::ProcessConnectionMessage(Game& game, HostNetwork& host, const 
 }
 
 void HostNetwork::BroadcastGameSettings() {
+    static bool isBroadcastingSettings = false;
+    
+    if (isBroadcastingSettings) {
+        std::cout << "[HOST] Preventing recursive settings broadcast" << std::endl;
+        return;
+    }
+    
     GameSettingsManager* settingsManager = game->GetGameSettingsManager();
     if (!settingsManager) return;
+    
+    isBroadcastingSettings = true;
     
     // Serialize all settings to a single string
     std::string serializedSettings = settingsManager->SerializeSettings();
@@ -114,6 +123,11 @@ void HostNetwork::BroadcastGameSettings() {
     
     // Log the broadcast for debugging
     std::cout << "[HOST] Broadcasting game settings to all clients" << std::endl;
+    
+    // Update last settings broadcast time
+    lastSettingsBroadcastTime = std::chrono::steady_clock::now();
+    
+    isBroadcastingSettings = false;
 }
 
 
@@ -350,6 +364,16 @@ void HostNetwork::Update() {
     if (elapsed >= BROADCAST_INTERVAL) {
         BroadcastPlayersList();
         lastBroadcastTime = now;
+    }
+    
+    // Only broadcast settings periodically (if there are changes)
+    float settingsElapsed = std::chrono::duration<float>(now - lastSettingsBroadcastTime).count();
+    if (settingsElapsed >= SETTINGS_BROADCAST_INTERVAL) {
+        // Don't broadcast settings too often
+        GameSettingsManager* settingsManager = game->GetGameSettingsManager();
+        if (settingsManager && game->GetCurrentState() == GameState::Playing) {
+            BroadcastGameSettings();
+        }
     }
 }
 

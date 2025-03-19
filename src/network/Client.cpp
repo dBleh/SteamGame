@@ -333,7 +333,21 @@ void ClientNetwork::Update() {
         }
     }
     
-    
+    // Request settings if we haven't received them yet
+    if (!m_initialSettingsReceived) {
+        m_settingsRequestTimer -= elapsed;
+        if (m_settingsRequestTimer <= 0) {
+            // Limit how often we request settings
+            static int requestAttempts = 0;
+            if (requestAttempts < 5) { // Only try 5 times, then wait for player action
+                RequestGameSettings();
+                requestAttempts++;
+                m_settingsRequestTimer = 5.0f;  // Retry every 5 seconds until we get settings
+            } else {
+                m_settingsRequestTimer = 30.0f; // Long delay after several attempts
+            }
+        }
+    }
     
     // Handle validation timer
     if (m_validationRequestTimer > 0) {
@@ -529,6 +543,11 @@ void ClientNetwork::ApplySettings() {
 }
 
 void ClientNetwork::RequestGameSettings() {
+    // Don't request settings if we've already received them
+    if (m_initialSettingsReceived) {
+        return;
+    }
+    
     // Send a settings request message to the host
     std::string requestMsg = SettingsMessageHandler::FormatSettingsRequestMessage();
     

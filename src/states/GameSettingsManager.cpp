@@ -277,13 +277,17 @@ std::string GameSettingsManager::SerializeSettings() const {
 
 // In GameSettingsManager.cpp, modify the DeserializeSettings method
 bool GameSettingsManager::DeserializeSettings(const std::string& data) {
+    static bool isDeserializing = false;
+    if (isDeserializing) {
+        // Avoid recursive calls
+        std::cout << "[GameSettingsManager] Preventing recursive deserialization" << std::endl;
+        return false;
+    }
+    
+    isDeserializing = true;
+    
     std::istringstream iss(data);
     std::string pair;
-    
-    // Set a flag to prevent recursive notifications during deserialization
-    static bool isDeserializing = false;
-    bool wasDeserializing = isDeserializing;
-    isDeserializing = true;
     
     while (std::getline(iss, pair, ';')) {
         size_t colonPos = pair.find(':');
@@ -295,7 +299,7 @@ bool GameSettingsManager::DeserializeSettings(const std::string& data) {
         std::string name = pair.substr(0, colonPos);
         float value = std::stof(pair.substr(colonPos + 1));
         
-        // Update setting without triggering notifications during deserialization
+        // Update setting directly without calling UpdateSetting (which would trigger notifications)
         auto setting = GetSetting(name);
         if (setting) {
             setting->SetValue(value);
@@ -304,16 +308,8 @@ bool GameSettingsManager::DeserializeSettings(const std::string& data) {
         }
     }
     
-    // Only notify of settings changes once after all settings are deserialized
-    if (!wasDeserializing && game && game->GetCurrentState() == GameState::Playing) {
-        PlayingState* playingState = GetPlayingState(game);
-        if (playingState) {
-            std::cout << "[GameSettingsManager] Notifying PlayingState of settings change" << std::endl;
-            playingState->OnSettingsChanged();
-        }
-    }
-    
-    isDeserializing = wasDeserializing;
+    // Reset flag before returning
+    isDeserializing = false;
     return true;
 }
 

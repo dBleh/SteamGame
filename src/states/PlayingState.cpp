@@ -685,6 +685,15 @@ void PlayingState::AdjustViewToWindow() {
 // In PlayingState.cpp, modify the OnSettingsChanged method to use the bulletDamage setting:
 
 void PlayingState::OnSettingsChanged() {
+    static bool isProcessingSettings = false;
+    
+    if (isProcessingSettings) {
+        std::cout << "[PlayingState] Preventing recursive settings application" << std::endl;
+        return;
+    }
+    
+    isProcessingSettings = true;
+    
     // Apply settings locally without propagating to network
     ApplyAllSettings();
     
@@ -692,13 +701,12 @@ void PlayingState::OnSettingsChanged() {
     CSteamID myID = SteamUser()->GetSteamID();
     CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
     
-    static bool isProcessingNetworkSettings = false;
-    if (myID == hostID && hostNetwork && !isProcessingNetworkSettings) {
-        isProcessingNetworkSettings = true;
+    if (myID == hostID && hostNetwork) {
         // Broadcast updated settings to all clients
         hostNetwork->BroadcastGameSettings();
-        isProcessingNetworkSettings = false;
     }
+    
+    isProcessingSettings = false;
 }
 
 
