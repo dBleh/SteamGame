@@ -63,14 +63,21 @@ void PlayerMessageHandler::Initialize() {
                         });
                         
     MessageHandler::RegisterMessageType("KL", 
-                        ParseKillMessage,
-                        [](Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
-                            client.ProcessKillMessage(game, client, parsed);
-                        },
-                        [](Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender) {
-                            host.ProcessKillMessage(game, host, parsed, sender);
-                        });
-                        
+                            ParseKillMessage,
+                            [](Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
+                                client.ProcessKillMessage(game, client, parsed);
+                            },
+                            [](Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender) {
+                                host.ProcessKillMessage(game, host, parsed, sender);
+                            });
+    MessageHandler::RegisterMessageType("KILL", 
+                                ParseKillMessage,
+                                [](Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
+                                    client.ProcessKillMessage(game, client, parsed);
+                                },
+                                [](Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender) {
+                                    host.ProcessKillMessage(game, host, parsed, sender);
+                                });                        
     MessageHandler::RegisterMessageType("FZ", 
                         ParseForceFieldZapMessage,
                         [](Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
@@ -286,13 +293,13 @@ std::string PlayerMessageHandler::FormatPlayerDamageMessage(const std::string& p
 
 std::string PlayerMessageHandler::FormatKillMessage(const std::string& playerID, int enemyId) {
     std::ostringstream oss;
-    oss << "KILL|" << playerID << "|" << enemyId;
+    oss << "KL|" << playerID << "|" << enemyId;  // Change "KILL" to "KL"
     return oss.str();
 }
 
 std::string PlayerMessageHandler::FormatKillMessage(const std::string& playerID, int enemyId, uint32_t sequence) {
     std::ostringstream oss;
-    oss << "KILL|" << playerID << "|" << enemyId << "|" << sequence;
+    oss << "KL|" << playerID << "|" << enemyId << "|" << sequence;  // Change "KILL" to "KL"
     return oss.str();
 }
 

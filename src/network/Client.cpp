@@ -117,11 +117,15 @@ void ClientNetwork::ProcessChatMessage(Game& game, ClientNetwork& client, const 
 void ClientNetwork::ProcessKillMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
     std::string killerID = parsed.steamID;
     int enemyId = parsed.enemyId;
-    uint32_t killSequence = parsed.killSequence; // New field to track message order
+    uint32_t killSequence = parsed.killSequence;
     
     std::cout << "[CLIENT] Received kill message from host - Player ID: " << killerID 
-              << ", Enemy ID: " << enemyId
-              << ", Sequence: " << killSequence << "\n";
+              << ", Enemy ID: " << enemyId;
+              
+    if (killSequence > 0) {
+        std::cout << ", Sequence: " << killSequence;
+    }
+    std::cout << "\n";
     
     // Normalize killer ID
     std::string normalizedKillerID;
@@ -133,35 +137,35 @@ void ClientNetwork::ProcessKillMessage(Game& game, ClientNetwork& client, const 
         normalizedKillerID = killerID;
     }
     
-    // CHANGE: Track the last processed kill sequence to maintain order
-    static uint32_t lastProcessedKillSequence = 0;
+    // Track the last processed kill sequence per player to maintain order
+    static std::unordered_map<std::string, uint32_t> lastProcessedSequences;
     
-    // Only process kills that have a newer sequence number
-    if (killSequence <= lastProcessedKillSequence && killSequence > 0) {
-        std::cout << "[CLIENT] Ignoring out-of-order kill message (sequence " 
-                  << killSequence << " <= " << lastProcessedKillSequence << ")\n";
-        return;
+    // Only track sequences if they're actually being used (non-zero)
+    if (killSequence > 0) {
+        // Check if we've seen this sequence before for this player
+        auto it = lastProcessedSequences.find(normalizedKillerID);
+        if (it != lastProcessedSequences.end()) {
+            // If we've already processed a higher sequence number, ignore this one
+            if (killSequence <= it->second) {
+                std::cout << "[CLIENT] Ignoring out-of-order kill message for " << normalizedKillerID 
+                          << " (sequence " << killSequence << " <= " << it->second << ")\n";
+                return;
+            }
+        }
+        
+        // Update the last processed sequence for this player
+        lastProcessedSequences[normalizedKillerID] = killSequence;
     }
     
-    // Update last processed sequence number
-    if (killSequence > lastProcessedKillSequence) {
-        lastProcessedKillSequence = killSequence;
-    }
-    
-    // Process the kill - this is the authoritative update from the host
+    // Update kill count based on host's authoritative message
     auto& players = playerManager->GetPlayers();
     auto it = players.find(normalizedKillerID);
     if (it != players.end()) {
-        // CHANGE: Set the exact kill count from the host (don't just increment)
-        // This ensures we match the host exactly
-        int previousKills = it->second.kills;
-        int newKills = previousKills + 1; // Increment by one for this kill
-        
-        it->second.kills = newKills;
+        it->second.kills++;
         it->second.money += 50; // Award money for the kill
         
         std::cout << "[CLIENT] Player " << normalizedKillerID << " awarded kill by host for enemy " 
-                  << enemyId << " - Kill count: " << previousKills << " -> " << newKills << "\n";
+                  << enemyId << " - New kill count: " << it->second.kills << "\n";
         
         // If it's the local player, make sure we process any effects
         std::string localID = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
