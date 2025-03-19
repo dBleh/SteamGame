@@ -102,7 +102,29 @@ void EnemyMessageHandler::Initialize() {
                 // Implementation would send current enemy state to the requesting client
             }
         });
-
+        MessageHandler::RegisterMessageType("EP", 
+            ParseEnemyPositionUpdateMessage,
+            [](Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
+                PlayingState* state = GetPlayingState(&game);
+                if (state && state->GetEnemyManager()) {
+                    EnemyManager* enemyManager = state->GetEnemyManager();
+                    for (size_t i = 0; i < parsed.enemyIds.size(); ++i) {
+                        int id = parsed.enemyIds[i];
+                        auto enemy = enemyManager->FindEnemy(id);
+                        
+                        if (enemy) {
+                            // Update existing enemy position
+                            sf::Vector2f velocity = i < parsed.enemyVelocities.size() ? 
+                                                  parsed.enemyVelocities[i] : sf::Vector2f(0.0f, 0.0f);
+                            enemyManager->SetEnemyTargetPosition(id, parsed.enemyPositions[i], velocity);
+                        }
+                    }
+                }
+            },
+            [](Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender) {
+                // Host should be the one sending position updates, not receiving
+                std::cout << "[HOST] Received enemy position update from client, ignoring\n";
+            });
     MessageHandler::RegisterMessageType("EC", 
         ParseEnemyClearMessage,
         [](Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
