@@ -31,6 +31,7 @@ public:
     std::shared_ptr<InputHandler> GetInputHandler() const {return inputHandler; }
     std::string& GetLobbyNameInput() { return lobbyNameInput; }
     bool IsSteamInitialized() const { return steamInitialized; }
+    bool HasSteamConnectionError() const { return steamConnectionError; }
     
     void SetLocalSteamID(const CSteamID& id) { localSteamID = id; }
     CSteamID GetLocalSteamID() const { return localSteamID; }
@@ -72,6 +73,7 @@ private:
     InputManager inputManager;
     GameState currentState{GameState::MainMenu};
     bool steamInitialized{false};
+    bool steamConnectionError{false};  // New variable to track Steam connection errors
     bool inLobby{false};
     CSteamID currentLobby{k_steamIDNil};
     std::string lobbyNameInput;

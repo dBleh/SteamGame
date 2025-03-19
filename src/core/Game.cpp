@@ -5,6 +5,7 @@
 #include "../states/menu/SettingsState.h"
 #include "../states/PlayingState.h"
 #include "../states/menu/LobbyState.h"
+#include "../states/menu/LoadingState.h"
 #include "../states/GameSettingsManager.h"
 #include <steam/steam_api.h>
 #include <iostream>
@@ -22,25 +23,92 @@ Game::Game() : hud(font) {
         }
     }
 
-    if (SteamAPI_Init()) {
-        steamInitialized = true;
-        localSteamID = SteamUser()->GetSteamID();
-    } else {
-        std::cerr << "[ERROR] Steam API initialization failed!" << std::endl;
+    // Robust Steam initialization check
+    // In Game.cpp constructor - replace the current Steam initialization with this more robust version
+
+// Robust Steam initialization check
+if (!SteamAPI_Init()) {
+    std::cerr << "[ERROR] Steam API initialization failed!" << std::endl;
+    steamInitialized = false;
+} else {
+    // Wait for Steam to be fully ready
+    const int maxAttempts = 50; // ~5 seconds at 100ms per attempt
+    int attempts = 0;
+    bool friendsNetworkReady = false;
+    
+    std::cout << "[GAME] Starting Steam initialization process...\n";
+    while (attempts < maxAttempts) {
+        SteamAPI_RunCallbacks(); // Process Steam callbacks
+        
+        // Check core Steam components
+        bool coreInitialized = SteamUser() && SteamUser()->BLoggedOn() && SteamMatchmaking();
+        
+        // Check friends network specifically
+        bool friendsAvailable = SteamFriends() && SteamFriends()->GetFriendCount(k_EFriendFlagImmediate) >= 0;
+        
+        // Additional check to ensure friends network is properly connected
+        if (coreInitialized && friendsAvailable) {
+            if (!friendsNetworkReady) {
+                // Wait for at least one more callback cycle for the friends network to fully populate
+                friendsNetworkReady = true;
+                std::cout << "[GAME] Core Steam services connected, waiting for friends network...\n";
+                sf::sleep(sf::milliseconds(200)); // Extra delay for network stabilization
+                SteamAPI_RunCallbacks(); // Process additional callbacks
+                continue;
+            }
+            
+            // Additional validation - attempt to get persona name as final check
+            const char* personaName = SteamFriends()->GetPersonaName();
+            if (personaName && strlen(personaName) > 0) {
+                steamInitialized = true;
+                localSteamID = SteamUser()->GetSteamID();
+                std::cout << "[GAME] Steam fully initialized and connected as: " << personaName << "\n";
+                
+                // Test friends list functionality
+                int friendCount = SteamFriends()->GetFriendCount(k_EFriendFlagImmediate);
+                std::cout << "[GAME] Friends network ready with " << friendCount << " friends\n";
+                break;
+            }
+        }
+        
+        if (attempts % 10 == 0) {
+            std::cout << "[GAME] Waiting for Steam initialization... (" << attempts << "/" << maxAttempts << ")\n";
+        }
+        
+        sf::sleep(sf::milliseconds(100)); // Brief delay to avoid tight loop
+        attempts++;
     }
+    
+    if (!steamInitialized) {
+        std::cerr << "[ERROR] Steam failed to connect after " << maxAttempts << " attempts\n";
+        std::cerr << "[ERROR] Friends network ready: " << (friendsNetworkReady ? "Yes" : "No") << "\n";
+        
+        // Additional diagnostics
+        if (SteamUser() && !SteamUser()->BLoggedOn()) {
+            std::cerr << "[ERROR] Steam user not logged on\n";
+        }
+        
+        if (!SteamFriends()) {
+            std::cerr << "[ERROR] SteamFriends interface not available\n";
+        }
+        
+        // Set a flag to show error in LoadingState
+        steamConnectionError = true;
+    }
+}
 
     networkManager = std::make_unique<NetworkManager>(this);
-    state = std::make_unique<MainMenuState>(this);
+    state = std::make_unique<LoadingState>(this); // Start with LoadingState
+    currentState = GameState::Loading;
 
     settingsManager = std::make_shared<SettingsManager>();
     inputHandler = std::make_shared<InputHandler>(settingsManager);
     gameSettingsManager = std::make_unique<GameSettingsManager>(this);
 
-    
     // Initialize camera for game world
     camera.setSize(BASE_WIDTH, BASE_HEIGHT);
-    camera.setCenter(BASE_WIDTH / 2.f, BASE_HEIGHT / 2.f);  // Initial center
-    currentZoom = DEFAULT_ZOOM; 
+    camera.setCenter(BASE_WIDTH / 2.f, BASE_HEIGHT / 2.f);
+    currentZoom = DEFAULT_ZOOM;
 
     // Initialize UI view with base resolution
     uiView.setSize(BASE_WIDTH, BASE_HEIGHT);
@@ -63,9 +131,8 @@ void Game::Run() {
         }
 
         networkManager->ReceiveMessages();
-
         deltaTime = clock.restart().asSeconds();
-       
+
         sf::Event event;
         while (window.pollEvent(event)) {
             inputHandler->ProcessEvent(event);
@@ -75,9 +142,14 @@ void Game::Run() {
 
         if (state) state->Update(deltaTime);
 
-        // Only create a new state if we don't have that state already
         bool stateChanged = false;
         switch (currentState) {
+            case GameState::Loading:
+                if (!dynamic_cast<LoadingState*>(state.get())) {
+                    state = std::make_unique<LoadingState>(this);
+                    stateChanged = true;
+                }
+                break;
             case GameState::MainMenu:
                 if (!dynamic_cast<MainMenuState*>(state.get())) {
                     state = std::make_unique<MainMenuState>(this);

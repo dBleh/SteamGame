@@ -13,6 +13,7 @@
 #include <array>
 #include <memory>
 #include <unordered_map>
+#include <iostream>
 
 class Game;
 class GameSettingsUI;  // Add forward declaration

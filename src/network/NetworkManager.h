@@ -8,7 +8,6 @@
 #include <functional>
 #include "../utils/SteamHelpers.h"
 #include "../network/messages/MessageHandler.h"
-//#include "../network/messages/MessageDefinitions.h"
 
 class Game;
 class NetworkManager {
@@ -26,20 +25,17 @@ public:
     const std::unordered_map<CSteamID, bool, CSteamIDHash>& GetConnectedClients() const { return m_connectedClients; }
     void SetMessageHandler(std::function<void(const std::string&, CSteamID)> handler);
 
-    // Lobby-related functions
     void JoinLobbyFromNetwork(CSteamID lobby);
     const std::vector<std::pair<CSteamID, std::string>>& GetLobbyList() const { return lobbyList; }
     bool IsLobbyListUpdated() const { return lobbyListUpdated; }
     void ResetLobbyListUpdated() { lobbyListUpdated = false; }
 
-    // New method for chat messages
     void SendChatMessage(CSteamID target, const std::string& message);
     CSteamID GetCurrentLobbyID() const { return m_currentLobbyID; }
     void SendConnectionMessageOnJoin(CSteamID hostID);
     void ResetLobbyState();
     
 private:
-    // Callback handlers
     void ProcessNetworkMessages(const std::string& msg, CSteamID sender);
     bool m_pendingConnectionMessage{false};
     std::string m_connectionMessage;
@@ -53,7 +49,6 @@ private:
     std::function<void(const std::string&, CSteamID)> messageHandler;
     CSteamID m_currentLobbyID;
 
-    // STEAM_CALLBACKs
     STEAM_CALLBACK(NetworkManager, OnLobbyCreated, LobbyCreated_t, m_cbLobbyCreated);
     STEAM_CALLBACK(NetworkManager, OnGameLobbyJoinRequested, GameLobbyJoinRequested_t, m_cbGameLobbyJoinRequested);
     STEAM_CALLBACK(NetworkManager, OnLobbyEnter, LobbyEnter_t, m_cbLobbyEnter);

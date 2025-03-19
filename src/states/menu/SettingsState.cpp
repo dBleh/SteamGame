@@ -13,97 +13,104 @@ SettingsState::SettingsState(Game* game)
     
     // Set up UI elements
     float centerX = BASE_WIDTH / 2.0f;
+    float titleCenterX = BASE_WIDTH / 2.0f;
+    float contentCenterX = BASE_WIDTH / 2.0f - 300.0f;
     
-    // Title and header bar
-    titleText.setFont(game->GetFont());
-    titleText.setString("Settings");
-    titleText.setCharacterSize(36);
-    titleText.setFillColor(sf::Color::White);
-    titleText.setStyle(sf::Text::Bold);
+    // Title - centered at the top with larger font (similar to main menu)
+    game->GetHUD().addElement("settings_title", "Settings", 48, 
+                             sf::Vector2f(titleCenterX - 80.0f, 30.0f), 
+                             GameState::Settings, 
+                             HUD::RenderMode::ScreenSpace, false);
     
-    sf::FloatRect textBounds = titleText.getLocalBounds();
-    titleText.setOrigin(textBounds.width / 2.0f, textBounds.height / 2.0f);
-    titleText.setPosition(centerX, 50.0f);
+    // Add category headers using the HUD system
+    float currentY = 100.0f;  // Start position after title - reduced from original 120.0f
     
-    // Setup panel background
-    panelBackground.setSize(sf::Vector2f(800.0f, 600.0f));
-    panelBackground.setFillColor(sf::Color(30, 30, 50, 220));
-    panelBackground.setOutlineColor(sf::Color(100, 100, 200, 150));
-    panelBackground.setOutlineThickness(2.0f);
-    panelBackground.setPosition(centerX - 400.0f, 20.0f);
+    // Controls Category Header
+    game->GetHUD().addElement("controls_header", "Controls", 24, 
+                             sf::Vector2f(contentCenterX - 100.0f, currentY), 
+                             GameState::Settings, 
+                             HUD::RenderMode::ScreenSpace, false);
     
-    // Setup header bar
-    headerBar.setSize(sf::Vector2f(800.0f, 60.0f));
-    headerBar.setFillColor(sf::Color(50, 50, 80, 230));
-    headerBar.setPosition(centerX - 400.0f, 20.0f);
+    // Add separator line after header
+    currentY += 30.0f; // Reduced from original 40.0f
+    float lineWidth = 500.0f;
+    float lineThickness = 2.0f;
+    float lineStartX = contentCenterX - (lineWidth / 2.0f);
     
-    // Setup buttons for Save, Cancel, and Reset
-    InitializeButtons();
+    game->GetHUD().addGradientLine("controls_header_line", 
+                                  lineStartX,
+                                  currentY, 
+                                  lineWidth, 
+                                  lineThickness,
+                                  sf::Color::Black, 
+                                  GameState::Settings,
+                                  HUD::RenderMode::ScreenSpace,
+                                  30);
+    
+    // Set the start Y position for settings and reduce setting height and offset
+    settingsStartY = currentY + 15.0f;  // Reduced padding after header line
+    settingHeight = 24.0f;  // Reduced from original 30.0f
+    settingOffset = 30.0f;  // Reduced from original 40.0f
+    
+    // Initialize buttons for Save, Cancel, and Reset
+    // Bottom buttons need to be positioned absolutely to avoid overlap
+    InitializeButtons(lineWidth, contentCenterX - (lineWidth / 2.0f) - 900.0f);
     
     // Initialize settings list
     InitializeSettings();
 }
 
 void SettingsState::InitializeButtons() {
+    // This empty implementation is kept for compatibility
+    // The actual button initialization is done in the overloaded version
+}
+
+void SettingsState::InitializeButtons(float lineWidth, float lineStartX) {
     float centerX = BASE_WIDTH / 2.0f;
-    float buttonY = BASE_HEIGHT - 60.0f;
-    float buttonWidth = 150.0f;
-    float buttonHeight = 40.0f;
-    float buttonSpacing = 30.0f;
     
-    // Save button
-    saveButton.shape.setSize(sf::Vector2f(buttonWidth, buttonHeight));
-    saveButton.shape.setFillColor(sf::Color(50, 100, 50, 220));
-    saveButton.shape.setOutlineColor(sf::Color(100, 200, 100, 150));
-    saveButton.shape.setOutlineThickness(2.0f);
-    saveButton.shape.setPosition(centerX - buttonWidth - buttonSpacing, buttonY);
+    // Button positions from the bottom of the screen
+    float buttonY = BASE_HEIGHT - 220.0f; 
+    float buttonSpacing = 40.0f;
     
-    saveButton.text.setFont(game->GetFont());
-    saveButton.text.setString("Save");
-    saveButton.text.setCharacterSize(20);
-    saveButton.text.setFillColor(sf::Color::White);
-    sf::FloatRect saveBounds = saveButton.text.getLocalBounds();
-    saveButton.text.setOrigin(saveBounds.width / 2.0f, saveBounds.height / 2.0f);
-    saveButton.text.setPosition(
-        saveButton.shape.getPosition().x + buttonWidth / 2.0f,
-        saveButton.shape.getPosition().y + buttonHeight / 2.0f - 5.0f
-    );
+   
+                                  
+    // Update current Y position with fixed spacing
+    buttonY += buttonSpacing * 0.5f;
     
-    // Cancel button
-    cancelButton.shape.setSize(sf::Vector2f(buttonWidth, buttonHeight));
-    cancelButton.shape.setFillColor(sf::Color(100, 50, 50, 220));
-    cancelButton.shape.setOutlineColor(sf::Color(200, 100, 100, 150));
-    cancelButton.shape.setOutlineThickness(2.0f);
-    cancelButton.shape.setPosition(centerX + buttonSpacing, buttonY);
+    // Save button - with connected line for animation
+    game->GetHUD().addElement("save_button", "Save Changes", 24, 
+                             sf::Vector2f(centerX - 100.0f, buttonY), 
+                             GameState::Settings, 
+                             HUD::RenderMode::ScreenSpace, true,
+                             "button_top_line", "button_mid_line");
     
-    cancelButton.text.setFont(game->GetFont());
-    cancelButton.text.setString("Cancel");
-    cancelButton.text.setCharacterSize(20);
-    cancelButton.text.setFillColor(sf::Color::White);
-    sf::FloatRect cancelBounds = cancelButton.text.getLocalBounds();
-    cancelButton.text.setOrigin(cancelBounds.width / 2.0f, cancelBounds.height / 2.0f);
-    cancelButton.text.setPosition(
-        cancelButton.shape.getPosition().x + buttonWidth / 2.0f,
-        cancelButton.shape.getPosition().y + buttonHeight / 2.0f - 5.0f
-    );
+    // Update current Y position with fixed spacing
+    buttonY += buttonSpacing;
     
-    // Reset button
-    resetButton.shape.setSize(sf::Vector2f(buttonWidth, buttonHeight));
-    resetButton.shape.setFillColor(sf::Color(80, 80, 100, 220));
-    resetButton.shape.setOutlineColor(sf::Color(150, 150, 200, 150));
-    resetButton.shape.setOutlineThickness(2.0f);
-    resetButton.shape.setPosition(centerX - buttonWidth / 2.0f, buttonY + buttonHeight + 10.0f);
+ 
+    // Update current Y position with fixed spacing
+    buttonY += buttonSpacing * 0.5f;
     
-    resetButton.text.setFont(game->GetFont());
-    resetButton.text.setString("Reset to Defaults");
-    resetButton.text.setCharacterSize(18);
-    resetButton.text.setFillColor(sf::Color::White);
-    sf::FloatRect resetBounds = resetButton.text.getLocalBounds();
-    resetButton.text.setOrigin(resetBounds.width / 2.0f, resetBounds.height / 2.0f);
-    resetButton.text.setPosition(
-        resetButton.shape.getPosition().x + buttonWidth / 2.0f,
-        resetButton.shape.getPosition().y + buttonHeight / 2.0f - 5.0f
-    );
+    // Reset to defaults button - with connected line for animation
+    game->GetHUD().addElement("reset_button", "Reset to Defaults", 24, 
+                             sf::Vector2f(centerX - 100.0f, buttonY), 
+                             GameState::Settings, 
+                             HUD::RenderMode::ScreenSpace, true,
+                             "button_mid_line", "button_bottom_line");
+    
+    // Update current Y position with fixed spacing
+    buttonY += buttonSpacing;
+    
+    
+    // Update current Y position with fixed spacing
+    buttonY += buttonSpacing * 0.5f;
+    
+    // Return to Main Menu button - with connected line for animation
+    game->GetHUD().addElement("return_button", "Return to Main Menu", 24, 
+                             sf::Vector2f(centerX - 100.0f, buttonY), 
+                             GameState::Settings, 
+                             HUD::RenderMode::ScreenSpace, true,
+                             "button_bottom_line", "");
 }
 
 void SettingsState::InitializeSettings() {
@@ -149,15 +156,17 @@ void SettingsState::InitializeSettings() {
                  [this]() { return currentSettings.toggleReady; },
                  [this](sf::Keyboard::Key key) { currentSettings.toggleReady = key; });
     
-    // Other Settings
-    AddToggleSetting("showFPS", "Show FPS", 
-                    [this]() { return currentSettings.showFPS; },
-                    [this](bool value) { currentSettings.showFPS = value; });
+    // Initialize separator lines for categories with better positioning
+    float centerX = BASE_WIDTH / 2.0f;
+    float contentCenterX = BASE_WIDTH / 2.0f;
+    float lineWidth = 500.0f;
+    float lineStartX = contentCenterX - (lineWidth / 2.0f);
     
-    AddSliderSetting("volumeLevel", "Volume", 
-                    [this]() { return currentSettings.volumeLevel; },
-                    [this](int value) { currentSettings.volumeLevel = value; },
-                    0, 100, 5);
+    // Calculate the position for Other Settings category - based on the number of control settings
+    // 10 control settings + space for header
+    float currentY = settingsStartY + (10 * settingOffset) + 20.0f;
+    
+    
 }
 
 void SettingsState::AddKeySetting(const std::string& id, const std::string& displayName, 
@@ -232,18 +241,18 @@ void SettingsState::AddSliderSetting(const std::string& id, const std::string& d
 
 void SettingsState::Update(float dt) {
     float centerX = BASE_WIDTH / 2.0f;
+    float contentCenterX = BASE_WIDTH / 2.0f - 380.0f;
     float yPos = settingsStartY;
-    
-    // Add spacing for category header
-    yPos += 40.0f;
     
     // Update all settings with their current values and mouse rectangles
     for (size_t i = 0; i < settings.size(); ++i) {
         auto& setting = settings[i];
         
-        // Add space for category header
+        // Add space for "Other Settings" category header
         if (i == 10) { // Index where Other settings start (after toggleReady)
-            yPos += 60.0f; // Add space for category header
+            // Skip to the position after the "Other Settings" header, calculated in InitializeSettings
+            float otherSettingsY = settingsStartY + (10 * settingOffset) + 65.0f; // 10 previous settings + header + line + spacing
+            yPos = otherSettingsY;
         }
         
         // Don't update current value if waiting for input
@@ -252,9 +261,9 @@ void SettingsState::Update(float dt) {
         }
         
         // Update the mouse click area for this setting
-        setting.mouseRect = sf::FloatRect(centerX - 350.0f, yPos, 700.0f, settingHeight);
+        setting.mouseRect = sf::FloatRect(contentCenterX - 50.0f, yPos, 700.0f, settingHeight);
         
-        // For sliders, add clickable areas for left/right adjustments
+        // For sliders, add clickable areas for left/right adjustments with proper spacing
         if (setting.type == SettingType::Slider) {
             setting.sliderLeftRect = sf::FloatRect(centerX + 30.0f, yPos, 30.0f, settingHeight);
             setting.sliderRightRect = sf::FloatRect(centerX + 120.0f, yPos, 30.0f, settingHeight);
@@ -263,32 +272,14 @@ void SettingsState::Update(float dt) {
         yPos += settingOffset;
     }
     
-    // Check if mouse is hovering over buttons
-    sf::Vector2i mousePos = sf::Mouse::getPosition(game->GetWindow());
-    sf::Vector2f mousePosView = game->GetWindow().mapPixelToCoords(mousePos, game->GetUIView());
-    
-    saveButton.isHovered = saveButton.shape.getGlobalBounds().contains(mousePosView);
-    cancelButton.isHovered = cancelButton.shape.getGlobalBounds().contains(mousePosView);
-    resetButton.isHovered = resetButton.shape.getGlobalBounds().contains(mousePosView);
-    
-    // Update button colors based on hover state
-    saveButton.shape.setFillColor(saveButton.isHovered ? 
-                                 sf::Color(80, 150, 80, 220) : 
-                                 sf::Color(50, 100, 50, 220));
-    
-    cancelButton.shape.setFillColor(cancelButton.isHovered ? 
-                                   sf::Color(150, 80, 80, 220) : 
-                                   sf::Color(100, 50, 50, 220));
-    
-    resetButton.shape.setFillColor(resetButton.isHovered ? 
-                                  sf::Color(100, 100, 130, 220) : 
-                                  sf::Color(80, 80, 100, 220));
+    // Update HUD animations for line shake effect
+    game->GetHUD().update(game->GetWindow(), GameState::Settings, dt);
 }
 
 void SettingsState::DrawSelectedIndicator(float yPos) {
-    sf::RectangleShape indicator(sf::Vector2f(10.0f, 10.0f));
+    sf::RectangleShape indicator(sf::Vector2f(8.0f, 8.0f)); // Smaller indicator
     indicator.setFillColor(sf::Color::Yellow);
-    indicator.setPosition(250.0f, yPos + settingHeight / 2.0f - 5.0f);
+    indicator.setPosition(250.0f, yPos + settingHeight / 2.0f - 4.0f);
     game->GetWindow().draw(indicator);
 }
 
@@ -297,7 +288,7 @@ void SettingsState::DrawSlider(const Setting& setting, float yPos) {
     
     float centerX = BASE_WIDTH / 2.0f;
     float sliderWidth = 150.0f;
-    float sliderHeight = 10.0f;
+    float sliderHeight = 8.0f; // Smaller slider
     float sliderX = centerX + 50.0f;
     float sliderY = yPos + (settingHeight - sliderHeight) / 2.0f;
     
@@ -316,68 +307,57 @@ void SettingsState::DrawSlider(const Setting& setting, float yPos) {
     game->GetWindow().draw(sliderFill);
     
     // Draw slider handle
-    sf::CircleShape handle(8.0f);
+    sf::CircleShape handle(6.0f); // Smaller handle
     handle.setFillColor(sf::Color::White);
-    handle.setOrigin(8.0f, 8.0f);
+    handle.setOrigin(6.0f, 6.0f);
     handle.setPosition(sliderX + sliderWidth * fillPercent, sliderY + sliderHeight / 2.0f);
     game->GetWindow().draw(handle);
     
-    // Draw arrow indicators for adjusting the slider
+    // Draw arrow indicators for adjusting the slider with better positioning
+    float arrowOffset = 12.0f; // Smaller offset for better spacing
+    
     sf::ConvexShape leftArrow;
     leftArrow.setPointCount(3);
-    leftArrow.setPoint(0, sf::Vector2f(sliderX - 20.0f, sliderY + sliderHeight / 2.0f));
-    leftArrow.setPoint(1, sf::Vector2f(sliderX - 10.0f, sliderY - 5.0f));
-    leftArrow.setPoint(2, sf::Vector2f(sliderX - 10.0f, sliderY + sliderHeight + 5.0f));
+    leftArrow.setPoint(0, sf::Vector2f(sliderX - arrowOffset - 4.0f, sliderY + sliderHeight / 2.0f));
+    leftArrow.setPoint(1, sf::Vector2f(sliderX - arrowOffset + 4.0f, sliderY - 4.0f));
+    leftArrow.setPoint(2, sf::Vector2f(sliderX - arrowOffset + 4.0f, sliderY + sliderHeight + 4.0f));
     leftArrow.setFillColor(sf::Color(180, 180, 200));
     game->GetWindow().draw(leftArrow);
     
     sf::ConvexShape rightArrow;
     rightArrow.setPointCount(3);
-    rightArrow.setPoint(0, sf::Vector2f(sliderX + sliderWidth + 20.0f, sliderY + sliderHeight / 2.0f));
-    rightArrow.setPoint(1, sf::Vector2f(sliderX + sliderWidth + 10.0f, sliderY - 5.0f));
-    rightArrow.setPoint(2, sf::Vector2f(sliderX + sliderWidth + 10.0f, sliderY + sliderHeight + 5.0f));
+    rightArrow.setPoint(0, sf::Vector2f(sliderX + sliderWidth + arrowOffset + 4.0f, sliderY + sliderHeight / 2.0f));
+    rightArrow.setPoint(1, sf::Vector2f(sliderX + sliderWidth + arrowOffset - 4.0f, sliderY - 4.0f));
+    rightArrow.setPoint(2, sf::Vector2f(sliderX + sliderWidth + arrowOffset - 4.0f, sliderY + sliderHeight + 4.0f));
     rightArrow.setFillColor(sf::Color(180, 180, 200));
     game->GetWindow().draw(rightArrow);
 }
 
 void SettingsState::DrawSettings() {
-    float centerX = BASE_WIDTH / 2.0f;
+    float contentCenterX = BASE_WIDTH / 2.0f - 380.0f;
     float yPos = settingsStartY;
-    
-    // Draw title for settings categories
-    sf::Text categoryText;
-    categoryText.setFont(game->GetFont());
-    categoryText.setCharacterSize(24);
-    categoryText.setFillColor(sf::Color(200, 200, 255));
-    
-    // Controls category
-    categoryText.setString("Controls");
-    categoryText.setPosition(centerX - 350.0f, yPos);
-    game->GetWindow().draw(categoryText);
-    yPos += 40.0f;
+    float centerX = BASE_WIDTH / 2.0f;
     
     // Draw settings
     for (size_t i = 0; i < settings.size(); ++i) {
         const auto& setting = settings[i];
         
-        // Draw category headers
+        // Handle category transition
         if (i == 10) { // Index where Other settings start (after toggleReady)
-            yPos += 20.0f; // Add some space
-            categoryText.setString("Other Settings");
-            categoryText.setPosition(centerX - 350.0f, yPos);
-            game->GetWindow().draw(categoryText);
-            yPos += 40.0f;
+            // Skip to the position after the "Other Settings" header, calculated in Update
+            float otherSettingsY = settingsStartY + (10 * settingOffset) + 65.0f; // 10 previous settings + header + spacing
+            yPos = otherSettingsY;
         }
         
         // Setting name
         sf::Text nameText;
         nameText.setFont(game->GetFont());
         nameText.setString(setting.displayName);
-        nameText.setCharacterSize(20);
-        nameText.setFillColor(sf::Color::White);
-        nameText.setPosition(centerX - 320.0f, yPos);
+        nameText.setCharacterSize(18); // Smaller text
+        nameText.setFillColor(sf::Color::Black);
+        nameText.setPosition(contentCenterX - 20.0f, yPos);
         
-        // Setting value
+        // Setting value with improved positioning
         sf::Text valueText;
         valueText.setFont(game->GetFont());
         
@@ -386,19 +366,27 @@ void SettingsState::DrawSettings() {
             valueText.setFillColor(sf::Color::Yellow);
         } else {
             valueText.setString(setting.currentValue);
-            valueText.setFillColor(sf::Color::White);
+            valueText.setFillColor(sf::Color::Black);
         }
         
-        valueText.setCharacterSize(20);
-        valueText.setPosition(centerX + 50.0f, yPos);
+        valueText.setCharacterSize(18); // Smaller text
+        
+        // Adjust value text position based on setting type
+        if (setting.type == SettingType::Slider) {
+            // Position to the left of the slider for better layout
+            valueText.setPosition(centerX, yPos);
+        } else {
+            // Normal positioning for other setting types
+            valueText.setPosition(centerX + 50.0f, yPos);
+        }
         
         // Highlight selected setting
         if (i == static_cast<size_t>(selectedIndex)) {
-            nameText.setFillColor(sf::Color::Yellow);
+            nameText.setFillColor(sf::Color::White);
             if (!setting.isWaitingForInput) {
-                valueText.setFillColor(sf::Color::Yellow);
+                valueText.setFillColor(sf::Color::White);
             }
-            DrawSelectedIndicator(yPos);
+            //DrawSelectedIndicator(yPos);
         }
         
         game->GetWindow().draw(nameText);
@@ -412,49 +400,33 @@ void SettingsState::DrawSettings() {
         yPos += settingOffset;
     }
     
-    // Draw buttons
-    game->GetWindow().draw(saveButton.shape);
-    game->GetWindow().draw(saveButton.text);
-    
-    game->GetWindow().draw(cancelButton.shape);
-    game->GetWindow().draw(cancelButton.text);
-    
-    game->GetWindow().draw(resetButton.shape);
-    game->GetWindow().draw(resetButton.text);
-    
-    // Draw controls at the bottom
-    float controlsY = BASE_HEIGHT - 100.0f;
+    // Draw controls hint at the bottom
+    float controlsY = BASE_HEIGHT - 20.0f; // Position closer to bottom
     
     sf::Text controlsText;
     controlsText.setFont(game->GetFont());
-    controlsText.setCharacterSize(18);
+    controlsText.setCharacterSize(14); // Smaller hint text
     controlsText.setFillColor(sf::Color::White);
-    controlsText.setString("Up/Down: Navigate | Enter/Click: Change | Click buttons to Save/Cancel/Reset");
+    controlsText.setString("Up/Down: Navigate | Enter/Click: Change");
     
     sf::FloatRect bounds = controlsText.getLocalBounds();
-    controlsText.setPosition(centerX - bounds.width / 2.0f, controlsY);
+    controlsText.setPosition(centerX - bounds.width / 2.0f - 500, controlsY);
     
     game->GetWindow().draw(controlsText);
 }
 
 void SettingsState::Render() {
-    // Clear the window with a dark background
-    game->GetWindow().clear(sf::Color(20, 20, 30));
+    // Clear the window with the same background color as MainMenuState
+    game->GetWindow().clear(MAIN_BACKGROUND_COLOR);
     
     // Use UI view for settings screen
     game->GetWindow().setView(game->GetUIView());
     
-    // Draw panel background
-    game->GetWindow().draw(panelBackground);
-    
-    // Draw header bar
-    game->GetWindow().draw(headerBar);
-    
-    // Draw title
-    game->GetWindow().draw(titleText);
-    
     // Draw all settings
     DrawSettings();
+    
+    // Draw HUD elements
+    game->GetHUD().render(game->GetWindow(), game->GetUIView(), GameState::Settings);
     
     // Display the rendered frame
     game->GetWindow().display();
@@ -503,28 +475,44 @@ void SettingsState::ProcessEvent(const sf::Event& event) {
         return;
     }
     
-    // Handle mouse clicks
+    // Handle mouse clicks on HUD elements
     if (event.type == sf::Event::MouseButtonPressed && event.mouseButton.button == sf::Mouse::Left) {
-        sf::Vector2i mousePos(event.mouseButton.x, event.mouseButton.y);
-        sf::Vector2f mousePosView = game->GetWindow().mapPixelToCoords(mousePos, game->GetUIView());
+        // Get window mouse position
+        sf::Vector2i mouseWindowPos(event.mouseButton.x, event.mouseButton.y);
         
-        // Check if a button was clicked
-        if (saveButton.shape.getGlobalBounds().contains(mousePosView)) {
-            SaveAndExit();
-            return;
-        }
+        // Convert to UI coordinates
+        sf::Vector2f mouseUIPos = game->WindowToUICoordinates(mouseWindowPos);
         
-        if (cancelButton.shape.getGlobalBounds().contains(mousePosView)) {
-            CancelAndExit();
-            return;
-        }
-        
-        if (resetButton.shape.getGlobalBounds().contains(mousePosView)) {
-            ResetToDefaults();
-            return;
+        // Only process clicks within the UI viewport
+        if (mouseUIPos.x >= 0 && mouseUIPos.y >= 0) {
+            const auto& elements = game->GetHUD().getElements();
+            
+            for (const auto& [id, element] : elements) {
+                if (element.hoverable && element.visibleState == GameState::Settings) {
+                    // Create a copy of the text to check bounds
+                    sf::Text textCopy = element.text;
+                    textCopy.setPosition(element.pos);
+                    sf::FloatRect bounds = textCopy.getGlobalBounds();
+                    
+                    if (bounds.contains(mouseUIPos)) {
+                        if (id == "save_button") {
+                            SaveAndExit();
+                            return;
+                        } else if (id == "reset_button") {
+                            ResetToDefaults();
+                            return;
+                        } else if (id == "return_button") {
+                            CancelAndExit();
+                            return;
+                        }
+                    }
+                }
+            }
         }
         
         // Check if a setting was clicked
+        sf::Vector2f mousePosView = game->GetWindow().mapPixelToCoords(mouseWindowPos, game->GetUIView());
+        
         for (size_t i = 0; i < settings.size(); ++i) {
             if (settings[i].mouseRect.contains(mousePosView)) {
                 selectedIndex = i;
@@ -618,6 +606,7 @@ void SettingsState::ProcessEvent(const sf::Event& event) {
     }
 }
 
+
 void SettingsState::SaveAndExit() {
     // Update the settings in the game's settings manager with our modified copy
     *const_cast<GameSettings*>(&settingsManager->GetSettings()) = currentSettings;
@@ -642,6 +631,10 @@ void SettingsState::SaveAndExit() {
     inputManager.SetKeyBinding(GameAction::ToggleCursorLock, settings.toggleCursorLock);
     inputManager.SetKeyBinding(GameAction::ToggleReady, settings.toggleReady);
     
+    // Animate the save button line when saving
+    game->GetHUD().animateLine("button_top_line", 4.0f);
+    game->GetHUD().animateLine("button_mid_line", 2.0f);
+    
     // Print debug info about updated settings
     std::cout << "[SETTINGS] Settings saved. Key bindings updated:" << std::endl;
     std::cout << "  MoveUp: " << SettingsManager::KeyToString(settings.moveUp) << std::endl;
@@ -650,13 +643,19 @@ void SettingsState::SaveAndExit() {
     std::cout << "  MoveRight: " << SettingsManager::KeyToString(settings.moveRight) << std::endl;
     std::cout << "  Shoot: " << SettingsManager::KeyToString(settings.shoot) << std::endl;
     
-    // Return to the main menu
+    // Return to the main menu after a short delay to show animation
+    // In a real implementation, you might want to add a timer here
+    // For simplicity, we'll just return immediately
     game->SetCurrentState(GameState::MainMenu);
 }
 
 void SettingsState::CancelAndExit() {
     // Discard changes and return to the main menu
     std::cout << "[SETTINGS] Settings changes cancelled" << std::endl;
+    
+    // Animate the return button line when canceling
+    game->GetHUD().animateLine("button_bottom_line", 4.0f);
+    
     game->SetCurrentState(GameState::MainMenu);
 }
 
@@ -668,6 +667,10 @@ void SettingsState::ResetToDefaults() {
     for (auto& setting : settings) {
         setting.currentValue = setting.getValue();
     }
+    
+    // Animate the reset button line
+    game->GetHUD().animateLine("button_mid_line", 4.0f);
+    game->GetHUD().animateLine("button_bottom_line", 2.0f);
     
     std::cout << "[SETTINGS] Settings reset to defaults" << std::endl;
 }

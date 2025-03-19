@@ -113,7 +113,7 @@ void PlayerManager::UpdatePlayerPosition(float dt, const std::string& playerID, 
 void PlayerManager::UpdatePlayerNameDisplay(const std::string& playerID, RemotePlayer& rp, Game* game) {
     // Only show ready status in Lobby state
     if (game->GetCurrentState() == GameState::Lobby) {
-        std::string status = rp.isReady ? " ✓" : " X";
+        std::string status = rp.isReady ? " [R]" : " [X]";
         rp.nameText.setString(rp.baseName + status);
     } else {
         rp.nameText.setString(rp.baseName);
@@ -253,7 +253,7 @@ void PlayerManager::SetReadyStatus(const std::string& id, bool ready) {
         players[id].isReady = ready;        
         // Only update the visible name with ready status if in Lobby state
         if (game->GetCurrentState() == GameState::Lobby) {
-            std::string status = ready ? " ✓" : " X";
+            std::string status = ready ? " [R]" : " [X]";
             players[id].nameText.setString(players[id].baseName + status);
         }
     }
@@ -434,8 +434,8 @@ void PlayerManager::CheckBulletCollisions() {
                 remotePlayer.player.TakeDamage(damageAmount);
                 
                 if (remotePlayer.player.IsDead()) {
-                    // Increment kill count for the shooter
-                    IncrementPlayerKills(bulletIt->GetShooterID());
+                    // CHANGE: Don't increment kills here directly
+                    // Just report the death to the network
                     PlayerDied(playerID, bulletIt->GetShooterID());
                 }
                 
@@ -518,6 +518,40 @@ void PlayerManager::HandleKill(const std::string& killerID, int enemyId) {
     if (isHost) {
         // Host logic - authoritative source of kill tracking
         if (players.find(normalizedKillerID) != players.end()) {
+            // CHANGE: Use a static unordered_map to track recently processed kills
+            // to prevent double-processing
+            static std::unordered_map<std::string, std::chrono::steady_clock::time_point> recentKills;
+            
+            // Create a unique key for this kill
+            std::string killKey = normalizedKillerID + "_" + std::to_string(enemyId);
+            
+            // Check if we've recently processed this kill (within last 2 seconds)
+            auto now = std::chrono::steady_clock::now();
+            auto it = recentKills.find(killKey);
+            
+            if (it != recentKills.end()) {
+                float elapsed = std::chrono::duration<float>(now - it->second).count();
+                if (elapsed < 2.0f) {
+                    // We've recently processed this exact kill, skip it
+                    std::cout << "[HOST] Ignoring duplicate kill claim for " << normalizedKillerID 
+                              << " and enemy " << enemyId << " (processed " << elapsed << "s ago)\n";
+                    return;
+                }
+            }
+            
+            // Record this kill as processed
+            recentKills[killKey] = now;
+            
+            // Clean up old entries from recentKills map (older than 10 seconds)
+            for (auto it = recentKills.begin(); it != recentKills.end();) {
+                float elapsed = std::chrono::duration<float>(now - it->second).count();
+                if (elapsed > 10.0f) {
+                    it = recentKills.erase(it);
+                } else {
+                    ++it;
+                }
+            }
+            
             // Increment kill counter
             players[normalizedKillerID].kills++;
             
@@ -541,6 +575,7 @@ void PlayerManager::HandleKill(const std::string& killerID, int enemyId) {
                   << " and enemy " << enemyId << "\n";
     }
 }
+
 void PlayerManager::RespawnPlayer(const std::string& playerID) {
     // Normalize the player ID for consistent comparison
     std::string normalizedID = playerID;
@@ -672,11 +707,25 @@ void PlayerManager::HandleForceFieldZap(const std::string& playerID, int enemyId
             it->second.money += 10; // 10 money for hitting an enemy with force field
         }
     } else {
-        // If the enemy was killed, use the centralized kill handling
-        HandleKill(playerID, enemyId);
+        // CHANGE: If the enemy was killed, use the centralized kill handling
+        // but only if we're the host
+        CSteamID localSteamID = SteamUser()->GetSteamID();
+        CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+        
+        if (localSteamID == hostID) {
+            // Only the host attributes kills
+            HandleKill(playerID, enemyId);
+        } else {
+            // Clients send a kill message to the host for validation
+            std::string killMsg = PlayerMessageHandler::FormatKillMessage(playerID, enemyId);
+            game->GetNetworkManager().SendMessage(hostID, killMsg);
+            
+            std::cout << "[CLIENT] Sent force field kill claim to host for player " << playerID 
+                    << " and enemy " << enemyId << "\n";
+        }
     }
     
-    // If this is the local player, send a network message
+    // If this is the local player, send a network message for the zap effect
     if (playerID == localPlayerID) {
         // Format and send force field zap message
         std::string zapMsg = PlayerMessageHandler::FormatForceFieldZapMessage(playerID, enemyId, damage);

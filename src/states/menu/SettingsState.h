@@ -53,13 +53,14 @@ public:
     
 private:
     // Constants
-    const float settingsStartY = 100.0f;
-    const float settingHeight = 30.0f;
-    const float settingOffset = 40.0f;
+    float settingsStartY = 160.0f; // Adjusted to start after the Controls header
+    float settingHeight = 30.0f;
+    float settingOffset = 40.0f;
     
     // Methods
     void InitializeSettings();
-    void InitializeButtons();
+    void InitializeButtons(float lineWidth, float lineStartX);
+    void InitializeButtons(); // Kept for backward compatibility
     
     void AddKeySetting(const std::string& id, const std::string& displayName, 
                       const std::function<sf::Keyboard::Key()>& getKey,
@@ -82,12 +83,12 @@ private:
     void CancelAndExit();
     void ResetToDefaults();
     
-    // UI Elements
+    // UI Elements - Kept for backward compatibility
     sf::Text titleText;
     sf::RectangleShape panelBackground;
     sf::RectangleShape headerBar;
     
-    // Buttons
+    // Buttons - Kept for backward compatibility
     UIButton saveButton;
     UIButton cancelButton;
     UIButton resetButton;

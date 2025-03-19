@@ -5,11 +5,12 @@
 
 MainMenuState::MainMenuState(Game* game) : State(game) {
     // Use fixed dimensions based on BASE_WIDTH and BASE_HEIGHT instead of window size
-    float centerX = BASE_WIDTH / 2.0f;
+    float titleCenterX = BASE_WIDTH / 2.0f;
+    float centerX = BASE_WIDTH / 2.0f - 300.0f;
     
     // Fixed positions instead of percentages
     float titleY = 50.0f; // Fixed pixel position
-    float titleGapAfter = 100.0f; // Fixed pixel distance
+    float titleGapAfter = 120.0f; // Fixed pixel distance
     float optionSpacing = 80.0f; // Fixed pixel distance
     float lineWidth = 500.0f; // Fixed line width
     float lineThickness = 2.0f; // Fixed thickness for lines
@@ -19,7 +20,7 @@ MainMenuState::MainMenuState(Game* game) : State(game) {
     
     // Title - centered at the top with larger font
     game->GetHUD().addElement("title", "Main Menu", 48, 
-                             sf::Vector2f(centerX - 120.0f, titleY), 
+                             sf::Vector2f(titleCenterX - 120.0f, titleY), 
                              GameState::MainMenu, 
                              HUD::RenderMode::ScreenSpace, false);
     
@@ -27,16 +28,7 @@ MainMenuState::MainMenuState(Game* game) : State(game) {
     // Adding fixed gap after title
     float currentY = titleY + titleGapAfter;
     
-    // Top separator line - gradient line
-    game->GetHUD().addGradientLine("topLine", 
-                                  lineStartX,
-                                  currentY, 
-                                  lineWidth, 
-                                  lineThickness,
-                                  sf::Color::Black, 
-                                  GameState::MainMenu, 
-                                  HUD::RenderMode::ScreenSpace,
-                                  30);
+    
     
     // Update current Y position with fixed spacing
     currentY += optionSpacing * 0.6f;
@@ -109,6 +101,21 @@ MainMenuState::MainMenuState(Game* game) : State(game) {
                                   GameState::MainMenu,
                                   HUD::RenderMode::ScreenSpace,
                                   30);
+                                  
+    // Update current Y position with fixed spacing
+    currentY += optionSpacing * 0.6f;
+    
+    // Exit Game option - with connected lines for animation
+    game->GetHUD().addElement("exitGame", "Exit Game", 30, 
+                             sf::Vector2f(centerX - 100.0f, currentY), 
+                             GameState::MainMenu, 
+                             HUD::RenderMode::ScreenSpace, true,
+                             "bottomLine", "exitLine");
+                             
+    // Update current Y position with fixed spacing
+    currentY += optionSpacing;
+    
+    
 }
 
 void MainMenuState::Update(float dt) {
@@ -143,6 +150,8 @@ void MainMenuState::ProcessEvent(const sf::Event& event) {
             game->SetCurrentState(GameState::LobbySearch);
         } else if (event.key.code == sf::Keyboard::Num3) {
             game->SetCurrentState(GameState::Settings);
+        } else if (event.key.code == sf::Keyboard::Num4) {
+            game->GetWindow().close();
         }
     } else if (event.type == sf::Event::MouseButtonPressed && event.mouseButton.button == sf::Mouse::Left) {
         // Get window mouse position
@@ -170,6 +179,8 @@ void MainMenuState::ProcessEvent(const sf::Event& event) {
                             game->SetCurrentState(GameState::LobbySearch);
                         } else if (id == "settings") {
                             game->SetCurrentState(GameState::Settings);
+                        } else if (id == "exitGame") {
+                            game->GetWindow().close();
                         }
                     }
                 }

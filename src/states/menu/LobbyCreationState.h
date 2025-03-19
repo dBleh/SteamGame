@@ -14,26 +14,21 @@ public:
     void Render() override;
     void ProcessEvent(const sf::Event& event) override;
     
-    // Added state lifecycle methods
     void Enter();
     void Exit();
-
-    // Function to handle lobby entry logic after creation, without player references
-    //void onLobbyEnter(CSteamID lobbyID);
-    
-    // Added callback for when lobby creation fails
-    void onLobbyCreationFailed();
     void CreateLobby();
-
-private:
-    void ProcessEvents(const sf::Event& event);
-
     bool isInputActive = false;
     float messageTimer = 0.0f;
     std::string previousStatusText = "";
+    bool m_creationInProgress = false;
+    float retryTimer = 0.0f;  // Timer for retry delay
+    int retryCount = 0;       // Number of retries attempted
+    const int maxRetries = 3; // Maximum number of retries
+    const float retryDelay = 2.0f; // Delay between retries in seconds
+private:
+    void ProcessEvents(const sf::Event& event); // Note: This is unused in your current implementation
+
     
-    // Flag to track if lobby creation is in progress
-    bool m_creationInProgress;
 };
 
 #endif // LOBBYCREATIONSTATE_H

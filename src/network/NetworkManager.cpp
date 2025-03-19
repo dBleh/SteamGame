@@ -11,7 +11,7 @@
 #include "messages/EnemyMessageHandler.h"
 #include "messages/StateMessageHandler.h"
 #include "messages/SystemMessageHandler.h"
-
+#include "../states/menu/LobbyCreationState.h"
 #define GAME_ID "SteamGame_v1"
 #define MAX_PACKET_SIZE 1024
 
@@ -192,14 +192,32 @@ void NetworkManager::JoinLobbyFromNetwork(CSteamID lobby) {
 }
 
 void NetworkManager::OnLobbyCreated(LobbyCreated_t* pParam) {
+    const int maxRetries = 3;
+    const float retryDelay = 2.0f;
+
     if (pParam->m_eResult != k_EResultOK) {
         std::cerr << "[LOBBY] Failed to create lobby. EResult=" << pParam->m_eResult << "\n";
+        // Check if current state is LobbyCreationState
+        if (auto* lobbyState = dynamic_cast<LobbyCreationState*>(game->GetState())) {
+            if (pParam->m_eResult == k_EResultNoConnection && lobbyState->retryCount < maxRetries) {
+                lobbyState->retryCount++;
+                std::cout << "[LOBBY] No connection to Steam servers, retrying (" << lobbyState->retryCount << "/" << maxRetries << ") in " << retryDelay << " seconds...\n";
+                game->GetHUD().updateText("statusText", "No connection to Steam, retrying (" + std::to_string(lobbyState->retryCount) + "/" + std::to_string(maxRetries) + ")...");
+                lobbyState->retryTimer = retryDelay;
+                lobbyState->m_creationInProgress = false; // Allow retry
+                return;
+            }
+            // Reset creation flag even on final failure
+            lobbyState->m_creationInProgress = false;
+        }
+        
+        game->GetHUD().updateText("statusText", "Failed to create lobby. Please try again later.");
         game->SetCurrentState(GameState::MainMenu);
         return;
     }
-    
+
+    // Success case
     m_currentLobbyID = CSteamID(pParam->m_ulSteamIDLobby);
-    
     SteamMatchmaking()->SetLobbyData(m_currentLobbyID, "name", game->GetLobbyNameInput().c_str());
     SteamMatchmaking()->SetLobbyData(m_currentLobbyID, "game_id", GAME_ID);
     CSteamID myID = SteamUser()->GetSteamID();
@@ -208,10 +226,14 @@ void NetworkManager::OnLobbyCreated(LobbyCreated_t* pParam) {
     SteamMatchmaking()->SetLobbyJoinable(m_currentLobbyID, true);
     
     game->SetInLobby(true);
-    
     m_connectedClients[myID] = true;
     
     std::cout << "[LOBBY] Created lobby " << m_currentLobbyID.ConvertToUint64() << std::endl;
+    
+    // Reset creation flag on success
+    if (auto* lobbyState = dynamic_cast<LobbyCreationState*>(game->GetState())) {
+        lobbyState->m_creationInProgress = false;
+    }
     
     if (game->GetCurrentState() == GameState::LobbyCreation) {
         game->SetCurrentState(GameState::Lobby);

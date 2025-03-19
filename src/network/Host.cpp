@@ -214,6 +214,39 @@ void HostNetwork::ProcessKillMessage(Game& game, HostNetwork& host, const Parsed
     }
     
     if (validKill) {
+        // CHANGE: Use a static map to track recently processed kill messages
+        static std::unordered_map<std::string, std::chrono::steady_clock::time_point> recentKillMessages;
+        
+        // Create a unique key for this kill message
+        std::string killKey = normalizedKillerID + "_" + std::to_string(enemyId);
+        
+        // Check if we've recently processed this kill message (within last 2 seconds)
+        auto now = std::chrono::steady_clock::now();
+        auto it = recentKillMessages.find(killKey);
+        
+        if (it != recentKillMessages.end()) {
+            float elapsed = std::chrono::duration<float>(now - it->second).count();
+            if (elapsed < 2.0f) {
+                // We've recently processed this exact kill message, skip it
+                std::cout << "[HOST] Ignoring duplicate kill message for " << normalizedKillerID 
+                          << " and enemy " << enemyId << " (processed " << elapsed << "s ago)\n";
+                return;
+            }
+        }
+        
+        // Record this kill message as processed
+        recentKillMessages[killKey] = now;
+        
+        // Clean up old entries from recentKillMessages map (older than 10 seconds)
+        for (auto killIt = recentKillMessages.begin(); killIt != recentKillMessages.end();) {
+            float elapsed = std::chrono::duration<float>(now - killIt->second).count();
+            if (elapsed > 10.0f) {
+                killIt = recentKillMessages.erase(killIt);
+            } else {
+                ++killIt;
+            }
+        }
+        
         // This is where the host acts as authority - increment kill count
         playerManager->IncrementPlayerKills(normalizedKillerID);
         
@@ -226,6 +259,7 @@ void HostNetwork::ProcessKillMessage(Game& game, HostNetwork& host, const Parsed
         std::cout << "[HOST] Rejected invalid kill claim for player " << normalizedKillerID << "\n";
     }
 }
+
 void HostNetwork::ProcessReadyStatusMessage(Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender) {
     std::string localSteamIDStr = std::to_string(game.GetLocalSteamID().ConvertToUint64());
     if (localSteamIDStr != parsed.steamID) {

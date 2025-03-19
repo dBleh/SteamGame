@@ -2,6 +2,7 @@
 #define GAME_STATE_H
 
 enum class GameState {
+    Loading,
     MainMenu,
     LobbyCreation,
     LobbySearch,

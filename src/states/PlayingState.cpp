@@ -233,9 +233,17 @@ void PlayingState::Update(float dt) {
                         // Mark this bullet for removal
                         bulletsToRemove.push_back(i);
             
-                        // Use centralized kill tracking if enemy was killed
+                        // CHANGE: Only call HandleKill for killed enemies if we're the host
+                        // This ensures only the host assigns kills
                         if (killed) {
-                            playerManager->HandleKill(shooterId, hitEnemyId);
+                            CSteamID myID = SteamUser()->GetSteamID();
+                            CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+                            
+                            if (myID == hostID) {
+                                // Only the host assigns kills
+                                playerManager->HandleKill(shooterId, hitEnemyId);
+                            }
+                            // Clients don't call HandleKill - they will get kill updates from the host
                         }
                         
                         // Only modify money locally for local player's bullets on hit (not kill)
