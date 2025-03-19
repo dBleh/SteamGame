@@ -518,7 +518,7 @@ void PlayerManager::HandleKill(const std::string& killerID, int enemyId) {
     if (isHost) {
         // Host logic - authoritative source of kill tracking
         if (players.find(normalizedKillerID) != players.end()) {
-            // Use a static map to track recently processed kill messages
+            // CHANGE: Use a static map to track recently processed kills
             static std::unordered_map<std::string, std::chrono::steady_clock::time_point> recentKills;
             
             // Create a unique key for this kill
@@ -551,28 +551,36 @@ void PlayerManager::HandleKill(const std::string& killerID, int enemyId) {
                 }
             }
             
-            // CHANGE: Create a sequential kill ID for this kill
+            // CHANGE: Create a proper kill sequence using the current time for uniqueness
             static uint32_t killSequence = 0;
-            killSequence++;
+            killSequence++;  // Increment on each new kill
             
             // Add the sequence number to the kill message to ensure proper ordering
-            std::string killMsg = PlayerMessageHandler::FormatKillMessage(
-                normalizedKillerID, 
-                enemyId, 
-                killSequence  // Add sequence number to the message
-            );
+            std::string killMsg;
+            if (killSequence > 0) {
+                killMsg = PlayerMessageHandler::FormatKillMessage(
+                    normalizedKillerID, 
+                    enemyId, 
+                    killSequence  // Use the incrementing sequence number
+                );
+            } else {
+                killMsg = PlayerMessageHandler::FormatKillMessage(
+                    normalizedKillerID, 
+                    enemyId
+                );
+            }
             
             // IMPORTANT: Apply the kill locally first before broadcasting
             // This ensures the host's state matches what it broadcasts
             players[normalizedKillerID].kills++;
             players[normalizedKillerID].money += 50;
             
-            // Broadcast the kill information with sequence number to all clients
-            game->GetNetworkManager().BroadcastMessage(killMsg);
-            
             std::cout << "[HOST] Player " << normalizedKillerID 
                       << " awarded kill for enemy " << enemyId 
                       << " (sequence: " << killSequence << ")\n";
+            
+            // Broadcast the kill information with sequence number to all clients
+            game->GetNetworkManager().BroadcastMessage(killMsg);
         }
     } else {
         // Client logic - send kill message to host for validation

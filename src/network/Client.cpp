@@ -137,24 +137,32 @@ void ClientNetwork::ProcessKillMessage(Game& game, ClientNetwork& client, const 
         normalizedKillerID = killerID;
     }
     
-    // Track the last processed kill sequence per player to maintain order
+    // CHANGE: Use a per-player-kill combination for tracking processed kills
+    // This ensures we don't miss kills for the same player on different enemies
     static std::unordered_map<std::string, uint32_t> lastProcessedSequences;
     
     // Only track sequences if they're actually being used (non-zero)
+    bool skipDueToSequence = false;
     if (killSequence > 0) {
-        // Check if we've seen this sequence before for this player
-        auto it = lastProcessedSequences.find(normalizedKillerID);
-        if (it != lastProcessedSequences.end()) {
-            // If we've already processed a higher sequence number, ignore this one
-            if (killSequence <= it->second) {
-                std::cout << "[CLIENT] Ignoring out-of-order kill message for " << normalizedKillerID 
-                          << " (sequence " << killSequence << " <= " << it->second << ")\n";
-                return;
-            }
-        }
+        // Create a unique key for this player-enemy combination
+        std::string playerKillKey = normalizedKillerID + "_" + std::to_string(enemyId);
         
-        // Update the last processed sequence for this player
-        lastProcessedSequences[normalizedKillerID] = killSequence;
+        // Check if we've seen this kill before
+        auto it = lastProcessedSequences.find(playerKillKey);
+        if (it != lastProcessedSequences.end()) {
+            // If we've already processed this exact kill, skip it
+            std::cout << "[CLIENT] Already processed kill for " << normalizedKillerID 
+                      << " on enemy " << enemyId << " (previous sequence: " << it->second << ")\n";
+            skipDueToSequence = true;
+        } else {
+            // Update the last processed sequence for this player-enemy combination
+            lastProcessedSequences[playerKillKey] = killSequence;
+        }
+    }
+    
+    // Skip processing if we've already handled this kill
+    if (skipDueToSequence) {
+        return;
     }
     
     // Update kill count based on host's authoritative message
@@ -186,6 +194,7 @@ void ClientNetwork::ProcessKillMessage(Game& game, ClientNetwork& client, const 
         }
     }
 }
+
 void ClientNetwork::ProcessConnectionMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
     // Create a new RemotePlayer directly with its fields set, don't copy
     RemotePlayer rp;
