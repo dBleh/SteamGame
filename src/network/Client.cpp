@@ -333,7 +333,27 @@ void ClientNetwork::Update() {
         }
     }
     
-    
+    // Request settings if we haven't received them yet
+    static bool isRequestingSettings = false;
+    if (!m_initialSettingsReceived && !isRequestingSettings) {
+        m_settingsRequestTimer -= elapsed;
+        
+        if (m_settingsRequestTimer <= 0) {
+            // Limit requests to 3 attempts
+            static int requestAttempts = 0;
+            if (requestAttempts < 3) {
+                isRequestingSettings = true;
+                RequestGameSettings();
+                isRequestingSettings = false;
+                
+                requestAttempts++;
+                m_settingsRequestTimer = 5.0f;  // Wait 5 seconds between attempts
+            } else {
+                // After 3 attempts, try much less frequently
+                m_settingsRequestTimer = 30.0f;
+            }
+        }
+    }
     
     // Handle validation timer
     if (m_validationRequestTimer > 0) {
