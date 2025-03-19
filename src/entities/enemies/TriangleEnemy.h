@@ -3,7 +3,7 @@
 
 #include "Enemy.h"
 #include <SFML/Graphics.hpp>
-
+#include "../../states/GameSettingsManager.h"
 class TriangleEnemy : public Enemy {
 public:
     TriangleEnemy(int id, const sf::Vector2f& position, float health = TRIANGLE_HEALTH, float speed = ENEMY_SPEED);

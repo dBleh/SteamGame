@@ -5,6 +5,7 @@
 #include "../states/menu/SettingsState.h"
 #include "../states/PlayingState.h"
 #include "../states/menu/LobbyState.h"
+#include "../states/GameSettingsManager.h"
 #include <steam/steam_api.h>
 #include <iostream>
 
@@ -33,9 +34,10 @@ Game::Game() : hud(font) {
 
     settingsManager = std::make_shared<SettingsManager>();
     inputHandler = std::make_shared<InputHandler>(settingsManager);
+    gameSettingsManager = std::make_unique<GameSettingsManager>(this);
 
+    
     // Initialize camera for game world
-       
     camera.setSize(BASE_WIDTH, BASE_HEIGHT);
     camera.setCenter(BASE_WIDTH / 2.f, BASE_HEIGHT / 2.f);  // Initial center
     currentZoom = DEFAULT_ZOOM; 

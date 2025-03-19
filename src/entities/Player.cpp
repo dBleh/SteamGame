@@ -4,16 +4,16 @@
 #include <cmath>
 
 Player::Player()
-    : movementSpeed(200.f), shootCooldown(0.f), health(PLAYER_HEALTH), isDead(false), respawnPosition(0.f, 0.f),
-      bulletSpeedMultiplier(1.0f), moveSpeedMultiplier(1.0f), maxHealth(PLAYER_HEALTH) {
+    : movementSpeed(PLAYER_SPEED), shootCooldown(0.f), health(PLAYER_HEALTH), isDead(false), respawnPosition(0.f, 0.f),
+      bulletSpeedMultiplier(1.0f), moveSpeedMultiplier(1.0f), maxHealth(PLAYER_HEALTH), bulletDamage(BULLET_DAMAGE) {
     shape.setSize(sf::Vector2f(50.f, 50.f));
     shape.setFillColor(sf::Color::Blue);
     shape.setPosition(100.f, 100.f);
 }
 
 Player::Player(const sf::Vector2f& startPosition, const sf::Color& color)
-    : movementSpeed(200.f), shootCooldown(0.f), health(PLAYER_HEALTH), isDead(false), respawnPosition(startPosition),
-      bulletSpeedMultiplier(1.0f), moveSpeedMultiplier(1.0f), maxHealth(PLAYER_HEALTH) {
+    : movementSpeed(PLAYER_SPEED), shootCooldown(0.f), health(PLAYER_HEALTH), isDead(false), respawnPosition(startPosition),
+      bulletSpeedMultiplier(1.0f), moveSpeedMultiplier(1.0f), maxHealth(PLAYER_HEALTH), bulletDamage(BULLET_DAMAGE) {
     shape.setSize(sf::Vector2f(50.f, 50.f));
     shape.setFillColor(color);
     shape.setPosition(startPosition);
@@ -25,6 +25,7 @@ Player::Player(Player&& other) noexcept
       moveSpeedMultiplier(other.moveSpeedMultiplier),
       shootCooldown(other.shootCooldown),
       bulletSpeedMultiplier(other.bulletSpeedMultiplier),
+      bulletDamage(other.bulletDamage),
       health(other.health),
       maxHealth(other.maxHealth),
       isDead(other.isDead),
@@ -40,6 +41,7 @@ Player& Player::operator=(Player&& other) noexcept {
         moveSpeedMultiplier = other.moveSpeedMultiplier;
         shootCooldown = other.shootCooldown;
         bulletSpeedMultiplier = other.bulletSpeedMultiplier;
+        bulletDamage = other.bulletDamage;
         health = other.health;
         maxHealth = other.maxHealth;
         isDead = other.isDead;

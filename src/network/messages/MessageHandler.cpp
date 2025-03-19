@@ -3,6 +3,7 @@
 #include "EnemyMessageHandler.h"
 #include "StateMessageHandler.h"
 #include "SystemMessageHandler.h"
+#include "SettingsMessageHandler.h"
 #include <iostream>
 #include <sstream>
 #include <chrono>
@@ -11,6 +12,7 @@
 #include "../Host.h"
 #include "../../core/Game.h"
 #include "../../states/PlayingState.h"
+#include "../../states/GameSettingsManager.h"
 #include <sstream>
 #include <iostream>
 #include <chrono>
@@ -33,6 +35,7 @@ void MessageHandler::Initialize() {
     PlayerMessageHandler::Initialize();
     EnemyMessageHandler::Initialize();
     StateMessageHandler::Initialize();
+    SettingsMessageHandler::Initialize(); 
 }
 
 void MessageHandler::RegisterMessageType(
@@ -77,6 +80,10 @@ std::string MessageHandler::GetPrefixForType(MessageType type) {
         case MessageType::ChunkStart: return "CHUNK_START";
         case MessageType::ChunkPart: return "CHUNK_PART";
         case MessageType::ChunkEnd: return "CHUNK_END";
+        
+        // Game settings messages
+        case MessageType::SettingsUpdate: return "GS";
+        case MessageType::SettingsRequest: return "GSR";
         
         case MessageType::Unknown: 
         default: return "";

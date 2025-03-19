@@ -14,6 +14,7 @@
 struct ParsedMessage;
 enum class MessageType;
 class PlayingState;
+class GameSettingsManager;
 class Game;
 class ClientNetwork;
 class HostNetwork;
@@ -44,7 +45,9 @@ enum class MessageType {
     ChunkEnd,
     Kill,
     ForceFieldZap,
-    ForceFieldUpdate
+    ForceFieldUpdate,
+    SettingsUpdate,
+    SettingsRequest 
 };
 
 struct ParsedMessage {

@@ -35,7 +35,11 @@ public:
     void SetID(int newId) { id = newId; }
     virtual EnemyType GetType() const = 0;
     float GetRadius() const { return radius; }
-    
+    float GetSpeed() const { return speed; }
+    float GetDamage() const { return damage; }
+    float SetSpeed(float newSpeed);
+    float SetDamage(float newDamage);
+
     // Network serialization
     virtual std::string Serialize() const;
     virtual void Deserialize(const std::string& data);
@@ -43,7 +47,8 @@ public:
     // Damage handling
     bool TakeDamage(float amount);
     sf::Vector2f GetVelocity() const { return velocity; }
-void SetVelocity(const sf::Vector2f& vel) { velocity = vel; }
+    void SetVelocity(const sf::Vector2f& vel) { velocity = vel; }
+    
 protected:
     // Core properties
     int id;
@@ -52,6 +57,7 @@ protected:
     float health;
     float speed;
     float radius;
+    float damage = TRIANGLE_DAMAGE; // Default damage for enemies
     bool hasTarget;
     sf::Vector2f targetPosition;
     
@@ -63,7 +69,7 @@ protected:
     virtual void FindTarget(PlayerManager& playerManager);
 };
 
-// Factory function to create enemies by type
+// Factory function declaration (will be implemented in EnemyManager)
 std::unique_ptr<Enemy> CreateEnemy(EnemyType type, int id, const sf::Vector2f& position);
 
 #endif // ENEMY_H

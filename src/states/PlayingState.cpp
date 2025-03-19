@@ -133,18 +133,18 @@ PlayingState::PlayingState(Game* game)
             clientNetwork->SendConnectionMessage();
         }
     }
-    
+    if (game->GetGameSettingsManager()) {
+        std::cout << "[PlayingState] Applying initial game settings" << std::endl;
+        OnSettingsChanged();
+    }
     std::cout << "[DEBUG] PlayingState constructor completed\n";
 }
 
 PlayingState::~PlayingState() {
-    // Make sure to release the cursor when leaving this state
     game->GetWindow().setMouseCursorGrabbed(false);
-    
-    // Clean up components in the correct order to avoid any crashes
-    shopInstance = nullptr; // Clear static pointer first
-    ui.reset(); // UI before game systems
-    shop.reset(); // Then reset the unique_ptr
+    shopInstance = nullptr; 
+    ui.reset(); 
+    shop.reset(); 
     hostNetwork.reset();
     clientNetwork.reset();
     enemyManager.reset();
@@ -155,7 +155,6 @@ PlayingState::~PlayingState() {
 }
 
 void PlayingState::Update(float dt) {
-    // Update UI with animations
     if (ui) {
         ui->Update(dt);
     }
@@ -217,13 +216,23 @@ void PlayingState::Update(float dt) {
                     
                     // Check if this bullet collides with any enemy
                     if (enemyManager->CheckBulletCollision(bullet.GetPosition(), BULLET_RADIUS, hitEnemyId)) {
-                        // Enemy hit! Apply damage
-                        bool killed = enemyManager->InflictDamage(hitEnemyId, BULLET_DAMAGE);
+                        // Enemy hit! Get the shooter's bullet damage
+                        std::string shooterId = bullet.GetShooterID();
+                        float damage = BULLET_DAMAGE; // Default damage
+                            
+                        // Try to get bullet damage from the shooter's player
+                        auto& players = playerManager->GetPlayers();
+                        auto shooterIt = players.find(shooterId);
+                        if (shooterIt != players.end()) {
+                            damage = shooterIt->second.player.GetBulletDamage();
+                        }
+                            
+                        // Apply damage with the appropriate amount
+                        bool killed = enemyManager->InflictDamage(hitEnemyId, damage);
                         
                         // Mark this bullet for removal
                         bulletsToRemove.push_back(i);
-                        std::string shooterId = bullet.GetShooterID();
-
+            
                         // Use centralized kill tracking if enemy was killed
                         if (killed) {
                             playerManager->HandleKill(shooterId, hitEnemyId);
@@ -637,4 +646,52 @@ void PlayingState::AdjustViewToWindow() {
     
     // Preserve current center
     game->GetCamera().setCenter(game->GetCamera().getCenter());
+}
+
+// In PlayingState.cpp, modify the OnSettingsChanged method to use the bulletDamage setting:
+
+void PlayingState::OnSettingsChanged() {
+    // Apply settings to various game elements
+    std::cout << "Settings changed" <<std::endl;
+    if (game->GetGameSettingsManager()) {
+        // Apply to enemy manager
+        if (enemyManager) {
+            game->GetGameSettingsManager()->ApplyEnemySettings(enemyManager.get());
+        }
+        
+        // Apply to player manager - adjust bullet damage, player speed, etc.
+        if (playerManager) {
+            // Get settings
+            GameSetting* bulletDamageSetting = game->GetGameSettingsManager()->GetSetting("bullet_damage");
+            GameSetting* playerSpeedSetting = game->GetGameSettingsManager()->GetSetting("player_speed");
+            GameSetting* bulletSpeedSetting = game->GetGameSettingsManager()->GetSetting("bullet_speed");
+            
+            // Apply to all players
+            auto& players = playerManager->GetPlayers();
+            for (auto& pair : players) {
+                // Update bullet damage
+                if (bulletDamageSetting) {
+                    pair.second.player.SetBulletDamage(bulletDamageSetting->GetFloatValue());
+                }
+                
+                // Update player speed
+                if (playerSpeedSetting) {
+                    pair.second.player.SetSpeed(playerSpeedSetting->GetFloatValue());
+                }
+                
+                // Update bullet speed multiplier
+                if (bulletSpeedSetting) {
+                    float baseSpeed = BULLET_SPEED;
+                    float speedRatio = bulletSpeedSetting->GetFloatValue() / baseSpeed;
+                    pair.second.player.SetBulletSpeedMultiplier(speedRatio);
+                }
+            }
+        }
+        
+        // Apply wave cooldown setting
+        GameSetting* waveCooldownSetting = game->GetGameSettingsManager()->GetSetting("wave_cooldown_time");
+        if (waveCooldownSetting) {
+            waveCooldownTime = waveCooldownSetting->GetFloatValue();
+        }
+    }
 }

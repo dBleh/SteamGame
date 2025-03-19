@@ -15,6 +15,7 @@
 #include <unordered_map>
 
 class Game;
+class GameSettingsUI;  // Add forward declaration
 class PlayerRenderer;
 class LobbyState : public State {
 public:
@@ -23,6 +24,7 @@ public:
     bool IsFullyLoaded();
     void Update(float dt) override;
     void Render() override;
+    void RefreshSettingsUI();
     void ProcessEvent(const sf::Event& event) override;
     
 private:
@@ -34,7 +36,7 @@ private:
     void ProcessEvents(const sf::Event& event);
     void UpdateLobbyMembers(); // Kept as stub for compatibility
     bool AllPlayersReady();    // Kept as stub for compatibility
-
+    
     Player localPlayer;         // The player's cube representation.
     bool playerLoaded;          // True when the local player has finished "loading".
     float loadingTimer;  
@@ -54,6 +56,10 @@ private:
     //For the grid
     Grid grid;
     bool showGrid;
+    
+    // Game settings
+    std::unique_ptr<GameSettingsUI> settingsUI;
+    bool showSettings = false;
 };
 
 #endif // LOBBYSTATE_H

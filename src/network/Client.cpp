@@ -15,7 +15,7 @@ ClientNetwork::ClientNetwork(Game* game, PlayerManager* manager)
     m_lastValidationTime = std::chrono::steady_clock::now();
     m_validationRequestTimer = 0.5f;
     m_periodicValidationTimer = 30.0f;
-    PlayingState* playingState = GetPlayingState(game);\
+    PlayingState* playingState = GetPlayingState(game);
 }
 
 ClientNetwork::~ClientNetwork() {}

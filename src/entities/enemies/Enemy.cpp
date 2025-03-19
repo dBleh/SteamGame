@@ -1,5 +1,6 @@
 #include "Enemy.h"
 #include "../PlayerManager.h"
+#include "../../states/GameSettingsManager.h"
 #include <cmath>
 #include <sstream>
 #include <iostream>
@@ -145,4 +146,14 @@ void Enemy::Deserialize(const std::string& data) {
     if (std::getline(iss, token, '|')) {
         health = std::stof(token);
     }
+}
+
+float Enemy::SetSpeed(float newSpeed) {
+    speed = newSpeed;
+    return speed;
+}
+
+float Enemy::SetDamage(float newDamage) {
+    damage = newDamage;
+    return damage;
 }

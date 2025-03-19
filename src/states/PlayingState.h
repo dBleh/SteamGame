@@ -33,7 +33,7 @@ public:
     
     // Static method to access the shop instance
     static Shop* GetShopInstance() { return shopInstance; }
-
+    void OnSettingsChanged();
 private:
     // Static shop instance
     static Shop* shopInstance;
@@ -56,7 +56,7 @@ private:
     // Wave management
     float waveTimer;
     bool waitingForNextWave;
-    
+    float waveCooldownTime = WAVE_COOLDOWN_TIME;
     // Game state
     Grid grid;
     bool showGrid;

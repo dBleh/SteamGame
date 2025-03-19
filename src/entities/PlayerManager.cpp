@@ -420,8 +420,18 @@ void PlayerManager::CheckBulletCollisions() {
             if (bulletIt->BelongsToPlayer(playerID)) continue;
             
             if (bulletIt->CheckCollision(remotePlayer.player.GetShape(), playerID)) {
-                // Apply damage to player
-                remotePlayer.player.TakeDamage(BULLET_DAMAGE); // 4 hits to kill
+                // Get the shooter
+                std::string shooterID = bulletIt->GetShooterID();
+                float damageAmount = BULLET_DAMAGE; // Default damage
+                
+                // Try to get bullet damage from the shooter's player
+                auto shooterIt = players.find(shooterID);
+                if (shooterIt != players.end()) {
+                    damageAmount = shooterIt->second.player.GetBulletDamage();
+                }
+                
+                // Apply damage to player with the shooter's bullet damage
+                remotePlayer.player.TakeDamage(damageAmount);
                 
                 if (remotePlayer.player.IsDead()) {
                     // Increment kill count for the shooter

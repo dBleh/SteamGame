@@ -50,15 +50,3 @@ void TriangleEnemy::Render(sf::RenderWindow& window) {
         window.draw(shape);
     }
 }
-
-// Factory function implementation for triangle
-std::unique_ptr<Enemy> CreateEnemy(EnemyType type, int id, const sf::Vector2f& position) {
-    switch (type) {
-        case EnemyType::Triangle:
-            return std::make_unique<TriangleEnemy>(id, position);
-        // Add cases for future enemy types
-        default:
-            std::cerr << "Unknown enemy type: " << static_cast<int>(type) << std::endl;
-            return std::make_unique<TriangleEnemy>(id, position); // Default to triangle
-    }
-}

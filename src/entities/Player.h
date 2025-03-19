@@ -72,6 +72,8 @@ public:
     void EnableForceField(bool enable);
     bool HasForceField(){ return forceFieldEnabled;}
     ForceField* GetForceField() const { return forceField.get(); }
+    float GetBulletDamage() const { return bulletDamage; }
+    void SetBulletDamage(float newDamage) { bulletDamage = newDamage; }
 private:
     // Visual representation
     sf::RectangleShape shape;
@@ -94,6 +96,9 @@ private:
 
     std::unique_ptr<ForceField> forceField;
     bool forceFieldEnabled = false;
+
+    float bulletDamage = BULLET_DAMAGE;
+
 };
 
 #endif // PLAYER_H

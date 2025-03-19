@@ -11,6 +11,8 @@
 #include "../../network/messages/EnemyMessageHandler.h"
 #include "../../network/messages/StateMessageHandler.h"
 #include "../../network/messages/SystemMessageHandler.h" // Updated import
+#include "../GameSettingsManager.h"
+#include "../../ui/GameSettingsUI.h"
 
 LobbyState::LobbyState(Game* game)
     : State(game), 
@@ -107,6 +109,17 @@ LobbyState::LobbyState(Game* game)
                              HUD::RenderMode::ScreenSpace, true,
                              "", "");
     game->GetHUD().updateBaseColor("returnMain", sf::Color::Black);
+    // Initialize the settings UI
+    settingsUI = std::make_unique<GameSettingsUI>(game, game->GetGameSettingsManager());
+
+// Add to the HUD elements in the constructor:
+    // Add settings button to status bar
+    game->GetHUD().addElement("settingsButton", "Game Settings [S]", 20, 
+                            sf::Vector2f(centerX + 100.0f, statusBarY + 40.0f), 
+                            GameState::Lobby, 
+                            HUD::RenderMode::ScreenSpace, true,
+                            "statusBarLine", "");
+    game->GetHUD().updateBaseColor("settingsButton", sf::Color::Black);
     
     // ===== PLAYER SETUP =====
     CSteamID myID = SteamUser()->GetSteamID();
@@ -216,12 +229,21 @@ void LobbyState::Render() {
     game->GetWindow().setView(game->GetUIView());
     game->GetHUD().render(game->GetWindow(), game->GetUIView(), GameState::Lobby);
     
+    // Render settings UI on top of everything else using UI view
+    if (settingsUI && showSettings) {
+        settingsUI->Render(game->GetWindow());
+    }
+    
     game->GetWindow().display();
 }
 
 void LobbyState::ProcessEvents(const sf::Event& event) {
     InputManager& inputManager = game->GetInputManager();
-    
+    if (settingsUI && settingsUI->IsVisible()) {
+        if (settingsUI->ProcessEvent(event)) {
+            return; // Event handled by settings UI
+        }
+    }
     if (event.type == sf::Event::KeyPressed) {
         // Check if the ready toggle key was pressed using InputManager
         if (event.key.code == inputManager.GetKeyBinding(GameAction::ToggleReady)) {
@@ -314,6 +336,15 @@ void LobbyState::ProcessEvents(const sf::Event& event) {
                             // Return to main menu
                             game->SetCurrentState(GameState::MainMenu);
                         }
+                        else if (id == "settingsButton") {
+                            // Toggle settings panel
+                            showSettings = !showSettings;
+                            if (showSettings) {
+                                settingsUI->Show();
+                            } else {
+                                settingsUI->Hide();
+                            }
+                        }
                         
                         // We found a UI element that was clicked, so don't process as a game click
                         return;
@@ -360,6 +391,15 @@ void LobbyState::ProcessEvents(const sf::Event& event) {
              event.key.code != sf::Keyboard::Unknown) {
         mouseHeld = false;
     }
+    else if (event.key.code == sf::Keyboard::S) {
+        // Toggle settings panel
+        showSettings = !showSettings;
+        if (showSettings) {
+            settingsUI->Show();
+        } else {
+            settingsUI->Hide();
+        }
+    }
 }
 LobbyState::~LobbyState() {
     // Make sure to destroy in the correct order to avoid crashes
@@ -394,7 +434,9 @@ void LobbyState::Update(float dt) {
         // Update PlayerManager (includes local player movement)
         // Ensure we're passing the Game pointer for InputManager access
         playerManager->Update(game);
-        
+        if (settingsUI) {
+            settingsUI->Update(dt);
+        }
         if (clientNetwork) clientNetwork->Update();
         if (hostNetwork) hostNetwork->Update();
         
@@ -424,6 +466,7 @@ void LobbyState::Update(float dt) {
         game->GetHUD().updateBaseColor("readyButton", sf::Color::Black);
     }
     
+    
     // Update start game button for host
     if (SteamUser()->GetSteamID() == SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID())) {
         // Check if all players are ready
@@ -446,7 +489,11 @@ void LobbyState::Update(float dt) {
     } else {
         game->GetHUD().updateBaseColor("gridToggle", sf::Color(150, 150, 150)); // Gray when grid is off
     }
-    
+    if (showSettings) {
+        game->GetHUD().updateBaseColor("settingsButton", sf::Color(0, 150, 255)); // Blue when active
+    } else {
+        game->GetHUD().updateBaseColor("settingsButton", sf::Color::Black);
+    }
     // Center camera on local player
     sf::Vector2f localPlayerPos = playerManager->GetLocalPlayer().player.GetPosition();
     game->GetCamera().setCenter(localPlayerPos);
@@ -557,5 +604,11 @@ void LobbyState::AttemptShoot(int mouseX, int mouseY) {
             CSteamID hostID = clientNetwork->GetHostID();
             game->GetNetworkManager().SendMessage(hostID, msg);
         }
+    }
+}
+
+void LobbyState::RefreshSettingsUI() {
+    if (settingsUI) {
+        settingsUI->RefreshUI();
     }
 }
