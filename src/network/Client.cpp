@@ -2,6 +2,10 @@
 #include "../core/Game.h"
 #include "NetworkManager.h"
 #include "messages/MessageHandler.h"
+#include "messages/PlayerMessageHandler.h"
+#include "messages/EnemyMessageHandler.h"
+#include "messages/StateMessageHandler.h"
+#include "messages/SystemMessageHandler.h"
 #include "../states/PlayingState.h"
 #include <iostream>
 
@@ -11,7 +15,7 @@ ClientNetwork::ClientNetwork(Game* game, PlayerManager* manager)
     m_lastValidationTime = std::chrono::steady_clock::now();
     m_validationRequestTimer = 0.5f;
     m_periodicValidationTimer = 30.0f;
-    PlayingState* playingState = GetPlayingState(game);
+    PlayingState* playingState = GetPlayingState(game);\
 }
 
 ClientNetwork::~ClientNetwork() {}
@@ -236,12 +240,12 @@ void ClientNetwork::ProcessBulletMessage(Game& game, ClientNetwork& client, cons
 }
 
 void ClientNetwork::SendMovementUpdate(const sf::Vector2f& position) {
-    std::string msg = MessageHandler::FormatMovementMessage(std::to_string(SteamUser()->GetSteamID().ConvertToUint64()), position);
+    std::string msg = PlayerMessageHandler::FormatMovementMessage(std::to_string(SteamUser()->GetSteamID().ConvertToUint64()), position);
     game->GetNetworkManager().SendMessage(hostID, msg);
 }
 
 void ClientNetwork::SendChatMessage(const std::string& message) {
-    std::string msg = MessageHandler::FormatChatMessage(std::to_string(SteamUser()->GetSteamID().ConvertToUint64()), message);
+    std::string msg = SystemMessageHandler::FormatChatMessage(std::to_string(SteamUser()->GetSteamID().ConvertToUint64()), message);
     game->GetNetworkManager().SendMessage(hostID, msg);
 }
 
@@ -250,13 +254,13 @@ void ClientNetwork::SendConnectionMessage() {
     std::string steamIDStr = std::to_string(myID.ConvertToUint64());
     std::string steamName = SteamFriends()->GetPersonaName();
     sf::Color color = sf::Color::Blue;
-    std::string connectMsg = MessageHandler::FormatConnectionMessage(steamIDStr, steamName, color, false, false);
+    std::string connectMsg = PlayerMessageHandler::FormatConnectionMessage(steamIDStr, steamName, color, false, false);
     game->GetNetworkManager().SendMessage(hostID, connectMsg);
 }
 
 void ClientNetwork::SendReadyStatus(bool isReady) {
     std::string steamIDStr = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
-    std::string msg = MessageHandler::FormatReadyStatusMessage(steamIDStr, isReady);
+    std::string msg = StateMessageHandler::FormatReadyStatusMessage(steamIDStr, isReady);
     if (game->GetNetworkManager().SendMessage(hostID, msg)) {
         std::cout << "[CLIENT] Sent ready status: " << (isReady ? "true" : "false") << " (" << msg << ")\n";
     } else {

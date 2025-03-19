@@ -5,6 +5,10 @@
 #include "../../network/Client.h"
 #include "../../network/NetworkManager.h"
 #include "../../network/messages/MessageHandler.h"
+#include "../../network/messages/PlayerMessageHandler.h"
+#include "../../network/messages/EnemyMessageHandler.h"
+#include "../../network/messages/StateMessageHandler.h"
+#include "../../network/messages/SystemMessageHandler.h"
 #include <algorithm>
 #include <random>
 #include <iostream>
@@ -135,7 +139,7 @@ bool EnemyManager::InflictDamage(int enemyId, float damage) {
     CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
     
     if (myID == hostID) {
-        std::string damageMsg = MessageHandler::FormatEnemyDamageMessage(
+        std::string damageMsg = EnemyMessageHandler::FormatEnemyDamageMessage(
             enemyId, damage, it->second->GetHealth());
         game->GetNetworkManager().BroadcastMessage(damageMsg);
         
@@ -239,7 +243,7 @@ void EnemyManager::SyncEnemyPositions() {
     }
     
     // Send the message using the existing EP format
-    std::string epMessage = MessageHandler::FormatEnemyPositionUpdateMessage(enemyIds, positions);
+    std::string epMessage = EnemyMessageHandler::FormatEnemyPositionUpdateMessage(enemyIds, positions);
     game->GetNetworkManager().BroadcastMessage(epMessage);
 }
 
@@ -261,10 +265,10 @@ void EnemyManager::SyncFullState() {
     }
     
     // Use chunking for large updates
-    std::string fullStateMsg = MessageHandler::FormatEnemyStateMessage(enemyIds, types, positions, healths);
+    std::string fullStateMsg = EnemyMessageHandler::FormatEnemyStateMessage(enemyIds, types, positions, healths);
     
     if (fullStateMsg.length() > MAX_PACKET_SIZE) {
-        std::vector<std::string> chunks = MessageHandler::ChunkMessage(fullStateMsg, "ES");
+        std::vector<std::string> chunks = SystemMessageHandler::ChunkMessage(fullStateMsg, "ES");
         for (const auto& chunk : chunks) {
             game->GetNetworkManager().BroadcastMessage(chunk);
         }

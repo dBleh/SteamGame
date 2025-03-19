@@ -6,7 +6,11 @@
 #include "../../network/Host.h"
 #include "../../render/PlayerRenderer.h"
 #include "../../entities/PlayerManager.h"
-#include "../../network/messages/MessageHandler.h"  // Updated import
+#include "../../network/messages/MessageHandler.h"
+#include "../../network/messages/PlayerMessageHandler.h"
+#include "../../network/messages/EnemyMessageHandler.h"
+#include "../../network/messages/StateMessageHandler.h"
+#include "../../network/messages/SystemMessageHandler.h" // Updated import
 
 LobbyState::LobbyState(Game* game)
     : State(game), 
@@ -135,7 +139,7 @@ LobbyState::LobbyState(Game* game)
             }
         );
         // Explicitly broadcast host's own Connection message
-        std::string hostConnectMsg = MessageHandler::FormatConnectionMessage(
+        std::string hostConnectMsg = PlayerMessageHandler::FormatConnectionMessage(
             myIDStr,
             myName,
             sf::Color::Blue,
@@ -227,7 +231,7 @@ void LobbyState::ProcessEvents(const sf::Event& event) {
             bool newReady = !currentReady;
             playerManager->SetReadyStatus(myID, newReady);
             std::cout << "Ready status set to " << newReady << "\n";
-            std::string msg = MessageHandler::FormatReadyStatusMessage(myID, newReady);
+            std::string msg = StateMessageHandler::FormatReadyStatusMessage(myID, newReady);
             if (hostNetwork) {
                 game->GetNetworkManager().BroadcastMessage(msg);
             } else if (clientNetwork) {
@@ -280,7 +284,7 @@ void LobbyState::ProcessEvents(const sf::Event& event) {
                                 if (game->GetCurrentState() == GameState::Lobby) {
                                     std::cout << "[LOBBY] Host clicked start game, sending message and transitioning" << std::endl;
                                     // Broadcast "start game" message
-                                    std::string startMsg = MessageHandler::FormatStartGameMessage(std::to_string(myID.ConvertToUint64()));
+                                    std::string startMsg = StateMessageHandler::FormatStartGameMessage(std::to_string(myID.ConvertToUint64()));
                                     game->GetNetworkManager().BroadcastMessage(startMsg);
                                     
                                     // Switch to playing state
@@ -295,7 +299,7 @@ void LobbyState::ProcessEvents(const sf::Event& event) {
                             bool newReady = !currentReady;
                             playerManager->SetReadyStatus(myID, newReady);
                             std::cout << "Ready status set to " << newReady << "\n";
-                            std::string msg = MessageHandler::FormatReadyStatusMessage(myID, newReady);
+                            std::string msg = StateMessageHandler::FormatReadyStatusMessage(myID, newReady);
                             if (hostNetwork) {
                                 game->GetNetworkManager().BroadcastMessage(msg);
                             } else if (clientNetwork) {
@@ -543,7 +547,7 @@ void LobbyState::AttemptShoot(int mouseX, int mouseY) {
         playerManager->AddBullet(myID, params.position, params.direction, bulletSpeed);
         
         // Send bullet message to others
-        std::string msg = MessageHandler::FormatBulletMessage(myID, params.position, params.direction, bulletSpeed);
+        std::string msg = PlayerMessageHandler::FormatBulletMessage(myID, params.position, params.direction, bulletSpeed);
         
         if (hostNetwork) {
             // If we're the host, broadcast to all clients

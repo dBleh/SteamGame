@@ -9,6 +9,11 @@
 #include "shop/Shop.h"
 #include "../render/PlayerRenderer.h"
 #include "../network/messages/MessageHandler.h"
+#include "../network/messages/PlayerMessageHandler.h"
+#include "../network/messages/EnemyMessageHandler.h"
+#include "../network/messages/StateMessageHandler.h"
+#include "../network/messages/SystemMessageHandler.h"
+
 #include "PlayingStateUI.h"
 #include <steam/steam_api.h>
 #include <iostream>
@@ -102,7 +107,7 @@ PlayingState::PlayingState(Game* game)
             }
         );
         // Broadcast host's connection
-        std::string hostConnectMsg = MessageHandler::FormatConnectionMessage(
+        std::string hostConnectMsg = PlayerMessageHandler::FormatConnectionMessage(
             myIDStr,
             myName,
             sf::Color::Blue,
@@ -533,7 +538,7 @@ void PlayingState::ProcessGameplayEvents(const sf::Event& event) {
             ForceField* forceField = localPlayer.player.GetForceField();
             
             // Create the force field update message
-            std::string updateMsg = MessageHandler::FormatForceFieldUpdateMessage(
+            std::string updateMsg = PlayerMessageHandler::FormatForceFieldUpdateMessage(
                 localPlayer.playerID,
                 forceField->GetRadius(),
                 forceField->GetDamage(),

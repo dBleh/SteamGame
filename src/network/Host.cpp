@@ -2,6 +2,10 @@
 #include "../core/Game.h"
 #include "NetworkManager.h"
 #include "messages/MessageHandler.h"
+#include "messages/PlayerMessageHandler.h"
+#include "messages/EnemyMessageHandler.h"
+#include "messages/StateMessageHandler.h"
+#include "messages/SystemMessageHandler.h"
 #include "../states/PlayingState.h"
 #include <iostream>
 
@@ -116,7 +120,7 @@ void HostNetwork::ProcessMovementMessage(Game& game, HostNetwork& host, const Pa
     }
     
     // Broadcast the movement to all clients
-    std::string broadcastMsg = MessageHandler::FormatMovementMessage(parsed.steamID, parsed.position);
+    std::string broadcastMsg = PlayerMessageHandler::FormatMovementMessage(parsed.steamID, parsed.position);
     game.GetNetworkManager().BroadcastMessage(broadcastMsg);
 }
 
@@ -125,7 +129,7 @@ void HostNetwork::ProcessChatMessageParsed(Game& game, HostNetwork& host, const 
 }
 
 void HostNetwork::ProcessChatMessage(const std::string& message, CSteamID sender) {
-    std::string msg = MessageHandler::FormatChatMessage(std::to_string(sender.ConvertToUint64()), message);
+    std::string msg = SystemMessageHandler::FormatChatMessage(std::to_string(sender.ConvertToUint64()), message);
     game->GetNetworkManager().BroadcastMessage(msg);
 }
 void HostNetwork::ProcessForceFieldUpdateMessage(Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender) {
@@ -173,7 +177,7 @@ void HostNetwork::ProcessForceFieldUpdateMessage(Game& game, HostNetwork& host, 
     }
     
     // Broadcast the force field update to all clients
-    std::string updateMsg = MessageHandler::FormatForceFieldUpdateMessage(
+    std::string updateMsg = PlayerMessageHandler::FormatForceFieldUpdateMessage(
         normalizedPlayerID,
         parsed.ffRadius,
         parsed.ffDamage,
@@ -214,7 +218,7 @@ void HostNetwork::ProcessKillMessage(Game& game, HostNetwork& host, const Parsed
         playerManager->IncrementPlayerKills(normalizedKillerID);
         
         // Broadcast the validated kill to all clients
-        std::string killMsg = MessageHandler::FormatKillMessage(normalizedKillerID, enemyId);
+        std::string killMsg = PlayerMessageHandler::FormatKillMessage(normalizedKillerID, enemyId);
         game.GetNetworkManager().BroadcastMessage(killMsg);
         
         std::cout << "[HOST] Validated and broadcast kill for player " << normalizedKillerID << "\n";
@@ -230,7 +234,7 @@ void HostNetwork::ProcessReadyStatusMessage(Game& game, HostNetwork& host, const
             playerManager->SetReadyStatus(parsed.steamID, parsed.isReady);
         }
     }
-    std::string broadcastMsg = MessageHandler::FormatReadyStatusMessage(parsed.steamID, parsed.isReady);
+    std::string broadcastMsg = StateMessageHandler::FormatReadyStatusMessage(parsed.steamID, parsed.isReady);
     game.GetNetworkManager().BroadcastMessage(broadcastMsg);
 }
 
@@ -252,7 +256,7 @@ void HostNetwork::ProcessBulletMessage(Game& game, HostNetwork& host, const Pars
         std::cout << "[HOST] Received invalid bullet direction, ignoring\n";
         return;
     }
-    std::string broadcastMsg = MessageHandler::FormatBulletMessage(normalizedShooterID, parsed.position, parsed.direction, parsed.velocity);
+    std::string broadcastMsg = PlayerMessageHandler::FormatBulletMessage(normalizedShooterID, parsed.position, parsed.direction, parsed.velocity);
     bool sent = game.GetNetworkManager().BroadcastMessage(broadcastMsg);
     
     if (normalizedShooterID == normalizedLocalID) {
@@ -266,7 +270,7 @@ void HostNetwork::BroadcastFullPlayerList() {
     auto& players = playerManager->GetPlayers();
     for (const auto& pair : players) {
         const RemotePlayer& rp = pair.second;
-        std::string msg = MessageHandler::FormatConnectionMessage(rp.playerID, rp.baseName, rp.cubeColor, rp.isReady, rp.isHost);
+        std::string msg = PlayerMessageHandler::FormatConnectionMessage(rp.playerID, rp.baseName, rp.cubeColor, rp.isReady, rp.isHost);
         game->GetNetworkManager().BroadcastMessage(msg);
     }
 }
@@ -274,7 +278,7 @@ void HostNetwork::BroadcastFullPlayerList() {
 void HostNetwork::BroadcastPlayersList() {
     auto& players = playerManager->GetPlayers();
     for (auto& pair : players) {
-        std::string msg = MessageHandler::FormatMovementMessage(pair.first, pair.second.player.GetPosition());
+        std::string msg = PlayerMessageHandler::FormatMovementMessage(pair.first, pair.second.player.GetPosition());
         game->GetNetworkManager().BroadcastMessage(msg);
     }
 }
@@ -300,7 +304,7 @@ void HostNetwork::ProcessPlayerDeathMessage(Game& game, HostNetwork& host, const
     if (players.find(killerID) != players.end()) {
         playerManager->IncrementPlayerKills(killerID);
     }
-    std::string deathMsg = MessageHandler::FormatPlayerDeathMessage(playerID, killerID);
+    std::string deathMsg = PlayerMessageHandler::FormatPlayerDeathMessage(playerID, killerID);
     game.GetNetworkManager().BroadcastMessage(deathMsg);
 }
 
@@ -313,7 +317,7 @@ void HostNetwork::ProcessPlayerRespawnMessage(Game& game, HostNetwork& host, con
         player.player.SetRespawnPosition(respawnPos);
         player.player.Respawn();
     }
-    std::string respawnMsg = MessageHandler::FormatPlayerRespawnMessage(playerID, respawnPos);
+    std::string respawnMsg = PlayerMessageHandler::FormatPlayerRespawnMessage(playerID, respawnPos);
     game.GetNetworkManager().BroadcastMessage(respawnMsg);
 }
 
@@ -400,7 +404,7 @@ void HostNetwork::ProcessForceFieldZapMessage(Game& game, HostNetwork& host, con
         }
         
         // Broadcast this zap to all clients (even if we don't find the enemy)
-        std::string zapMsg = MessageHandler::FormatForceFieldZapMessage(normalizedZapperID, enemyId, damage);
+        std::string zapMsg = PlayerMessageHandler::FormatForceFieldZapMessage(normalizedZapperID, enemyId, damage);
         game.GetNetworkManager().BroadcastMessage(zapMsg);
     }
 }

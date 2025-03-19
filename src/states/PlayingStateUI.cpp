@@ -4,6 +4,10 @@
 #include "../entities/PlayerManager.h"
 #include "../entities/enemies/EnemyManager.h"
 #include "../network/messages/MessageHandler.h"
+#include "../network/messages/PlayerMessageHandler.h"
+#include "../network/messages/EnemyMessageHandler.h"
+#include "../network/messages/StateMessageHandler.h"
+#include "../network/messages/SystemMessageHandler.h"
 #include <iostream>
 #include <algorithm>
 #include <cmath>

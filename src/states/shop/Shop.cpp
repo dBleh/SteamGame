@@ -1,5 +1,10 @@
 #include "Shop.h"
 #include "../utils/config/Config.h"
+#include "../../network/messages/MessageHandler.h"
+#include "../../network/messages/PlayerMessageHandler.h"
+#include "../../network/messages/EnemyMessageHandler.h"
+#include "../../network/messages/StateMessageHandler.h"
+#include "../../network/messages/SystemMessageHandler.h"
 #include <steam/steam_api.h>
 #include <iostream>
 
@@ -412,7 +417,7 @@ void Shop::SendForceFieldUpdateToNetwork(const Player& player) {
     std::string playerID = playerManager->GetLocalPlayer().playerID;
     
     // Create the force field update message
-    std::string updateMsg = MessageHandler::FormatForceFieldUpdateMessage(
+    std::string updateMsg = PlayerMessageHandler::FormatForceFieldUpdateMessage(
         playerID,
         forceField->GetRadius(),
         forceField->GetDamage(),

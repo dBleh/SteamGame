@@ -1,6 +1,10 @@
 #include "PlayerManager.h"
 #include "../core/Game.h"
 #include "../network/messages/MessageHandler.h"
+#include "../network/messages/PlayerMessageHandler.h"
+#include "../network/messages/EnemyMessageHandler.h"
+#include "../network/messages/StateMessageHandler.h"
+#include "../network/messages/SystemMessageHandler.h"
 #include "ForceField.h"
 
 #include <iostream>
@@ -325,7 +329,7 @@ bool PlayerManager::PlayerShoot(const sf::Vector2f& mouseWorldPos) {
 
 void PlayerManager::SendBulletMessageToNetwork(const sf::Vector2f& position, const sf::Vector2f& direction, float bulletSpeed) {
     // Create the bullet message
-    std::string bulletMsg = MessageHandler::FormatBulletMessage(
+    std::string bulletMsg = PlayerMessageHandler::FormatBulletMessage(
         localPlayerID, position, direction, bulletSpeed);
     
     // Check if we're the host by comparing with the lobby owner
@@ -474,11 +478,11 @@ void PlayerManager::PlayerDied(const std::string& playerID, const std::string& k
         
         if (localSteamID == hostID) {
             // We are the host, broadcast to all clients
-            std::string deathMsg = MessageHandler::FormatPlayerDeathMessage(playerID, killerID);
+            std::string deathMsg = PlayerMessageHandler::FormatPlayerDeathMessage(playerID, killerID);
             game->GetNetworkManager().BroadcastMessage(deathMsg);
         } else {
             // We are a client, send to host
-            std::string deathMsg = MessageHandler::FormatPlayerDeathMessage(playerID, killerID);
+            std::string deathMsg = PlayerMessageHandler::FormatPlayerDeathMessage(playerID, killerID);
             game->GetNetworkManager().SendMessage(hostID, deathMsg);
         }
     }
@@ -511,7 +515,7 @@ void PlayerManager::HandleKill(const std::string& killerID, int enemyId) {
             players[normalizedKillerID].money += 50;
             
             // Broadcast kill information to all clients
-            std::string killMsg = MessageHandler::FormatKillMessage(normalizedKillerID, enemyId);
+            std::string killMsg = PlayerMessageHandler::FormatKillMessage(normalizedKillerID, enemyId);
             game->GetNetworkManager().BroadcastMessage(killMsg);
             
             std::cout << "[HOST] Player " << normalizedKillerID << " awarded kill for enemy " << enemyId << "\n";
@@ -520,7 +524,7 @@ void PlayerManager::HandleKill(const std::string& killerID, int enemyId) {
         // Client logic - send kill message to host for validation
         // Note: Clients don't increment their own kills or award money here
         // They wait for the host to broadcast the kill message back
-        std::string killMsg = MessageHandler::FormatKillMessage(normalizedKillerID, enemyId);
+        std::string killMsg = PlayerMessageHandler::FormatKillMessage(normalizedKillerID, enemyId);
         game->GetNetworkManager().SendMessage(hostID, killMsg);
         
         std::cout << "[CLIENT] Sent kill claim to host for player " << normalizedKillerID 
@@ -573,7 +577,7 @@ void PlayerManager::RespawnPlayer(const std::string& playerID) {
             
             if (localSteamID == hostID) {
                 // We are the host, broadcast to all clients
-                std::string respawnMsg = MessageHandler::FormatPlayerRespawnMessage(normalizedID, usedRespawnPos);
+                std::string respawnMsg = PlayerMessageHandler::FormatPlayerRespawnMessage(normalizedID, usedRespawnPos);
                 if (game->GetNetworkManager().BroadcastMessage(respawnMsg)) {
                     std::cout << "[PM] Broadcast respawn message for local player at position ("
                               << usedRespawnPos.x << "," << usedRespawnPos.y << ")\n";
@@ -582,7 +586,7 @@ void PlayerManager::RespawnPlayer(const std::string& playerID) {
                 }
             } else {
                 // We are a client, send to host
-                std::string respawnMsg = MessageHandler::FormatPlayerRespawnMessage(normalizedID, usedRespawnPos);
+                std::string respawnMsg = PlayerMessageHandler::FormatPlayerRespawnMessage(normalizedID, usedRespawnPos);
                 if (game->GetNetworkManager().SendMessage(hostID, respawnMsg)) {
                     std::cout << "[PM] Sent respawn message to host at position ("
                               << usedRespawnPos.x << "," << usedRespawnPos.y << ")\n";
@@ -665,7 +669,7 @@ void PlayerManager::HandleForceFieldZap(const std::string& playerID, int enemyId
     // If this is the local player, send a network message
     if (playerID == localPlayerID) {
         // Format and send force field zap message
-        std::string zapMsg = MessageHandler::FormatForceFieldZapMessage(playerID, enemyId, damage);
+        std::string zapMsg = PlayerMessageHandler::FormatForceFieldZapMessage(playerID, enemyId, damage);
         
         // Check if we're the host
         CSteamID localSteamID = SteamUser()->GetSteamID();

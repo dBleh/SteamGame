@@ -7,6 +7,10 @@
 #include <chrono>
 #include "../core/Game.h"
 #include "messages/MessageHandler.h"
+#include "messages/PlayerMessageHandler.h"
+#include "messages/EnemyMessageHandler.h"
+#include "messages/StateMessageHandler.h"
+#include "messages/SystemMessageHandler.h"
 
 #define GAME_ID "SteamGame_v1"
 #define MAX_PACKET_SIZE 1024
@@ -98,7 +102,7 @@ void NetworkManager::SendConnectionMessageOnJoin(CSteamID hostID) {
     std::string steamIDStr = std::to_string(myID.ConvertToUint64());
     std::string steamName = SteamFriends()->GetPersonaName();
     sf::Color playerColor = sf::Color::Blue;
-    std::string connectMsg = MessageHandler::FormatConnectionMessage(steamIDStr, steamName, playerColor, false, false);
+    std::string connectMsg = PlayerMessageHandler::FormatConnectionMessage(steamIDStr, steamName, playerColor, false, false);
 
     if (SendMessage(hostID, connectMsg)) {
         std::cout << "[NETWORK] Sent connection message to host: " << connectMsg << "\n";
@@ -121,7 +125,7 @@ bool NetworkManager::BroadcastMessage(const std::string& msg) {
 
     if (msg.size() > MAX_PACKET_SIZE) {
         std::string messageType = msg.substr(0, msg.find('|'));
-        std::vector<std::string> chunks = MessageHandler::ChunkMessage(msg.substr(msg.find('|') + 1), messageType);
+        std::vector<std::string> chunks = SystemMessageHandler::ChunkMessage(msg.substr(msg.find('|') + 1), messageType);
                 
         int numMembers = SteamMatchmaking()->GetNumLobbyMembers(m_currentLobbyID);
         for (int i = 0; i < numMembers; ++i) {
@@ -155,7 +159,7 @@ bool NetworkManager::BroadcastMessage(const std::string& msg) {
 void NetworkManager::SendChatMessage(CSteamID target, const std::string& message) {
     CSteamID myID = SteamUser()->GetSteamID();
     std::string steamIDStr = std::to_string(myID.ConvertToUint64());
-    std::string formattedMsg = MessageHandler::FormatChatMessage(steamIDStr, message);
+    std::string formattedMsg = SystemMessageHandler::FormatChatMessage(steamIDStr, message);
     SendMessage(target, formattedMsg);
 }
 
