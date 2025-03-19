@@ -56,8 +56,8 @@ add_executable(CubeShooter
     
     # Entity files
     src/entities/Player.cpp
-    src/entities/Grid.cpp
     src/entities/PlayerManager.cpp
+    src/entities/ForceField.cpp
 
     # Enemy files
     src/entities/enemies/Enemy.cpp
@@ -74,7 +74,9 @@ add_executable(CubeShooter
     #src/entities/weapons/ForceField.cpp
         
     # UI files
-    #src/ui/UIManager.cpp
+    src/ui/Grid.cpp
+    src/ui/GameSettingsUI.cpp
+
     src/ui/hud/Hud.cpp
 
     
@@ -85,10 +87,17 @@ add_executable(CubeShooter
     src/network/Host.cpp
     
     # Network message files
+    src/network/messages/EnemyMessageHandler.cpp
     src/network/messages/MessageHandler.cpp
+    src/network/messages/PlayerMessageHandler.cpp
+    src/network/messages/StateMessageHandler.cpp
+    src/network/messages/SystemMessageHandler.cpp
+    src/network/messages/SettingsMessageHandler.cpp
     
     # State files
     src/states/PlayingState.cpp
+    src/states/PlayingStateUI.cpp
+    src/states/GameSettingsManager.cpp
     src/states/menu/MainMenuState.cpp
     src/states/menu/LobbyState.cpp
     src/states/menu/SettingsState.cpp
