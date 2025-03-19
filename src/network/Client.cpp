@@ -336,14 +336,7 @@ void ClientNetwork::Update() {
         }
     }
     
-    // Request settings if we haven't received them yet
-    if (!m_initialSettingsReceived) {
-        m_settingsRequestTimer -= elapsed;
-        if (m_settingsRequestTimer <= 0) {
-            RequestGameSettings();
-            m_settingsRequestTimer = 5.0f;  // Retry every 5 seconds until we get settings
-        }
-    }
+    
     
     // Handle validation timer
     if (m_validationRequestTimer > 0) {
