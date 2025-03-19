@@ -236,10 +236,22 @@ GameSetting* GameSettingsManager::GetSetting(const std::string& name) {
 }
 
 bool GameSettingsManager::UpdateSetting(const std::string& name, float value) {
+    static bool isUpdating = false;
+    
+    // Prevent recursive updates
+    if (isUpdating) {
+        std::cout << "[GameSettingsManager] Already updating settings - avoiding recursion" << std::endl;
+        return false;
+    }
+    
     auto setting = GetSetting(name);
     if (setting) {
+        isUpdating = true;
+        
+        // First update the value
         setting->SetValue(value);
         
+        // Then notify observers if appropriate
         if (game && game->GetCurrentState() == GameState::Playing) {
             PlayingState* playingState = GetPlayingState(game);
             if (playingState) {
@@ -248,6 +260,7 @@ bool GameSettingsManager::UpdateSetting(const std::string& name, float value) {
             }
         }
         
+        isUpdating = false;
         return true;
     }
     return false;
@@ -277,17 +290,29 @@ std::string GameSettingsManager::SerializeSettings() const {
 
 // In GameSettingsManager.cpp, modify the DeserializeSettings method
 bool GameSettingsManager::DeserializeSettings(const std::string& data) {
+    // Stop recursive or duplicate processing
     static bool isDeserializing = false;
+    static std::string lastSettings;
+    
     if (isDeserializing) {
-        // Avoid recursive calls
-        std::cout << "[GameSettingsManager] Preventing recursive deserialization" << std::endl;
+        std::cout << "[GameSettingsManager] Already deserializing settings - avoiding recursion" << std::endl;
         return false;
     }
     
+    // Check for duplicate settings strings - simple equality check
+    if (data == lastSettings) {
+        std::cout << "[GameSettingsManager] Skipping duplicate settings deserialization" << std::endl;
+        return true; // Return success since this is not an error
+    }
+    
     isDeserializing = true;
+    lastSettings = data;
     
     std::istringstream iss(data);
     std::string pair;
+    
+    // Create a batch of updates to apply at once
+    std::unordered_map<std::string, float> updates;
     
     while (std::getline(iss, pair, ';')) {
         size_t colonPos = pair.find(':');
@@ -299,7 +324,12 @@ bool GameSettingsManager::DeserializeSettings(const std::string& data) {
         std::string name = pair.substr(0, colonPos);
         float value = std::stof(pair.substr(colonPos + 1));
         
-        // Update setting directly without calling UpdateSetting (which would trigger notifications)
+        // Store the update in our batch
+        updates[name] = value;
+    }
+    
+    // Now apply all updates at once, without notifications
+    for (const auto& [name, value] : updates) {
         auto setting = GetSetting(name);
         if (setting) {
             setting->SetValue(value);
@@ -308,7 +338,7 @@ bool GameSettingsManager::DeserializeSettings(const std::string& data) {
         }
     }
     
-    // Reset flag before returning
+    // Reset flag and return
     isDeserializing = false;
     return true;
 }

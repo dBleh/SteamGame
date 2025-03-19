@@ -557,10 +557,18 @@ void ClientNetwork::ApplySettings() {
 }
 
 void ClientNetwork::RequestGameSettings() {
-    // Don't request settings if we've already received them
-    if (m_initialSettingsReceived) {
+    // Add tracking for last request time to avoid spamming
+    static auto lastRequestTime = std::chrono::steady_clock::now();
+    auto now = std::chrono::steady_clock::now();
+    float secondsSinceLastRequest = std::chrono::duration<float>(now - lastRequestTime).count();
+    
+    // Don't request more often than every 5 seconds, and only if not already received
+    if (m_initialSettingsReceived || secondsSinceLastRequest < 5.0f) {
         return;
     }
+    
+    // Update last request time
+    lastRequestTime = now;
     
     // Send a settings request message to the host
     std::string requestMsg = SettingsMessageHandler::FormatSettingsRequestMessage();
@@ -577,9 +585,17 @@ void ClientNetwork::RequestGameSettings() {
 // In Client.cpp, modify the ProcessSettingsUpdateMessage method
 // In Client.cpp
 void ClientNetwork::ProcessSettingsUpdateMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
-    // Prevent recursive or repeated processing of the same settings
+    // Use a global static variable to track if we're currently processing settings
     static bool isProcessingSettings = false;
-    static std::string lastProcessedSettings;
+    
+    // Use a checksum/hash of settings to avoid processing duplicates
+    static std::string lastSettingsHash;
+    
+    // Skip if we're already processing settings
+    if (isProcessingSettings) {
+        std::cout << "[CLIENT] Already processing settings - skipping duplicate request" << std::endl;
+        return;
+    }
     
     // Check if we have a settings manager
     GameSettingsManager* settingsManager = game.GetGameSettingsManager();
@@ -587,26 +603,32 @@ void ClientNetwork::ProcessSettingsUpdateMessage(Game& game, ClientNetwork& clie
     
     // Parse and apply the settings from the message
     if (!parsed.chatMessage.empty()) {
-        // Skip if already processing settings or if we've processed this exact settings string
-        if (isProcessingSettings || parsed.chatMessage == lastProcessedSettings) {
-            std::cout << "[CLIENT] Skipping duplicate settings message processing" << std::endl;
+        // Simple hash function - just take first 20 chars + length as a "fingerprint"
+        std::string settingsHash = parsed.chatMessage.substr(0, std::min(20, (int)parsed.chatMessage.length())) + 
+                                  std::to_string(parsed.chatMessage.length());
+        
+        // Skip processing if it's the same settings we just processed
+        if (settingsHash == lastSettingsHash) {
+            std::cout << "[CLIENT] Skipping duplicate settings message" << std::endl;
             return;
         }
         
+        // Set the processing flag to prevent recursive calls
         isProcessingSettings = true;
-        lastProcessedSettings = parsed.chatMessage;
+        lastSettingsHash = settingsHash;
         
         // Deserialize settings from the message
         settingsManager->DeserializeSettings(parsed.chatMessage);
         
-        // Apply settings locally - no network updates from client
+        // Apply the settings locally without triggering network updates
         ApplySettings();
         
         // Mark that we've received initial settings
         m_initialSettingsReceived = true;
         
-        std::cout << "[CLIENT] Received and applied settings from host" << std::endl;
+        std::cout << "[CLIENT] Successfully received and applied settings from host" << std::endl;
         
+        // Clear the processing flag
         isProcessingSettings = false;
     }
 }
