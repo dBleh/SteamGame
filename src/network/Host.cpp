@@ -100,34 +100,40 @@ void HostNetwork::ProcessConnectionMessage(Game& game, HostNetwork& host, const 
 }
 
 void HostNetwork::BroadcastGameSettings() {
-    static bool isBroadcastingSettings = false;
-    
-    if (isBroadcastingSettings) {
-        std::cout << "[HOST] Preventing recursive settings broadcast" << std::endl;
+    static bool isBroadcasting = false;
+    if (isBroadcasting) {
+        std::cout << "[HOST] Already broadcasting settings, skipping" << std::endl;
         return;
     }
     
     GameSettingsManager* settingsManager = game->GetGameSettingsManager();
     if (!settingsManager) return;
     
-    isBroadcastingSettings = true;
+    isBroadcasting = true;
     
-    // Serialize all settings to a single string
+    // Create a cached serialized version to avoid duplicates
+    static std::string lastSerializedSettings;
     std::string serializedSettings = settingsManager->SerializeSettings();
     
-    // Format the settings update message using the existing handler
-    std::string settingsMsg = SettingsMessageHandler::FormatSettingsUpdateMessage(serializedSettings);
+    // Only broadcast if the settings have actually changed
+    if (serializedSettings != lastSerializedSettings) {
+        lastSerializedSettings = serializedSettings;
+        
+        // Format the settings update message using the existing handler
+        std::string settingsMsg = SettingsMessageHandler::FormatSettingsUpdateMessage(serializedSettings);
+        
+        // Broadcast the settings message to all clients
+        game->GetNetworkManager().BroadcastMessage(settingsMsg);
+        
+        // Log the broadcast for debugging
+        std::cout << "[HOST] Broadcasting changed game settings to all clients" << std::endl;
+    } else {
+        std::cout << "[HOST] Settings unchanged, skipping broadcast" << std::endl;
+    }
     
-    // Broadcast the settings message to all clients
-    game->GetNetworkManager().BroadcastMessage(settingsMsg);
-    
-    // Log the broadcast for debugging
-    std::cout << "[HOST] Broadcasting game settings to all clients" << std::endl;
-    
-    // Update last settings broadcast time
+    // Update timestamp regardless of whether we broadcast
     lastSettingsBroadcastTime = std::chrono::steady_clock::now();
-    
-    isBroadcastingSettings = false;
+    isBroadcasting = false;
 }
 
 
@@ -366,13 +372,14 @@ void HostNetwork::Update() {
         lastBroadcastTime = now;
     }
     
-    // Only broadcast settings periodically (if there are changes)
+    // Only broadcast settings if a significant time has passed (like 30 seconds)
+    // to avoid overwhelming clients
     float settingsElapsed = std::chrono::duration<float>(now - lastSettingsBroadcastTime).count();
-    if (settingsElapsed >= SETTINGS_BROADCAST_INTERVAL) {
-        // Don't broadcast settings too often
-        GameSettingsManager* settingsManager = game->GetGameSettingsManager();
-        if (settingsManager && game->GetCurrentState() == GameState::Playing) {
+    if (settingsElapsed >= 30.0f) {  // 30 seconds between broadcasts
+        if (game->GetCurrentState() == GameState::Playing) {
+            // Limit broadcast frequency and only broadcast when really needed
             BroadcastGameSettings();
+            lastSettingsBroadcastTime = now;
         }
     }
 }
