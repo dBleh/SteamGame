@@ -13,7 +13,6 @@
 #include "../network/messages/EnemyMessageHandler.h"
 #include "../network/messages/StateMessageHandler.h"
 #include "../network/messages/SystemMessageHandler.h"
-
 #include "PlayingStateUI.h"
 #include <steam/steam_api.h>
 #include <iostream>
