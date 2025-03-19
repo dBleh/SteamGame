@@ -117,9 +117,11 @@ void ClientNetwork::ProcessChatMessage(Game& game, ClientNetwork& client, const 
 void ClientNetwork::ProcessKillMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
     std::string killerID = parsed.steamID;
     int enemyId = parsed.enemyId;
+    uint32_t killSequence = parsed.killSequence; // New field to track message order
     
     std::cout << "[CLIENT] Received kill message from host - Player ID: " << killerID 
-              << ", Enemy ID: " << enemyId << "\n";
+              << ", Enemy ID: " << enemyId
+              << ", Sequence: " << killSequence << "\n";
     
     // Normalize killer ID
     std::string normalizedKillerID;
@@ -131,48 +133,35 @@ void ClientNetwork::ProcessKillMessage(Game& game, ClientNetwork& client, const 
         normalizedKillerID = killerID;
     }
     
-    // CHANGE: Use a static map to track recently processed kill messages
-    static std::unordered_map<std::string, std::chrono::steady_clock::time_point> recentKillMessages;
+    // CHANGE: Track the last processed kill sequence to maintain order
+    static uint32_t lastProcessedKillSequence = 0;
     
-    // Create a unique key for this kill message
-    std::string killKey = normalizedKillerID + "_" + std::to_string(enemyId);
-    
-    // Check if we've recently processed this kill message (within last 2 seconds)
-    auto now = std::chrono::steady_clock::now();
-    auto it = recentKillMessages.find(killKey);
-    
-    if (it != recentKillMessages.end()) {
-        float elapsed = std::chrono::duration<float>(now - it->second).count();
-        if (elapsed < 2.0f) {
-            // We've recently processed this exact kill message, skip it
-            std::cout << "[CLIENT] Ignoring duplicate kill message for " << normalizedKillerID 
-                      << " and enemy " << enemyId << " (processed " << elapsed << "s ago)\n";
-            return;
-        }
+    // Only process kills that have a newer sequence number
+    if (killSequence <= lastProcessedKillSequence && killSequence > 0) {
+        std::cout << "[CLIENT] Ignoring out-of-order kill message (sequence " 
+                  << killSequence << " <= " << lastProcessedKillSequence << ")\n";
+        return;
     }
     
-    // Record this kill message as processed
-    recentKillMessages[killKey] = now;
-    
-    // Clean up old entries from recentKillMessages map (older than 10 seconds)
-    for (auto killIt = recentKillMessages.begin(); killIt != recentKillMessages.end();) {
-        float elapsed = std::chrono::duration<float>(now - killIt->second).count();
-        if (elapsed > 10.0f) {
-            killIt = recentKillMessages.erase(killIt);
-        } else {
-            ++killIt;
-        }
+    // Update last processed sequence number
+    if (killSequence > lastProcessedKillSequence) {
+        lastProcessedKillSequence = killSequence;
     }
     
-    // Update kill count based on host's authoritative message
+    // Process the kill - this is the authoritative update from the host
     auto& players = playerManager->GetPlayers();
-    auto killIt = players.find(normalizedKillerID);
-    if (killIt != players.end()) {
-        killIt->second.kills++;
-        killIt->second.money += 50; // Award money for the kill
+    auto it = players.find(normalizedKillerID);
+    if (it != players.end()) {
+        // CHANGE: Set the exact kill count from the host (don't just increment)
+        // This ensures we match the host exactly
+        int previousKills = it->second.kills;
+        int newKills = previousKills + 1; // Increment by one for this kill
+        
+        it->second.kills = newKills;
+        it->second.money += 50; // Award money for the kill
         
         std::cout << "[CLIENT] Player " << normalizedKillerID << " awarded kill by host for enemy " 
-                  << enemyId << " - New kill count: " << killIt->second.kills << "\n";
+                  << enemyId << " - Kill count: " << previousKills << " -> " << newKills << "\n";
         
         // If it's the local player, make sure we process any effects
         std::string localID = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());

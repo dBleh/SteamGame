@@ -284,9 +284,15 @@ std::string PlayerMessageHandler::FormatPlayerDamageMessage(const std::string& p
     return oss.str();
 }
 
-std::string PlayerMessageHandler::FormatKillMessage(const std::string& killerID, int enemyId) {
+std::string PlayerMessageHandler::FormatKillMessage(const std::string& playerID, int enemyId) {
     std::ostringstream oss;
-    oss << "KL|" << killerID << "|" << enemyId;
+    oss << "KILL|" << playerID << "|" << enemyId;
+    return oss.str();
+}
+
+std::string PlayerMessageHandler::FormatKillMessage(const std::string& playerID, int enemyId, uint32_t sequence) {
+    std::ostringstream oss;
+    oss << "KILL|" << playerID << "|" << enemyId << "|" << sequence;
     return oss.str();
 }
 

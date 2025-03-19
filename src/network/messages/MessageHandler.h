@@ -47,7 +47,8 @@ enum class MessageType {
     ForceFieldZap,
     ForceFieldUpdate,
     SettingsUpdate,
-    SettingsRequest 
+    SettingsRequest,
+    
 };
 
 struct ParsedMessage {
@@ -73,6 +74,7 @@ struct ParsedMessage {
     std::vector<float> enemyHealths;
     int health;
     std::vector<int> enemyTypes;
+    uint32_t killSequence;
     
     // Force field update parameters
     float ffRadius;

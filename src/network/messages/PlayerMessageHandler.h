@@ -44,7 +44,8 @@ public:
     static std::string FormatPlayerDamageMessage(const std::string& playerID, 
                                                int damage, 
                                                int enemyId);
-    static std::string FormatKillMessage(const std::string& killerID, int enemyId);
+    static std::string FormatKillMessage(const std::string& playerID, int enemyId);
+    static std::string FormatKillMessage(const std::string& playerID, int enemyId, uint32_t sequence);
     static std::string FormatForceFieldZapMessage(const std::string& playerID, int enemyId, float damage);
     static std::string FormatForceFieldUpdateMessage(
         const std::string& playerID,
