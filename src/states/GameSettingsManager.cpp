@@ -316,7 +316,6 @@ bool GameSettingsManager::DeserializeSettings(const std::string& data) {
 void GameSettingsManager::ApplySettings() {
     // Note: Since we can't directly modify the #define constants at runtime,
     // other parts of the code will need to reference these values instead
-    
     // For now, we can just print the values as a demonstration
     std::cout << "[GameSettingsManager] Applying settings:" << std::endl;
     for (const auto& [name, setting] : settings) {

@@ -525,10 +525,23 @@ void ClientNetwork::ProcessForceFieldZapMessage(Game& game, ClientNetwork& clien
     }
 }
 
+// In Client.cpp
 void ClientNetwork::ApplySettings() {
+    static bool isApplyingSettings = false;
+    
+    if (isApplyingSettings) {
+        std::cout << "[CLIENT] Preventing recursive settings application" << std::endl;
+        return;
+    }
+    
+    isApplyingSettings = true;
+    
     // Get the GameSettingsManager from the game
     GameSettingsManager* settingsManager = game->GetGameSettingsManager();
-    if (!settingsManager) return;
+    if (!settingsManager) {
+        isApplyingSettings = false;
+        return;
+    }
     
     // Apply settings to all players
     playerManager->ApplySettings();
@@ -540,6 +553,7 @@ void ClientNetwork::ApplySettings() {
     }
     
     std::cout << "[CLIENT] Applied updated game settings" << std::endl;
+    isApplyingSettings = false;
 }
 
 void ClientNetwork::RequestGameSettings() {
@@ -561,27 +575,38 @@ void ClientNetwork::RequestGameSettings() {
 
 
 // In Client.cpp, modify the ProcessSettingsUpdateMessage method
+// In Client.cpp
 void ClientNetwork::ProcessSettingsUpdateMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
+    // Prevent recursive or repeated processing of the same settings
+    static bool isProcessingSettings = false;
+    static std::string lastProcessedSettings;
+    
     // Check if we have a settings manager
     GameSettingsManager* settingsManager = game.GetGameSettingsManager();
     if (!settingsManager) return;
     
     // Parse and apply the settings from the message
     if (!parsed.chatMessage.empty()) {
+        // Skip if already processing settings or if we've processed this exact settings string
+        if (isProcessingSettings || parsed.chatMessage == lastProcessedSettings) {
+            std::cout << "[CLIENT] Skipping duplicate settings message processing" << std::endl;
+            return;
+        }
+        
+        isProcessingSettings = true;
+        lastProcessedSettings = parsed.chatMessage;
+        
         // Deserialize settings from the message
         settingsManager->DeserializeSettings(parsed.chatMessage);
         
-        // Apply the settings locally without triggering network updates
-        static bool isApplyingNetworkSettings = false;
-        if (!isApplyingNetworkSettings) {
-            isApplyingNetworkSettings = true;
-            ApplySettings();
-            isApplyingNetworkSettings = false;
-        }
+        // Apply settings locally - no network updates from client
+        ApplySettings();
         
         // Mark that we've received initial settings
         m_initialSettingsReceived = true;
         
         std::cout << "[CLIENT] Received and applied settings from host" << std::endl;
+        
+        isProcessingSettings = false;
     }
 }
