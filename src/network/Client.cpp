@@ -20,9 +20,6 @@ ClientNetwork::ClientNetwork(Game* game, PlayerManager* manager)
     m_validationRequestTimer = 0.5f;
     m_periodicValidationTimer = 30.0f;
     PlayingState* playingState = GetPlayingState(game);
-    
-    // Request game settings from host
-    RequestGameSettings();
 }
 
 ClientNetwork::~ClientNetwork() {}
