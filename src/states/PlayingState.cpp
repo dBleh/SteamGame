@@ -36,6 +36,19 @@ PlayingState::PlayingState(Game* game)
     
     std::cout << "[DEBUG] PlayingState constructor start\n";
     
+    // Initialize default zoom with settings if available
+    if (game->GetGameSettingsManager()) {
+        GameSetting* defaultZoomSetting = game->GetGameSettingsManager()->GetSetting("default_zoom");
+        if (defaultZoomSetting) {
+            defaultZoom = defaultZoomSetting->GetFloatValue();
+            currentZoom = defaultZoom;
+        } else {
+            currentZoom = DEFAULT_ZOOM;
+        }
+    } else {
+        currentZoom = DEFAULT_ZOOM;
+    }
+    
     // Create a stylish grid with modern colors that match the UI theme
     grid = Grid(50.f, sf::Color(180, 180, 180, 100)); // Slightly transparent grid lines
     grid.setMajorLineInterval(5);
@@ -135,13 +148,26 @@ PlayingState::PlayingState(Game* game)
     }
     if (game->GetGameSettingsManager()) {
         std::cout << "[PlayingState] Applying initial game settings" << std::endl;
-        OnSettingsChanged();
+        ApplyAllSettings();
     }
     std::cout << "[DEBUG] PlayingState constructor completed\n";
 }
 
 PlayingState::~PlayingState() {
     game->GetWindow().setMouseCursorGrabbed(false);
+    
+    // Reset player states before destroying
+    if (playerManager) {
+        auto& players = playerManager->GetPlayers();
+        for (auto& pair : players) {
+            // Reset health, position, etc.
+            pair.second.player.Respawn();
+            // Reset kills and money for lobby
+            pair.second.kills = 0;
+            pair.second.money = 0;
+        }
+    }
+    
     shopInstance = nullptr; 
     ui.reset(); 
     shop.reset(); 
@@ -614,10 +640,10 @@ void PlayingState::HandleZoom(float delta) {
     sf::Vector2f worldPos = game->GetWindow().mapPixelToCoords(mousePos, game->GetCamera());
     
     // Apply zoom change
-    float newZoom = currentZoom + delta;
+    float newZoom = currentZoom + delta * zoomSpeed; // Use cached zoom speed
     
-    // Clamp zoom to min/max values
-    newZoom = std::max(MIN_ZOOM, std::min(MAX_ZOOM, newZoom));
+    // Clamp zoom to min/max values from settings
+    newZoom = std::max(minZoom, std::min(maxZoom, newZoom));
     
     // Only update if zoom actually changed
     if (newZoom != currentZoom) {
@@ -659,47 +685,76 @@ void PlayingState::AdjustViewToWindow() {
 // In PlayingState.cpp, modify the OnSettingsChanged method to use the bulletDamage setting:
 
 void PlayingState::OnSettingsChanged() {
-    // Apply settings to various game elements
-    std::cout << "Settings changed" <<std::endl;
-    if (game->GetGameSettingsManager()) {
-        // Apply to enemy manager
-        if (enemyManager) {
-            game->GetGameSettingsManager()->ApplyEnemySettings(enemyManager.get());
-        }
-        
-        // Apply to player manager - adjust bullet damage, player speed, etc.
-        if (playerManager) {
-            // Get settings
-            GameSetting* bulletDamageSetting = game->GetGameSettingsManager()->GetSetting("bullet_damage");
-            GameSetting* playerSpeedSetting = game->GetGameSettingsManager()->GetSetting("player_speed");
-            GameSetting* bulletSpeedSetting = game->GetGameSettingsManager()->GetSetting("bullet_speed");
-            
-            // Apply to all players
-            auto& players = playerManager->GetPlayers();
-            for (auto& pair : players) {
-                // Update bullet damage
-                if (bulletDamageSetting) {
-                    pair.second.player.SetBulletDamage(bulletDamageSetting->GetFloatValue());
-                }
-                
-                // Update player speed
-                if (playerSpeedSetting) {
-                    pair.second.player.SetSpeed(playerSpeedSetting->GetFloatValue());
-                }
-                
-                // Update bullet speed multiplier
-                if (bulletSpeedSetting) {
-                    float baseSpeed = BULLET_SPEED;
-                    float speedRatio = bulletSpeedSetting->GetFloatValue() / baseSpeed;
-                    pair.second.player.SetBulletSpeedMultiplier(speedRatio);
-                }
-            }
-        }
-        
-        // Apply wave cooldown setting
-        GameSetting* waveCooldownSetting = game->GetGameSettingsManager()->GetSetting("wave_cooldown_time");
-        if (waveCooldownSetting) {
-            waveCooldownTime = waveCooldownSetting->GetFloatValue();
-        }
+    // Apply settings locally without propagating to network
+    ApplyAllSettings();
+    
+    // Only propagate to network if we're the host and if this wasn't triggered by a network message
+    CSteamID myID = SteamUser()->GetSteamID();
+    CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+    
+    static bool isProcessingNetworkSettings = false;
+    if (myID == hostID && hostNetwork && !isProcessingNetworkSettings) {
+        isProcessingNetworkSettings = true;
+        // Broadcast updated settings to all clients
+        hostNetwork->BroadcastGameSettings();
+        isProcessingNetworkSettings = false;
     }
 }
+
+
+void PlayingState::ApplyAllSettings() {
+    GameSettingsManager* settingsManager = game->GetGameSettingsManager();
+    if (!settingsManager) return;
+    
+    // Apply settings to all components
+    
+    // 1. Apply to enemy manager
+    if (enemyManager) {
+        enemyManager->ApplySettings();
+    }
+    
+    // 2. Apply to player manager and all players/bullets
+    if (playerManager) {
+        playerManager->ApplySettings();
+    }
+    
+    // 3. Apply to wave settings
+    GameSetting* waveCooldownSetting = settingsManager->GetSetting("wave_cooldown_time");
+    if (waveCooldownSetting) {
+        waveCooldownTime = waveCooldownSetting->GetFloatValue();
+    }
+    
+    // 4. Apply to camera/zoom settings
+    GameSetting* defaultZoomSetting = settingsManager->GetSetting("default_zoom");
+    GameSetting* minZoomSetting = settingsManager->GetSetting("min_zoom");
+    GameSetting* maxZoomSetting = settingsManager->GetSetting("max_zoom");
+    GameSetting* zoomSpeedSetting = settingsManager->GetSetting("zoom_speed");
+    
+    if (defaultZoomSetting) {
+        defaultZoom = defaultZoomSetting->GetFloatValue();
+        // Only set current zoom if it hasn't been modified by the player yet
+        if (currentZoom == DEFAULT_ZOOM) {
+            currentZoom = defaultZoom;
+            AdjustViewToWindow();
+        }
+    }
+    
+    if (minZoomSetting) minZoom = minZoomSetting->GetFloatValue();
+    if (maxZoomSetting) maxZoom = maxZoomSetting->GetFloatValue();
+    if (zoomSpeedSetting) zoomSpeed = zoomSpeedSetting->GetFloatValue();
+    
+    // 5. Apply to shop system if needed
+    if (shop) {
+        // The shop might need its own method to apply settings
+        // shop->ApplySettings(settingsManager);
+    }
+    
+    // 6. Apply to UI
+    if (ui) {
+        // The UI might need its own method to apply settings
+        // ui->ApplySettings(settingsManager);
+    }
+    
+    std::cout << "[PlayingState] Applied all game settings" << std::endl;
+}
+

@@ -105,6 +105,11 @@ private:
     int currentWave;
     int remainingEnemiesInWave = 0;
     float batchSpawnTimer = 0.0f;
+    float spawnBatchInterval = ENEMY_SPAWN_BATCH_INTERVAL;
+    int spawnBatchSize = ENEMY_SPAWN_BATCH_SIZE;
+    float enemyCullingDistance = ENEMY_CULLING_DISTANCE;
+    float triangleMinSpawnDistance = TRIANGLE_MIN_SPAWN_DISTANCE;
+    float triangleMaxSpawnDistance = TRIANGLE_MAX_SPAWN_DISTANCE;
     EnemyType currentWaveEnemyType = EnemyType::Triangle;
     std::vector<sf::Vector2f> playerPositionsCache;
     

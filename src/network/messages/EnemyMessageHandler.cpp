@@ -19,7 +19,6 @@ void EnemyMessageHandler::Initialize() {
         },
         [](Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender) {
             // Host should be the one creating enemies, not receiving
-            std::cout << "[HOST] Received enemy add message from client, ignoring\n";
         });
 
     MessageHandler::RegisterMessageType("ER", 
@@ -121,9 +120,7 @@ void EnemyMessageHandler::Initialize() {
                     }
                 }
             },
-            [](Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender) {
-                // Host should be the one sending position updates, not receiving
-                std::cout << "[HOST] Received enemy position update from client, ignoring\n";
+            [](Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender) {           
             });
     MessageHandler::RegisterMessageType("EC", 
         ParseEnemyClearMessage,
@@ -134,8 +131,6 @@ void EnemyMessageHandler::Initialize() {
             }
         },
         [](Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender) {
-            // Host initiates clear, not receives it
-            std::cout << "[HOST] Received enemy clear from client, ignoring\n";
         });
 }
 
@@ -204,14 +199,7 @@ ParsedMessage EnemyMessageHandler::ParseEnemyPositionUpdateMessage(const std::ve
             parsed.enemyIds.push_back(id);
             parsed.enemyPositions.push_back(sf::Vector2f(x, y));
             parsed.enemyVelocities.push_back(sf::Vector2f(vx, vy));
-            
-            std::cout << "[MessageHandler] Parsed enemy position update: id=" << id 
-                      << ", pos=(" << x << "," << y << ")"
-                      << ", vel=(" << vx << "," << vy << ")" << std::endl;
-        } else {
-            std::cout << "[MessageHandler] Ignoring malformed enemy position data: " 
-                      << chunk << " (expected 5 components, got " << subParts.size() << ")" << std::endl;
-        }
+        } 
     }
     
     return parsed;
@@ -219,10 +207,7 @@ ParsedMessage EnemyMessageHandler::ParseEnemyPositionUpdateMessage(const std::ve
 
 ParsedMessage EnemyMessageHandler::ParseEnemyStateMessage(const std::vector<std::string>& parts) {
     ParsedMessage parsed;
-    parsed.type = MessageType::EnemyState;
-    
-    std::cout << "[MessageHandler] Parsing ES message with " << parts.size() << " parts\n";
-    
+    parsed.type = MessageType::EnemyState; 
     // First, let's handle the case where we have a full message with multiple entities
     // Format might be: ES|entity1|entity2|entity3|...
     for (size_t i = 1; i < parts.size(); ++i) {
@@ -253,32 +238,20 @@ ParsedMessage EnemyMessageHandler::ParseEnemyStateMessage(const std::vector<std:
                     float vx = std::stof(fields[5]);
                     float vy = std::stof(fields[6]);
                     parsed.enemyVelocities.push_back(sf::Vector2f(vx, vy));
-                    
-                    std::cout << "[MessageHandler] Parsed enemy: id=" << id 
-                              << ", pos=(" << x << "," << y << ")"
-                              << ", vel=(" << vx << "," << vy << ")\n";
+
                 } else {
                     // Add a zero velocity if not available
                     parsed.enemyVelocities.push_back(sf::Vector2f(0.0f, 0.0f));
-                    
-                    std::cout << "[MessageHandler] Parsed enemy: id=" << id 
-                              << ", pos=(" << x << "," << y << ")"
-                              << ", vel=(0,0) [default]\n";
+
                 }
             }
             catch (const std::exception& e) {
-                std::cout << "[MessageHandler] Error parsing enemy data: " << entityData 
-                          << " - Error: " << e.what() << "\n";
+
             }
         }
-        else {
-            std::cout << "[MessageHandler] Skipping malformed enemy data: " << entityData 
-                      << " (fields: " << fields.size() << ")\n";
-        }
+       
     }
-    
-    std::cout << "[MessageHandler] Successfully parsed " << parsed.enemyIds.size() << " enemies\n";
-    return parsed;
+
 }
 
 ParsedMessage EnemyMessageHandler::ParseEnemyStateRequestMessage(const std::vector<std::string>& parts) {

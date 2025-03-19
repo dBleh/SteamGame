@@ -4,12 +4,14 @@
 #include <unordered_map>
 #include <string>
 #include <functional>
+#include <vector>
 #include "../utils/config/Config.h"
 
 // Forward declarations
 class Game;
-class EnemyManager;  // Add this forward declaration
+class EnemyManager;
 class PlayingState;
+
 // Struct to hold a setting with min/max/default values
 struct GameSetting {
     std::string name;           // Name of the setting
@@ -46,6 +48,13 @@ struct GameSetting {
             value = std::round(value);
         }
     }
+};
+
+// Structure to hold settings preset information
+struct SettingsPreset {
+    std::string name;
+    std::string filePath;
+    bool isDefault;
 };
 
 /**
@@ -85,10 +94,34 @@ public:
     // Apply settings to the game
     void ApplySettings();
     void ApplyEnemySettings(EnemyManager* enemyManager);
-
+    
+    // Save/Load settings to/from disk
+    bool SaveSettings(const std::string& fileName);
+    bool LoadSettings(const std::string& fileName);
+    
+    // Get available presets
+    const std::vector<SettingsPreset>& GetPresets() const { return presets; }
+    
+    // Load most recent settings
+    bool LoadMostRecentSettings();
+    
+    // Set most recent settings file
+    void SetMostRecentSettingsFile(const std::string& filePath);
+    
+    // Get the most recent settings file
+    std::string GetMostRecentSettingsFile() const;
+    void RefreshPresets();
 private:
     Game* game;
     std::unordered_map<std::string, GameSetting> settings;
+    std::vector<SettingsPreset> presets;
+    std::string mostRecentSettingsFile;
+    
+    // Helper methods
+    void LoadPresets();
+    void SaveMostRecentSettingsFile();
+    bool LoadMostRecentSettingsFile();
+    std::string GetSettingsDirectory() const;
 };
 
 #endif // GAME_SETTINGS_MANAGER_H

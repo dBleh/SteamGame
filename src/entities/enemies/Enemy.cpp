@@ -157,3 +157,22 @@ float Enemy::SetDamage(float newDamage) {
     damage = newDamage;
     return damage;
 }
+
+void Enemy::ApplySettings(GameSettingsManager* settingsManager) {
+    if (!settingsManager) return;
+    
+    // Apply common enemy settings
+    GameSetting* speedSetting = settingsManager->GetSetting("enemy_speed");
+    if (speedSetting) {
+        speed = speedSetting->GetFloatValue();
+    }
+    
+    GameSetting* enemySizeSetting = settingsManager->GetSetting("enemy_size");
+    if (enemySizeSetting) {
+        // Use the SetSize method instead of directly updating radius
+        SetSize(enemySizeSetting->GetFloatValue());
+    }
+    
+    // Type-specific settings will be handled by derived classes
+    // They should override this method and call the parent implementation first
+}

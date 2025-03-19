@@ -5,7 +5,8 @@
 
 Player::Player()
     : movementSpeed(PLAYER_SPEED), shootCooldown(0.f), health(PLAYER_HEALTH), isDead(false), respawnPosition(0.f, 0.f),
-      bulletSpeedMultiplier(1.0f), moveSpeedMultiplier(1.0f), maxHealth(PLAYER_HEALTH), bulletDamage(BULLET_DAMAGE) {
+      bulletSpeedMultiplier(1.0f), moveSpeedMultiplier(1.0f), maxHealth(PLAYER_HEALTH), bulletDamage(BULLET_DAMAGE),
+      shootCooldownDuration(SHOOT_COOLDOWN_DURATION) {
     shape.setSize(sf::Vector2f(50.f, 50.f));
     shape.setFillColor(sf::Color::Blue);
     shape.setPosition(100.f, 100.f);
@@ -13,7 +14,8 @@ Player::Player()
 
 Player::Player(const sf::Vector2f& startPosition, const sf::Color& color)
     : movementSpeed(PLAYER_SPEED), shootCooldown(0.f), health(PLAYER_HEALTH), isDead(false), respawnPosition(startPosition),
-      bulletSpeedMultiplier(1.0f), moveSpeedMultiplier(1.0f), maxHealth(PLAYER_HEALTH), bulletDamage(BULLET_DAMAGE) {
+      bulletSpeedMultiplier(1.0f), moveSpeedMultiplier(1.0f), maxHealth(PLAYER_HEALTH), bulletDamage(BULLET_DAMAGE),
+      shootCooldownDuration(SHOOT_COOLDOWN_DURATION) {
     shape.setSize(sf::Vector2f(50.f, 50.f));
     shape.setFillColor(color);
     shape.setPosition(startPosition);
@@ -31,7 +33,8 @@ Player::Player(Player&& other) noexcept
       isDead(other.isDead),
       respawnPosition(other.respawnPosition),
       forceField(std::move(other.forceField)),
-      forceFieldEnabled(other.forceFieldEnabled) {
+      forceFieldEnabled(other.forceFieldEnabled),
+      shootCooldownDuration(other.shootCooldownDuration) {
 }
 
 Player& Player::operator=(Player&& other) noexcept {
@@ -48,9 +51,11 @@ Player& Player::operator=(Player&& other) noexcept {
         respawnPosition = other.respawnPosition;
         forceField = std::move(other.forceField);
         forceFieldEnabled = other.forceFieldEnabled;
+        shootCooldownDuration = other.shootCooldownDuration;
     }
     return *this;
 }
+
 void Player::Update(float dt) {
     // Only handle cooldowns in the base update
     if (shootCooldown > 0.f) {
@@ -91,7 +96,7 @@ Player::BulletParams Player::Shoot(const sf::Vector2f& mouseWorldPos) {
     }
     
     if (shootCooldown <= 0.f) {
-        shootCooldown = SHOOT_COOLDOWN_DURATION;
+        shootCooldown = shootCooldownDuration;
 
         // Calculate the player's center position rather than top-left
         sf::Vector2f playerCenter = GetPosition() + sf::Vector2f(shape.getSize().x / 2.f, shape.getSize().y / 2.f);
@@ -201,7 +206,7 @@ bool Player::IsDead() const {
 }
 
 void Player::Respawn() {
-    health = PLAYER_HEALTH;
+    health = maxHealth; // Use maxHealth instead of constant
     isDead = false;
     // Move player to their respawn position
     shape.setPosition(respawnPosition);
@@ -243,6 +248,7 @@ void Player::InitializeForceField() {
     
     forceFieldEnabled = true;
 }
+
 void Player::EnableForceField(bool enable) {
     // Only change state if we have a force field
     if (forceField) {
@@ -272,3 +278,63 @@ void Player::EnableForceField(bool enable) {
     }
 }
 
+void Player::ApplySettings(GameSettingsManager* settingsManager) {
+    if (!settingsManager) return;
+    
+    // Apply player settings
+    GameSetting* playerSpeedSetting = settingsManager->GetSetting("player_speed");
+    if (playerSpeedSetting) {
+        movementSpeed = playerSpeedSetting->GetFloatValue();
+    }
+    
+    GameSetting* playerHealthSetting = settingsManager->GetSetting("player_health");
+    if (playerHealthSetting) {
+        // Only update max health if the player is at full health or hasn't taken damage
+        if (health == maxHealth) {
+            maxHealth = playerHealthSetting->GetFloatValue();
+            health = maxHealth; // Update current health as well
+        } else {
+            // If player has taken damage, keep the same proportion of health
+            float healthRatio = health / maxHealth;
+            maxHealth = playerHealthSetting->GetFloatValue();
+            health = maxHealth * healthRatio;
+        }
+    }
+    
+    // Bullet settings
+    GameSetting* bulletDamageSetting = settingsManager->GetSetting("bullet_damage");
+    if (bulletDamageSetting) {
+        bulletDamage = bulletDamageSetting->GetFloatValue();
+    }
+    
+    GameSetting* bulletSpeedSetting = settingsManager->GetSetting("bullet_speed");
+    if (bulletSpeedSetting) {
+        // Update the base bullet speed - this affects new bullets only
+        // The actual speed will be this base value * bulletSpeedMultiplier
+    }
+    
+    // Shop multipliers from settings
+    GameSetting* moveSpeedMultiplierSetting = settingsManager->GetSetting("shop_move_speed_multiplier");
+    if (moveSpeedMultiplierSetting) {
+        // This would be applied when the player purchases an upgrade
+        // Not directly setting it here as it's controlled by the shop system
+    }
+    
+    GameSetting* bulletSpeedMultiplierSetting = settingsManager->GetSetting("shop_bullet_speed_multiplier");
+    if (bulletSpeedMultiplierSetting) {
+        // Similar to move speed multiplier, controlled by shop
+    }
+    
+    // Collision settings
+    GameSetting* collisionRadiusSetting = settingsManager->GetSetting("collision_radius");
+    if (collisionRadiusSetting) {
+        // Update the player's collision radius/hitbox if needed
+        // This might affect the shape size or separate collision detection
+    }
+    
+    // Apply force field settings if it exists
+    if (forceField && forceFieldEnabled) {
+        // If you have specific force field settings in the GameSettingsManager,
+        // you could apply them here or call a method on the force field
+    }
+}

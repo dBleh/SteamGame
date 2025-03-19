@@ -10,7 +10,10 @@
 #include <iostream>
 
 HostNetwork::HostNetwork(Game* game, PlayerManager* manager)
-    : game(game), playerManager(manager), lastBroadcastTime(std::chrono::steady_clock::now()) {
+    : game(game), 
+      playerManager(manager), 
+      lastBroadcastTime(std::chrono::steady_clock::now()),
+      lastSettingsBroadcastTime(std::chrono::steady_clock::now()) {
     CSteamID hostID = game->GetLocalSteamID();
     std::string hostIDStr = std::to_string(hostID.ConvertToUint64());
     std::string hostName = SteamFriends()->GetPersonaName();
@@ -31,9 +34,12 @@ HostNetwork::HostNetwork(Game* game, PlayerManager* manager)
     // Initialize force fields for the host player
     playerManager->InitializeForceFields();
     
+    // Apply settings to all players
+    ApplySettings();
     
-    
+    // Broadcast initial player list and settings
     BroadcastFullPlayerList();
+    BroadcastGameSettings();
 }
 
 HostNetwork::~HostNetwork() {}
@@ -93,6 +99,49 @@ void HostNetwork::ProcessConnectionMessage(Game& game, HostNetwork& host, const 
     BroadcastFullPlayerList();
 }
 
+void HostNetwork::BroadcastGameSettings() {
+    GameSettingsManager* settingsManager = game->GetGameSettingsManager();
+    if (!settingsManager) return;
+    
+    // Serialize all settings to a single string
+    std::string serializedSettings = settingsManager->SerializeSettings();
+    
+    // Format the settings update message using the existing handler
+    std::string settingsMsg = SettingsMessageHandler::FormatSettingsUpdateMessage(serializedSettings);
+    
+    // Broadcast the settings message to all clients
+    game->GetNetworkManager().BroadcastMessage(settingsMsg);
+    
+    // Log the broadcast for debugging
+    std::cout << "[HOST] Broadcasting game settings to all clients" << std::endl;
+}
+
+
+void HostNetwork::ProcessGameSettingsMessage(Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender) {
+    // This method would be called when a client sends a setting update request
+    // For now, we'll only allow the host to change settings
+    
+    CSteamID hostID = game.GetLocalSteamID();
+    if (sender != hostID) {
+        std::cout << "[HOST] Ignoring settings update from non-host client: " << sender.ConvertToUint64() << "\n";
+        return;
+    }
+    
+    GameSettingsManager* settingsManager = game.GetGameSettingsManager();
+    if (!settingsManager) return;
+    
+    // The settings data is in the chatMessage field (as seen in SettingsMessageHandler)
+    if (!parsed.chatMessage.empty()) {
+        // Deserialize and apply the settings
+        settingsManager->DeserializeSettings(parsed.chatMessage);
+        settingsManager->ApplySettings();
+        
+        // Broadcast updated settings to all clients
+        std::string msg = SettingsMessageHandler::FormatSettingsUpdateMessage(
+            settingsManager->SerializeSettings());
+        game.GetNetworkManager().BroadcastMessage(msg);
+    }
+}
 void HostNetwork::ProcessMovementMessage(Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender) {
     if (parsed.steamID.empty()) {
         std::cout << "[HOST] Invalid movement message from " << sender.ConvertToUint64() << "\n";
@@ -132,6 +181,21 @@ void HostNetwork::ProcessChatMessage(const std::string& message, CSteamID sender
     std::string msg = SystemMessageHandler::FormatChatMessage(std::to_string(sender.ConvertToUint64()), message);
     game->GetNetworkManager().BroadcastMessage(msg);
 }
+
+void HostNetwork::SendReturnToLobbyCommand() {
+    CSteamID hostID = game->GetLocalSteamID();
+    std::string hostIDStr = std::to_string(hostID.ConvertToUint64());
+    std::string returnToLobbyMsg = StateMessageHandler::FormatReturnToLobbyMessage(hostIDStr);
+    
+    // Broadcast to all clients
+    game->GetNetworkManager().BroadcastMessage(returnToLobbyMsg);
+    
+    // Also apply to ourselves
+    game->SetCurrentState(GameState::Lobby);
+    
+    std::cout << "[HOST] Returning all players to lobby\n";
+}
+
 void HostNetwork::ProcessForceFieldUpdateMessage(Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender) {
     // Get the player ID from the message
     std::string playerID = parsed.steamID;
@@ -280,6 +344,8 @@ void HostNetwork::BroadcastPlayersList() {
 
 void HostNetwork::Update() {
     auto now = std::chrono::steady_clock::now();
+    
+    // Regular position updates
     float elapsed = std::chrono::duration<float>(now - lastBroadcastTime).count();
     if (elapsed >= BROADCAST_INTERVAL) {
         BroadcastPlayersList();
@@ -291,10 +357,21 @@ void HostNetwork::ProcessPlayerDeathMessage(Game& game, HostNetwork& host, const
     std::string playerID = parsed.steamID;
     std::string killerID = parsed.killerID;
     auto& players = playerManager->GetPlayers();
+    
+    // Get the respawn time from settings if available
+    float respawnTime = 3.0f; // Default
+    GameSettingsManager* settingsManager = game.GetGameSettingsManager();
+    if (settingsManager) {
+        GameSetting* respawnTimeSetting = settingsManager->GetSetting("respawn_time");
+        if (respawnTimeSetting) {
+            respawnTime = respawnTimeSetting->GetFloatValue();
+        }
+    }
+    
     if (players.find(playerID) != players.end()) {
         RemotePlayer& player = players[playerID];
         player.player.TakeDamage(100);
-        player.respawnTimer = 3.0f;
+        player.respawnTimer = respawnTime; // Use setting-based respawn time
     }
     if (players.find(killerID) != players.end()) {
         playerManager->IncrementPlayerKills(killerID);
@@ -315,11 +392,32 @@ void HostNetwork::ProcessPlayerRespawnMessage(Game& game, HostNetwork& host, con
     std::string respawnMsg = PlayerMessageHandler::FormatPlayerRespawnMessage(playerID, respawnPos);
     game.GetNetworkManager().BroadcastMessage(respawnMsg);
 }
-
+void HostNetwork::ApplySettings() {
+    // Get the GameSettingsManager from the game
+    GameSettingsManager* settingsManager = game->GetGameSettingsManager();
+    if (!settingsManager) return;
+    
+    // Apply settings to all players
+    playerManager->ApplySettings();
+    
+    // Apply settings to enemy manager if we're in playing state
+    PlayingState* playingState = GetPlayingState(game);
+    if (playingState && playingState->GetEnemyManager()) {
+        playingState->GetEnemyManager()->ApplySettings();
+    }
+}
 void HostNetwork::ProcessStartGameMessage(Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender) {
     std::cout << "[HOST] Received start game message, changing to Playing state\n";
     if (game.GetCurrentState() != GameState::Playing) {
+        // Apply settings before changing state to avoid multiple broadcasts
+        ApplySettings();
+        
+        // Change game state
         game.SetCurrentState(GameState::Playing);
+        
+        // Broadcast game settings once after state change
+        // This ensures settings are synchronized only once during game start
+        BroadcastGameSettings();
     }
 }
 

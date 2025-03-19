@@ -48,7 +48,7 @@ enum class MessageType {
     ForceFieldUpdate,
     SettingsUpdate,
     SettingsRequest,
-    
+    ReturnToLobby,
 };
 
 struct ParsedMessage {

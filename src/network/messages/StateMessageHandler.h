@@ -17,7 +17,8 @@ public:
     static ParsedMessage ParseReadyStatusMessage(const std::vector<std::string>& parts);
     static ParsedMessage ParseStartGameMessage(const std::vector<std::string>& parts);
     static ParsedMessage ParseWaveStartMessage(const std::vector<std::string>& parts);
-    
+    static ParsedMessage ParseReturnToLobbyMessage(const std::vector<std::string>& parts);
+static std::string FormatReturnToLobbyMessage(const std::string& hostID);
     // Message formatting functions
     static std::string FormatReadyStatusMessage(const std::string& steamID, bool isReady);
     static std::string FormatStartGameMessage(const std::string& hostID);

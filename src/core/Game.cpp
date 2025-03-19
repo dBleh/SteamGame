@@ -189,12 +189,6 @@ void Game::Run() {
             default:
                 break;
         }
-
-        // Print debug info if state changed
-        if (stateChanged) {
-            std::cout << "[INFO] Switched to state: " << static_cast<int>(currentState) << std::endl;
-        }
-
         // Let the state handle rendering
         if (state) state->Render();
     }
@@ -220,7 +214,6 @@ void Game::SetCurrentState(GameState newState) {
         
         // Leave the Steam lobby first
         if (SteamMatchmaking() && currentLobby != k_steamIDNil) {
-            std::cout << "[GAME] Leaving Steam lobby: " << currentLobby.ConvertToUint64() << std::endl;
             SteamMatchmaking()->LeaveLobby(currentLobby);
         } else {
             std::cout << "[GAME] No valid lobby to leave" << std::endl;
@@ -232,8 +225,6 @@ void Game::SetCurrentState(GameState newState) {
         
         // Also reset the NetworkManager state
         networkManager->ResetLobbyState();
-        
-        std::cout << "[GAME] Left lobby and reset lobby state" << std::endl;
     }
     
     // Handle exiting the current state if needed
@@ -248,7 +239,6 @@ void Game::SetCurrentState(GameState newState) {
     
     // Set the new state
     currentState = newState;
-    std::cout << "[GAME] Switched to state: " << static_cast<int>(currentState) << std::endl;
 }
 
 // In Game.cpp - modify the ProcessEvents method to handle mouse wheel events
@@ -274,12 +264,7 @@ void Game::ProcessEvents(sf::Event& event) {
             window.setFramerateLimit(60);
             AdjustViewToWindow();
         }
-    }
-    if (event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::R) {
-        std::cout << "Triggering ready state" << std::endl;
-    }
-    
-    
+    } 
 }
 
 

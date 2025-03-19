@@ -33,7 +33,7 @@ public:
     // Message formatting functions
     static std::string FormatSettingsUpdateMessage(const std::string& settingsData);
     static std::string FormatSettingsRequestMessage();
-    
+
     // Helper functions for message processing
     static void ProcessSettingsUpdateForClient(Game& game, ClientNetwork& client, const ParsedMessage& parsed);
     static void ProcessSettingsUpdateForHost(Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender);

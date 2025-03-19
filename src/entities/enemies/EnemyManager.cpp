@@ -50,30 +50,64 @@ void EnemyManager::Update(float dt) {
     // Check for collisions with players
     CheckPlayerCollisions();
     
-    // Optimize enemy list if we have a large number
-    if (enemies.size() > 200) {
+    // Get max enemies spawnable from settings if available
+    int maxEnemies = MAX_ENEMIES_SPAWNABLE;
+    if (game->GetGameSettingsManager()) {
+        GameSetting* maxEnemiesSetting = game->GetGameSettingsManager()->GetSetting("max_enemies_spawnable");
+        if (maxEnemiesSetting) {
+            maxEnemies = maxEnemiesSetting->GetIntValue();
+        }
+    }
+    
+    // If enemy count exceeds a threshold, optimize
+    if (enemies.size() > maxEnemies / 5) {
         OptimizeEnemyList();
+    }
+    
+    // Get validation check interval from settings if available
+    float validationInterval = VALIDATION_CHECK_INTERVAL;
+    if (game->GetGameSettingsManager()) {
+        GameSetting* validationIntervalSetting = game->GetGameSettingsManager()->GetSetting("validation_check_interval");
+        if (validationIntervalSetting) {
+            validationInterval = validationIntervalSetting->GetFloatValue();
+        }
     }
     
     // Periodic validation of enemy states
     validationTimer += dt;
-    if (validationTimer >= VALIDATION_CHECK_INTERVAL) {
+    if (validationTimer >= validationInterval) {
         ValidateEnemyStates();
         validationTimer = 0.0f;
     }
     
     // Handle network synchronization if we're the host
     if (IsLocalPlayerHost()) {
+        // Get sync intervals from settings if available
+        float positionSyncInterval = POSITION_SYNC_INTERVAL;
+        float fullSyncInterval = FULL_SYNC_INTERVAL;
+        
+        if (game->GetGameSettingsManager()) {
+            GameSetting* syncIntervalSetting = game->GetGameSettingsManager()->GetSetting("enemy_sync_interval");
+            if (syncIntervalSetting) {
+                positionSyncInterval = syncIntervalSetting->GetFloatValue();
+            }
+            
+            GameSetting* fullSyncIntervalSetting = game->GetGameSettingsManager()->GetSetting("full_sync_interval");
+            if (fullSyncIntervalSetting) {
+                fullSyncInterval = fullSyncIntervalSetting->GetFloatValue();
+            }
+        }
+        
         // Sync enemy positions more frequently
         syncTimer += dt;
-        if (syncTimer >= POSITION_SYNC_INTERVAL) {
+        if (syncTimer >= positionSyncInterval) {
             SyncEnemyPositions();
             syncTimer = 0.0f;
         }
         
         // Send full state less frequently to reduce network traffic
         fullSyncTimer += dt;
-        if (fullSyncTimer >= FULL_SYNC_INTERVAL) {
+        if (fullSyncTimer >= fullSyncInterval) {
             SyncFullState();
             fullSyncTimer = 0.0f;
         }
@@ -106,9 +140,6 @@ int EnemyManager::AddEnemy(EnemyType type, const sf::Vector2f& position, float h
             << position.x << "," << position.y << "|" << health;
         
         game->GetNetworkManager().BroadcastMessage(oss.str());
-        
-        std::cout << "[HOST] Added enemy " << id << " at position (" 
-                  << position.x << "," << position.y << ")\n";
     }
     
     return id;
@@ -123,7 +154,6 @@ void EnemyManager::RemoveEnemy(int id) {
             oss << "ER|" << id;
             game->GetNetworkManager().BroadcastMessage(oss.str());
             
-            std::cout << "[HOST] Removed enemy " << id << "\n";
         }
         
         enemies.erase(it);
@@ -143,7 +173,6 @@ void EnemyManager::ClearEnemies() {
     // If we're the host, broadcast a clear command
     if (IsLocalPlayerHost()) {
         game->GetNetworkManager().BroadcastMessage("EC");
-        std::cout << "[HOST] Cleared all enemies\n";
     }
 }
 
@@ -162,28 +191,25 @@ bool EnemyManager::InflictDamage(int enemyId, float damage) {
         std::string damageMsg = EnemyMessageHandler::FormatEnemyDamageMessage(
             enemyId, damage, newHealth);
         game->GetNetworkManager().BroadcastMessage(damageMsg);
-        
-        std::cout << "[HOST] Enemy " << enemyId << " took damage: " 
-                  << damage << ", health: " << oldHealth << " -> " << newHealth << "\n";
-        
         if (killed) {
             // Host removes the enemy
-            std::cout << "[HOST] Enemy " << enemyId << " killed by damage " << damage << "\n";
             RemoveEnemy(enemyId);
         }
-    } else {
-        // Client behavior - don't remove enemies on kill, let the host decide
-        if (killed) {
-            std::cout << "[CLIENT] Enemy " << enemyId << " appears to be killed by damage " 
-                      << damage << " - Waiting for host confirmation\n";
-        }
-    }
-    
+    }   
     return killed;
 }
 
 void EnemyManager::CheckPlayerCollisions() {
     auto& players = playerManager->GetPlayers();
+    float triangleDamage = TRIANGLE_DAMAGE;
+    
+    // Get the triangle damage setting if available
+    if (game->GetGameSettingsManager()) {
+        GameSetting* damageSetting = game->GetGameSettingsManager()->GetSetting("triangle_damage");
+        if (damageSetting) {
+            triangleDamage = damageSetting->GetFloatValue();
+        }
+    }
     
     for (auto enemyIt = enemies.begin(); enemyIt != enemies.end();) {
         bool enemyRemoved = false;
@@ -192,8 +218,9 @@ void EnemyManager::CheckPlayerCollisions() {
             if (playerPair.second.player.IsDead()) continue;
             
             if (enemyIt->second->CheckPlayerCollision(playerPair.second.player.GetShape())) {
-                // Apply damage to player
-                playerPair.second.player.TakeDamage(TRIANGLE_DAMAGE);
+                // Apply damage to player - use the enemy's damage value instead of the constant
+                float actualDamage = enemyIt->second->GetDamage();
+                playerPair.second.player.TakeDamage(actualDamage);
                 
                 if (playerPair.second.player.IsDead()) {
                     playerManager->PlayerDied(playerPair.first, "");
@@ -219,11 +246,8 @@ void EnemyManager::CheckPlayerCollisions() {
                     
                     // Also inform about player damage
                     oss.str("");
-                    oss << "PD|" << playerPair.first << "|" << TRIANGLE_DAMAGE << "|" << enemyId;
+                    oss << "PD|" << playerPair.first << "|" << actualDamage << "|" << enemyId;
                     game->GetNetworkManager().BroadcastMessage(oss.str());
-                    
-                    std::cout << "[HOST] Enemy " << enemyId << " collided with player " 
-                              << playerPair.first << " and was removed\n";
                 }
                 
                 break;
@@ -275,10 +299,6 @@ void EnemyManager::SyncEnemyPositions() {
     // Send the message using the existing EP format
     std::string epMessage = EnemyMessageHandler::FormatEnemyPositionUpdateMessage(enemyIds, positions);
     game->GetNetworkManager().BroadcastMessage(epMessage);
-    
-    if (!enemyIds.empty()) {
-        std::cout << "[HOST] Synced positions for " << enemyIds.size() << " enemies\n";
-    }
 }
 
 void EnemyManager::SyncFullState() {
@@ -307,12 +327,8 @@ void EnemyManager::SyncFullState() {
         for (const auto& chunk : chunks) {
             game->GetNetworkManager().BroadcastMessage(chunk);
         }
-        
-        std::cout << "[HOST] Sent full state update (chunked) for " << enemyIds.size() << " enemies\n";
     } else {
         game->GetNetworkManager().BroadcastMessage(fullStateMsg);
-        
-        std::cout << "[HOST] Sent full state update for " << enemyIds.size() << " enemies\n";
     }
 }
 
@@ -331,9 +347,6 @@ void EnemyManager::ApplyNetworkUpdate(int enemyId, const sf::Vector2f& position,
     } else {
         // Enemy doesn't exist, create it with default type
         RemoteAddEnemy(enemyId, EnemyType::Triangle, position, health);
-        
-        std::cout << "[CLIENT] Created missing enemy " << enemyId 
-                  << " at position (" << position.x << "," << position.y << ")\n";
     }
 }
 
@@ -472,9 +485,6 @@ void EnemyManager::RemoteAddEnemy(int enemyId, EnemyType type, const sf::Vector2
     if (enemyId >= nextEnemyId) {
         nextEnemyId = enemyId + 1;
     }
-    
-    std::cout << "[CLIENT] Added remote enemy " << enemyId 
-              << " at position (" << position.x << "," << position.y << ")\n";
 }
 
 void EnemyManager::RemoteRemoveEnemy(int enemyId) {
@@ -487,8 +497,6 @@ void EnemyManager::RemoteRemoveEnemy(int enemyId) {
         if (stateIt != enemyNetworkStates.end()) {
             enemyNetworkStates.erase(stateIt);
         }
-        
-        std::cout << "[CLIENT] Removed remote enemy " << enemyId << "\n";
     }
 }
 
@@ -505,6 +513,7 @@ void EnemyManager::StartNewWave(int enemyCount, EnemyType type) {
     // Get the base enemy count from settings if available
     int baseEnemyCount = enemyCount;
     int additionalEnemies = 0;
+    float waveCooldownTime = WAVE_COOLDOWN_TIME;
     
     // Use settings from GameSettingsManager if available
     if (game->GetGameSettingsManager()) {
@@ -525,10 +534,24 @@ void EnemyManager::StartNewWave(int enemyCount, EnemyType type) {
                 additionalEnemies = static_cast<int>(baseEnemyCount * scaleFactor);
             }
         }
+        
+        // Get wave cooldown setting
+        GameSetting* cooldownSetting = game->GetGameSettingsManager()->GetSetting("wave_cooldown_time");
+        if (cooldownSetting) {
+            waveCooldownTime = cooldownSetting->GetFloatValue();
+        }
     }
     
     // Calculate total enemies for this wave
     int totalEnemies = baseEnemyCount + additionalEnemies;
+    
+    // Apply max enemy limit if available from settings
+    if (game->GetGameSettingsManager()) {
+        GameSetting* maxEnemiesSetting = game->GetGameSettingsManager()->GetSetting("max_enemies_spawnable");
+        if (maxEnemiesSetting && totalEnemies > maxEnemiesSetting->GetIntValue()) {
+            totalEnemies = maxEnemiesSetting->GetIntValue();
+        }
+    }
     
     // Store for batch spawning
     remainingEnemiesInWave = totalEnemies;
@@ -554,7 +577,8 @@ void EnemyManager::StartNewWave(int enemyCount, EnemyType type) {
     oss << "WS|" << currentWave << "|" << totalEnemies;
     game->GetNetworkManager().BroadcastMessage(oss.str());
     
-    std::cout << "[HOST] Started wave " << currentWave << " with " << totalEnemies << " enemies\n";
+    // Schedule wave cooldown if needed
+    // This would need additional implementation if you want to use the cooldown time
 }
 
 void EnemyManager::OptimizeEnemyList() {
@@ -576,8 +600,8 @@ void EnemyManager::OptimizeEnemyList() {
             float distSquared = std::pow(enemyPos.x - playerPos.x, 2) + 
                                 std::pow(enemyPos.y - playerPos.y, 2);
             
-            // Keep enemies within 2000 units of any player
-            if (distSquared < 2000.0f * 2000.0f) {
+            // Keep enemies within culling distance of any player
+            if (distSquared < enemyCullingDistance * enemyCullingDistance) {
                 tooFar = false;
                 break;
             }
@@ -591,11 +615,6 @@ void EnemyManager::OptimizeEnemyList() {
     // Remove the enemies that are too far
     for (int id : enemiesToRemove) {
         RemoveEnemy(id);
-    }
-    
-    if (!enemiesToRemove.empty()) {
-        std::cout << "[HOST] Optimized enemy list, removed " << enemiesToRemove.size() 
-                  << " enemies that were too far from players\n";
     }
 }
 
@@ -613,15 +632,11 @@ void EnemyManager::ValidateEnemyStates() {
         if (std::isnan(pos.x) || std::isnan(pos.y) || 
             std::isinf(pos.x) || std::isinf(pos.y)) {
             invalidEnemies.push_back(id);
-            std::cout << "[HOST] Found enemy " << id << " with invalid position: (" 
-                      << pos.x << "," << pos.y << ")\n";
         }
         
         // Check for very extreme positions (likely a bug)
         if (std::abs(pos.x) > 10000.0f || std::abs(pos.y) > 10000.0f) {
             invalidEnemies.push_back(id);
-            std::cout << "[HOST] Found enemy " << id << " with extreme position: (" 
-                      << pos.x << "," << pos.y << ")\n";
         }
     }
     
@@ -629,13 +644,18 @@ void EnemyManager::ValidateEnemyStates() {
     for (int id : invalidEnemies) {
         RemoveEnemy(id);
     }
-    
-    if (!invalidEnemies.empty()) {
-        std::cout << "[HOST] Validation check removed " << invalidEnemies.size() << " invalid enemies\n";
-    }
 }
 
 bool EnemyManager::IsValidSpawnPosition(const sf::Vector2f& position) {
+    // Get min spawn distance from settings if available
+    float minSpawnDistance = TRIANGLE_MIN_SPAWN_DISTANCE;
+    if (game->GetGameSettingsManager()) {
+        GameSetting* minDistanceSetting = game->GetGameSettingsManager()->GetSetting("triangle_min_spawn_distance");
+        if (minDistanceSetting) {
+            minSpawnDistance = minDistanceSetting->GetFloatValue();
+        }
+    }
+    
     // Check if the position is too close to any player
     auto& players = playerManager->GetPlayers();
     
@@ -646,8 +666,17 @@ bool EnemyManager::IsValidSpawnPosition(const sf::Vector2f& position) {
         float distSquared = std::pow(position.x - playerPos.x, 2) + 
                             std::pow(position.y - playerPos.y, 2);
         
-        if (distSquared < TRIANGLE_MIN_SPAWN_DISTANCE * TRIANGLE_MIN_SPAWN_DISTANCE) {
+        if (distSquared < minSpawnDistance * minSpawnDistance) {
             return false;
+        }
+    }
+    
+    // Calculate enemy spacing based on enemy size
+    float enemySpacing = 30.0f;
+    if (game->GetGameSettingsManager()) {
+        GameSetting* enemySizeSetting = game->GetGameSettingsManager()->GetSetting("enemy_size");
+        if (enemySizeSetting) {
+            enemySpacing = enemySizeSetting->GetFloatValue() * 1.5f;
         }
     }
     
@@ -658,7 +687,7 @@ bool EnemyManager::IsValidSpawnPosition(const sf::Vector2f& position) {
                             std::pow(position.y - enemyPos.y, 2);
         
         // Too close to another enemy - prevent clumping
-        if (distSquared < 30.0f * 30.0f) {
+        if (distSquared < enemySpacing * enemySpacing) {
             return false;
         }
     }
@@ -725,12 +754,21 @@ std::vector<int> EnemyManager::GetEnemyUpdatePriorities() {
 }
 
 sf::Vector2f EnemyManager::GetRandomSpawnPosition(const sf::Vector2f& targetPosition, 
-                                                float minDistance, float maxDistance) {
+                                               float minDistance, float maxDistance) {
     // Create random number generator
     static std::random_device rd;
     static std::mt19937 gen(rd());
     std::uniform_real_distribution<float> angleDist(0.0f, 2.0f * 3.14159f);
     std::uniform_real_distribution<float> distDist(minDistance, maxDistance);
+    
+    // Get spawn radius from settings if available
+    float spawnRadius = SPAWN_RADIUS;
+    if (game->GetGameSettingsManager()) {
+        GameSetting* spawnRadiusSetting = game->GetGameSettingsManager()->GetSetting("spawn_radius");
+        if (spawnRadiusSetting) {
+            spawnRadius = spawnRadiusSetting->GetFloatValue();
+        }
+    }
     
     // Try to find a valid spawn position (max 10 attempts)
     const int MAX_ATTEMPTS = 10;
@@ -812,30 +850,129 @@ void EnemyManager::ApplySettings() {
     // Get the relevant settings
     GameSetting* healthSetting = game->GetGameSettingsManager()->GetSetting("enemy_health");
     GameSetting* speedSetting = game->GetGameSettingsManager()->GetSetting("enemy_speed");
-    GameSetting* triangleDamage = game->GetGameSettingsManager()->GetSetting("triangle_damage");
+    GameSetting* triangleDamageSetting = game->GetGameSettingsManager()->GetSetting("triangle_damage");
+    GameSetting* triangleHealthSetting = game->GetGameSettingsManager()->GetSetting("triangle_health");
+    GameSetting* triangleSizeSetting = game->GetGameSettingsManager()->GetSetting("triangle_size");
+    GameSetting* enemySizeSetting = game->GetGameSettingsManager()->GetSetting("enemy_size");
     
     // Update all existing enemies with new settings
     for (auto& pair : enemies) {
         Enemy* enemy = pair.second.get();
-        
-        // Only update health for enemies at full health (to avoid resetting damaged enemies)
-        if (enemy->GetHealth() == ENEMY_HEALTH && healthSetting) {
-            enemy->SetHealth(healthSetting->GetFloatValue());
-        }
+        EnemyType enemyType = enemy->GetType();
         
         // Update speed for all enemies
         if (speedSetting) {
             enemy->SetSpeed(speedSetting->GetFloatValue());
         }
-        
-        // Update damage for triangle enemies
-        if (triangleDamage && enemy->GetType() == EnemyType::Triangle) {
-            enemy->SetDamage(triangleDamage->GetIntValue());
+        // Apply triangle size setting
+        if (triangleSizeSetting) {
+            enemy->SetSize(triangleSizeSetting->GetFloatValue());
         }
+        
+        // Type-specific updates
+        if (enemyType == EnemyType::Triangle) {
+            // Update triangle health if not damaged (at full health)
+            if (triangleHealthSetting && enemy->GetHealth() == TRIANGLE_HEALTH) {
+                enemy->SetHealth(triangleHealthSetting->GetFloatValue());
+            }
+            
+            // Update triangle damage
+            if (triangleDamageSetting) {
+                enemy->SetDamage(triangleDamageSetting->GetFloatValue());
+            }
+        } else {
+            // For other enemy types, use general health setting if at full health
+            if (healthSetting && enemy->GetHealth() == ENEMY_HEALTH) {
+                enemy->SetHealth(healthSetting->GetFloatValue());
+            }
+        }
+        
+        // Update all existing enemies with new settings
+for (auto& pair : enemies) {
+    Enemy* enemy = pair.second.get();
+    EnemyType enemyType = enemy->GetType();
+    
+    // Update speed for all enemies
+    if (speedSetting) {
+        enemy->SetSpeed(speedSetting->GetFloatValue());
     }
     
-    std::cout << "[" << (IsLocalPlayerHost() ? "HOST" : "CLIENT") << "] " 
-              << "Applied settings to " << enemies.size() << " enemies\n";
+    // Type-specific updates
+    if (enemyType == EnemyType::Triangle) {
+        // Update triangle health if not damaged (at full health)
+        if (triangleHealthSetting && enemy->GetHealth() == TRIANGLE_HEALTH) {
+            enemy->SetHealth(triangleHealthSetting->GetFloatValue());
+        }
+        
+        // Update triangle damage
+        if (triangleDamageSetting) {
+            enemy->SetDamage(triangleDamageSetting->GetFloatValue());
+        }
+        
+        // Apply triangle size setting
+        if (triangleSizeSetting) {
+            enemy->SetSize(triangleSizeSetting->GetFloatValue());
+        }
+    } else {
+        // For other enemy types, use general health setting if at full health
+        if (healthSetting && enemy->GetHealth() == ENEMY_HEALTH) {
+            enemy->SetHealth(healthSetting->GetFloatValue());
+        }
+        
+        // Apply general enemy size setting
+        if (enemySizeSetting) {
+            enemy->SetSize(enemySizeSetting->GetFloatValue());
+        }
+    }
+}
+    }
+    
+    // Update runtime settings (these will be used instead of the #define constants)
+    GameSetting* batchIntervalSetting = game->GetGameSettingsManager()->GetSetting("enemy_spawn_batch_interval");
+    if (batchIntervalSetting) {
+        spawnBatchInterval = batchIntervalSetting->GetFloatValue();
+    }
+    
+    GameSetting* batchSizeSetting = game->GetGameSettingsManager()->GetSetting("enemy_spawn_batch_size");
+    if (batchSizeSetting) {
+        spawnBatchSize = batchSizeSetting->GetIntValue();
+    }
+    
+    // Update culling distance
+    GameSetting* cullingDistanceSetting = game->GetGameSettingsManager()->GetSetting("enemy_culling_distance");
+    if (cullingDistanceSetting) {
+        enemyCullingDistance = cullingDistanceSetting->GetFloatValue();
+    }
+    
+    // Triangle spawn distances
+    GameSetting* minSpawnDistanceSetting = game->GetGameSettingsManager()->GetSetting("triangle_min_spawn_distance");
+    if (minSpawnDistanceSetting) {
+        triangleMinSpawnDistance = minSpawnDistanceSetting->GetFloatValue();
+    }
+    
+    GameSetting* maxSpawnDistanceSetting = game->GetGameSettingsManager()->GetSetting("triangle_max_spawn_distance");
+    if (maxSpawnDistanceSetting) {
+        triangleMaxSpawnDistance = maxSpawnDistanceSetting->GetFloatValue();
+    }
+    
+    // Network synchronization settings
+    GameSetting* syncIntervalSetting = game->GetGameSettingsManager()->GetSetting("enemy_sync_interval");
+    if (syncIntervalSetting) {
+        // Update sync interval constant - need a local variable in the class
+        // This would require adding a member variable to replace the constexpr
+    }
+    
+    GameSetting* fullSyncIntervalSetting = game->GetGameSettingsManager()->GetSetting("full_sync_interval");
+    if (fullSyncIntervalSetting) {
+        // Update full sync interval constant
+        // This would require adding a member variable to replace the constexpr
+    }
+    
+    GameSetting* maxEnemiesPerUpdateSetting = game->GetGameSettingsManager()->GetSetting("max_enemies_per_update");
+    if (maxEnemiesPerUpdateSetting) {
+        // Update max enemies per update constant
+        // This would require adding a member variable to replace the constexpr
+    }
 }
 
 bool EnemyManager::IsWaveComplete() const {
@@ -851,18 +988,14 @@ void EnemyManager::UpdateSpawning(float dt) {
     batchSpawnTimer += dt;
     
     // Check if it's time to spawn a batch
-    if (batchSpawnTimer >= ENEMY_SPAWN_BATCH_INTERVAL) {
+    if (batchSpawnTimer >= spawnBatchInterval) {
         // Reset timer
         batchSpawnTimer = 0.0f;
         
         // Calculate how many enemies to spawn in this batch
-        int spawnCount = std::min(ENEMY_SPAWN_BATCH_SIZE, remainingEnemiesInWave);
+        int spawnCount = std::min(spawnBatchSize, remainingEnemiesInWave);
         
         if (spawnCount > 0) {
-            // Debug log
-            std::cout << "[HOST] Spawning batch of " << spawnCount 
-                      << " enemies. Remaining after batch: " 
-                      << (remainingEnemiesInWave - spawnCount) << std::endl;
             
             // Spawn the batch
             for (int i = 0; i < spawnCount; ++i) {
@@ -871,8 +1004,8 @@ void EnemyManager::UpdateSpawning(float dt) {
                 
                 // Get a spawn position away from the player
                 sf::Vector2f spawnPos = GetRandomSpawnPosition(targetPos, 
-                                                             TRIANGLE_MIN_SPAWN_DISTANCE, 
-                                                             TRIANGLE_MAX_SPAWN_DISTANCE);
+                                                             triangleMinSpawnDistance, 
+                                                             triangleMaxSpawnDistance);
                 
                 // Add the enemy
                 AddEnemy(currentWaveEnemyType, spawnPos);
@@ -893,33 +1026,47 @@ std::unique_ptr<Enemy> EnemyManager::CreateEnemy(EnemyType type, int id, const s
     // Get settings from GameSettingsManager if available
     float enemyHealth = ENEMY_HEALTH;
     float enemySpeed = ENEMY_SPEED;
+    float enemySize = ENEMY_SIZE;
+    float triangleSize = TRIANGLE_SIZE;
+    float triangleHealth = TRIANGLE_HEALTH;
+    float triangleDamage = TRIANGLE_DAMAGE;
     
     if (game->GetGameSettingsManager()) {
         GameSetting* healthSetting = game->GetGameSettingsManager()->GetSetting("enemy_health");
         GameSetting* speedSetting = game->GetGameSettingsManager()->GetSetting("enemy_speed");
+        GameSetting* enemySizeSetting = game->GetGameSettingsManager()->GetSetting("enemy_size");
+        GameSetting* triangleSizeSetting = game->GetGameSettingsManager()->GetSetting("triangle_size");
+        GameSetting* triangleHealthSetting = game->GetGameSettingsManager()->GetSetting("triangle_health");
+        GameSetting* triangleDamageSetting = game->GetGameSettingsManager()->GetSetting("triangle_damage");
         
-        if (healthSetting) {
-            enemyHealth = healthSetting->GetFloatValue();
-        }
-        
-        if (speedSetting) {
-            enemySpeed = speedSetting->GetFloatValue();
-        }
+        if (healthSetting) enemyHealth = healthSetting->GetFloatValue();
+        if (speedSetting) enemySpeed = speedSetting->GetFloatValue();
+        if (enemySizeSetting) enemySize = enemySizeSetting->GetFloatValue();
+        if (triangleSizeSetting) triangleSize = triangleSizeSetting->GetFloatValue();
+        if (triangleHealthSetting) triangleHealth = triangleHealthSetting->GetFloatValue();
+        if (triangleDamageSetting) triangleDamage = triangleDamageSetting->GetFloatValue();
     }
     
-    // Create the appropriate enemy type
+    // Create the appropriate enemy type with the configured settings
     switch (type) {
-        case EnemyType::Triangle:
-            return std::unique_ptr<Enemy>(new TriangleEnemy(id, position, enemyHealth, enemySpeed));
+        case EnemyType::Triangle: {
+            auto enemy = std::unique_ptr<Enemy>(new TriangleEnemy(id, position, triangleHealth, enemySpeed, triangleSize));
+            enemy->SetDamage(triangleDamage);
+            return enemy;
+        }
             
         // Add cases for other enemy types when implemented
         case EnemyType::Circle:
         case EnemyType::Square:
         case EnemyType::Boss:
             // Default to Triangle until other types are implemented
-            return std::unique_ptr<Enemy>(new TriangleEnemy(id, position, enemyHealth, enemySpeed));
+            auto enemy = std::unique_ptr<Enemy>(new TriangleEnemy(id, position, triangleHealth, enemySpeed, triangleSize));
+            enemy->SetDamage(triangleDamage);
+            return enemy;
     }
     
     // Default case (should never reach here)
-    return std::unique_ptr<Enemy>(new TriangleEnemy(id, position, enemyHealth, enemySpeed));
+    auto enemy = std::unique_ptr<Enemy>(new TriangleEnemy(id, position, triangleHealth, enemySpeed, triangleSize));
+    enemy->SetDamage(triangleDamage);
+    return enemy;
 }

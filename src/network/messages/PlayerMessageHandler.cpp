@@ -204,9 +204,7 @@ ParsedMessage PlayerMessageHandler::ParseKillMessage(const std::vector<std::stri
         if (parts.size() >= 4) {
             try {
                 parsed.killSequence = std::stoul(parts[3]);
-                std::cout << "[MessageHandler] Parsed kill message with sequence: " << parsed.killSequence << "\n";
             } catch (const std::exception& e) {
-                std::cout << "[MessageHandler] Error parsing kill sequence: " << e.what() << "\n";
                 parsed.killSequence = 0;
             }
         } else {

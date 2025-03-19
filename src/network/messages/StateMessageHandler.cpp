@@ -37,9 +37,19 @@ void StateMessageHandler::Initialize() {
                             }
                         },
                         [](Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender) {
-                            // Host initiates waves, not receives them
-                            std::cout << "[HOST] Received wave start from client, ignoring\n";
                         });
+    MessageHandler::RegisterMessageType("RTL", 
+                            ParseReturnToLobbyMessage,
+                            [](Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
+                                std::cout << "[CLIENT] Received return to lobby command from host\n";
+                                // Clean up any playing state resources
+                                game.SetCurrentState(GameState::Lobby);
+                            },
+                            [](Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender) {
+                                // Only the host should send this message, not receive it
+                                std::cout << "[HOST] Received unexpected return to lobby command from " 
+                                          << sender.ConvertToUint64() << "\n";
+                            });
 }
 
 // Ready status message parsing
@@ -62,7 +72,19 @@ ParsedMessage StateMessageHandler::ParseStartGameMessage(const std::vector<std::
     }
     return parsed;
 }
-
+ParsedMessage StateMessageHandler::ParseReturnToLobbyMessage(const std::vector<std::string>& parts) {
+    ParsedMessage parsed;
+    parsed.type = MessageType::ReturnToLobby;
+    if (parts.size() >= 2) {
+        parsed.steamID = parts[1]; // Host ID
+    }
+    return parsed;
+}
+std::string StateMessageHandler::FormatReturnToLobbyMessage(const std::string& hostID) {
+    std::ostringstream oss;
+    oss << "RTL|" << hostID;
+    return oss.str();
+}
 // Wave start message parsing
 ParsedMessage StateMessageHandler::ParseWaveStartMessage(const std::vector<std::string>& parts) {
     ParsedMessage parsed;

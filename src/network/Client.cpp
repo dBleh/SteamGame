@@ -10,12 +10,19 @@
 #include <iostream>
 
 ClientNetwork::ClientNetwork(Game* game, PlayerManager* manager)
-    : game(game), playerManager(manager), lastSendTime(std::chrono::steady_clock::now()) {
+    : game(game), 
+      playerManager(manager), 
+      lastSendTime(std::chrono::steady_clock::now()),
+      m_initialSettingsReceived(false),
+      m_settingsRequestTimer(1.0f) {  // Request settings after 1 second
     hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
     m_lastValidationTime = std::chrono::steady_clock::now();
     m_validationRequestTimer = 0.5f;
     m_periodicValidationTimer = 30.0f;
     PlayingState* playingState = GetPlayingState(game);
+    
+    // Request game settings from host
+    RequestGameSettings();
 }
 
 ClientNetwork::~ClientNetwork() {}
@@ -171,14 +178,10 @@ void ClientNetwork::ProcessKillMessage(Game& game, ClientNetwork& client, const 
     if (it != players.end()) {
         it->second.kills++;
         it->second.money += 50; // Award money for the kill
-        
-        std::cout << "[CLIENT] Player " << normalizedKillerID << " awarded kill by host for enemy " 
-                  << enemyId << " - New kill count: " << it->second.kills << "\n";
-        
+               
         // If it's the local player, make sure we process any effects
         std::string localID = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
         if (normalizedKillerID == localID) {
-            std::cout << "[CLIENT] Local player received kill confirmation from host\n";
         }
     } else {
         std::cout << "[CLIENT] WARNING: Kill message for unknown player ID: " << normalizedKillerID << "\n";
@@ -254,13 +257,9 @@ void ClientNetwork::ProcessBulletMessage(Game& game, ClientNetwork& client, cons
         uint64_t localNum = std::stoull(localSteamIDStr);
         normalizedLocalID = std::to_string(localNum);
     } catch (const std::exception& e) {
-        std::cout << "[CLIENT] Error normalizing IDs: " << e.what() << "\n";
         normalizedShooterID = parsed.steamID;
         normalizedLocalID = localSteamIDStr;
     }
-    std::cout << "[CLIENT] Bullet ownership check - Message ID: '" << normalizedShooterID 
-              << "', Local ID: '" << normalizedLocalID 
-              << "', Same? " << (normalizedShooterID == normalizedLocalID ? "YES" : "NO") << "\n";
     if (normalizedShooterID == normalizedLocalID) {
         std::cout << "[CLIENT] Ignoring own bullet that was bounced back from server\n";
         return;
@@ -297,7 +296,7 @@ void ClientNetwork::SendReadyStatus(bool isReady) {
     std::string steamIDStr = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
     std::string msg = StateMessageHandler::FormatReadyStatusMessage(steamIDStr, isReady);
     if (game->GetNetworkManager().SendMessage(hostID, msg)) {
-        std::cout << "[CLIENT] Sent ready status: " << (isReady ? "true" : "false") << " (" << msg << ")\n";
+
     } else {
         std::cout << "[CLIENT] Failed to send ready status: " << msg << " - will retry\n";
         pendingReadyMessage = msg;
@@ -307,25 +306,51 @@ void ClientNetwork::SendReadyStatus(bool isReady) {
 void ClientNetwork::Update() {
     auto now = std::chrono::steady_clock::now();
     float elapsed = std::chrono::duration<float>(now - lastSendTime).count();
+    
+    // Regular position updates
     if (elapsed >= SEND_INTERVAL) {
         auto& localPlayer = playerManager->GetLocalPlayer().player;
         SendMovementUpdate(localPlayer.GetPosition());
         lastSendTime = now;
     }
+    
+    // Handle pending messages
     if (pendingConnectionMessage) {
         if (game->GetNetworkManager().SendMessage(hostID, pendingMessage)) {
             std::cout << "[CLIENT] Pending connection message sent successfully.\n";
             pendingConnectionMessage = false;
         }
     }
+    
     if (!pendingReadyMessage.empty()) {
         if (game->GetNetworkManager().SendMessage(hostID, pendingReadyMessage)) {
             std::cout << "[CLIENT] Pending ready status sent: " << pendingReadyMessage << "\n";
             pendingReadyMessage.clear();
         }
     }
+    
+    if (!pendingSettingsRequest.empty()) {
+        if (game->GetNetworkManager().SendMessage(hostID, pendingSettingsRequest)) {
+            std::cout << "[CLIENT] Pending settings request sent\n";
+            pendingSettingsRequest.clear();
+        }
+    }
+    
+    // Request settings if we haven't received them yet
+    if (!m_initialSettingsReceived) {
+        m_settingsRequestTimer -= elapsed;
+        if (m_settingsRequestTimer <= 0) {
+            RequestGameSettings();
+            m_settingsRequestTimer = 5.0f;  // Retry every 5 seconds until we get settings
+        }
+    }
+    
+    // Handle validation timer
+    if (m_validationRequestTimer > 0) {
+        m_validationRequestTimer -= elapsed;
+        // ... (existing validation logic)
+    }
 }
-
 void ClientNetwork::ProcessPlayerDeathMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
     std::string normalizedID = parsed.steamID;
     try {
@@ -335,6 +360,17 @@ void ClientNetwork::ProcessPlayerDeathMessage(Game& game, ClientNetwork& client,
         std::cout << "[CLIENT] Error normalizing player ID in ProcessPlayerDeathMessage: " << e.what() << "\n";
         normalizedID = parsed.steamID;
     }
+    
+    // Get respawn time from settings if available
+    float respawnTime = 3.0f; // Default
+    GameSettingsManager* settingsManager = game.GetGameSettingsManager();
+    if (settingsManager) {
+        GameSetting* respawnTimeSetting = settingsManager->GetSetting("respawn_time");
+        if (respawnTimeSetting) {
+            respawnTime = respawnTimeSetting->GetFloatValue();
+        }
+    }
+    
     auto& players = playerManager->GetPlayers();
     auto it = players.find(normalizedID);
     if (it != players.end()) {
@@ -342,11 +378,12 @@ void ClientNetwork::ProcessPlayerDeathMessage(Game& game, ClientNetwork& client,
         sf::Vector2f currentPos = player.player.GetPosition();
         player.player.SetRespawnPosition(currentPos);
         player.player.TakeDamage(100);
-        player.respawnTimer = 3.0f;
+        player.respawnTimer = respawnTime; // Use setting-based respawn time
         std::cout << "[CLIENT] Player " << normalizedID 
                   << " died at position (" << currentPos.x << "," << currentPos.y 
                   << "), respawn position set to same location\n";
     }
+    
     if (!parsed.killerID.empty()) {
         std::string normalizedKillerID = parsed.killerID;
         try {
@@ -360,6 +397,7 @@ void ClientNetwork::ProcessPlayerDeathMessage(Game& game, ClientNetwork& client,
             playerManager->IncrementPlayerKills(normalizedKillerID);
         }
     }
+    
     std::string localPlayerID = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
     if (normalizedID == localPlayerID) {
         std::cout << "[CLIENT] Local player died, will request validation after 1 second\n";
@@ -480,5 +518,61 @@ void ClientNetwork::ProcessForceFieldZapMessage(Game& game, ClientNetwork& clien
                 rp.player.GetForceField()->SetZapEffectTimer(0.3f); // Show effect for 0.3 seconds
             }
         }
+    }
+}
+
+void ClientNetwork::ApplySettings() {
+    // Get the GameSettingsManager from the game
+    GameSettingsManager* settingsManager = game->GetGameSettingsManager();
+    if (!settingsManager) return;
+    
+    // Apply settings to all players
+    playerManager->ApplySettings();
+    
+    // Apply settings to enemy manager if we're in playing state
+    PlayingState* playingState = GetPlayingState(game);
+    if (playingState && playingState->GetEnemyManager()) {
+        playingState->GetEnemyManager()->ApplySettings();
+    }
+    
+    std::cout << "[CLIENT] Applied updated game settings" << std::endl;
+}
+
+void ClientNetwork::RequestGameSettings() {
+    // Send a settings request message to the host
+    std::string requestMsg = SettingsMessageHandler::FormatSettingsRequestMessage();
+    
+    if (game->GetNetworkManager().SendMessage(hostID, requestMsg)) {
+        std::cout << "[CLIENT] Sent settings request to host" << std::endl;
+    } else {
+        std::cout << "[CLIENT] Failed to send settings request, will retry" << std::endl;
+        pendingSettingsRequest = requestMsg;
+    }
+}
+
+
+// In Client.cpp, modify the ProcessSettingsUpdateMessage method
+void ClientNetwork::ProcessSettingsUpdateMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
+    // Check if we have a settings manager
+    GameSettingsManager* settingsManager = game.GetGameSettingsManager();
+    if (!settingsManager) return;
+    
+    // Parse and apply the settings from the message
+    if (!parsed.chatMessage.empty()) {
+        // Deserialize settings from the message
+        settingsManager->DeserializeSettings(parsed.chatMessage);
+        
+        // Apply the settings locally without triggering network updates
+        static bool isApplyingNetworkSettings = false;
+        if (!isApplyingNetworkSettings) {
+            isApplyingNetworkSettings = true;
+            ApplySettings();
+            isApplyingNetworkSettings = false;
+        }
+        
+        // Mark that we've received initial settings
+        m_initialSettingsReceived = true;
+        
+        std::cout << "[CLIENT] Received and applied settings from host" << std::endl;
     }
 }

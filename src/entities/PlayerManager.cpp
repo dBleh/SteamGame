@@ -71,23 +71,24 @@ void PlayerManager::HandlePlayerRespawn(float dt, const std::string& playerID, R
                 RespawnPlayer(playerID);
                 
                 // Double-check health after respawn
-                if (rp.player.GetHealth() < PLAYER_HEALTH) {
+                if (rp.player.GetHealth() < rp.player.GetMaxHealth()) {
                     std::cout << "[PM] WARNING: Player health not fully restored after respawn: " 
-                              << rp.player.GetHealth() << "/100\n";
+                              << rp.player.GetHealth() << "/" << rp.player.GetMaxHealth() << "\n";
                     
                     // Force health to full as a fallback
                     rp.player.Respawn();
                 }
             }
         } else if (playerID == localPlayerID) {
-            // If local player is dead but has no respawn timer, set one
+            // If local player is dead but has no respawn timer, set one using the setting
             if (rp.respawnTimer <= 0.0f) {
                 std::cout << "[PM] Setting respawn timer for local player\n";
-                rp.respawnTimer = 3.0f;
+                rp.respawnTimer = respawnTime; // Use setting-based respawn time
             }
         }
     }
 }
+
 
 void PlayerManager::UpdatePlayerPosition(float dt, const std::string& playerID, RemotePlayer& rp, Game* game) {
     sf::Vector2f pos;
@@ -120,42 +121,43 @@ void PlayerManager::UpdatePlayerNameDisplay(const std::string& playerID, RemoteP
     }
 }
 
-void PlayerManager::UpdateBullets(float dt) {
-    std::vector<size_t> bulletsToRemove;
-    
-    for (size_t i = 0; i < bullets.size(); i++) {
-        bullets[i].Update(dt);
-        
-        // Mark expired bullets or those far away from all players
-        if (bullets[i].IsExpired()) {
-            bulletsToRemove.push_back(i);
-        } else {
-            // Also remove bullets that are far away from any player
-            bool tooFarFromAllPlayers = true;
-            sf::Vector2f bulletPos = bullets[i].GetPosition();
-            
-            for (const auto& pair : players) {
-                if (pair.second.player.IsDead()) continue;
-                
-                sf::Vector2f playerPos = pair.second.player.GetPosition();
-                float distSquared = (bulletPos.x - playerPos.x) * (bulletPos.x - playerPos.x) +
-                                    (bulletPos.y - playerPos.y) * (bulletPos.y - playerPos.y);
-                
-                // If bullet is within reasonable distance of any player, keep it
-                if (distSquared < 1000*1000) {  // 1000 pixels
-                    tooFarFromAllPlayers = false;
-                    break;
-                }
-            }
-            
-            if (tooFarFromAllPlayers) {
-                bulletsToRemove.push_back(i);
-            }
-        }
+void PlayerManager::AddBullet(const std::string& shooterID, const sf::Vector2f& position, const sf::Vector2f& direction, float velocity) {
+    // Validate input parameters
+    if (direction.x == 0.f && direction.y == 0.f) {
+        return;
     }
     
-    // Remove expired bullets safely (from back to front)
-    RemoveBullets(bulletsToRemove);
+    if (shooterID.empty()) {
+        return;
+    }
+    
+    // For debugging: print the ID being added and local ID for comparison
+    std::string localSteamIDStr = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
+
+    // Ensure we use the exact same string format for IDs
+    std::string normalizedID = shooterID;
+    try {
+        // Convert to uint64, then back to string to normalize format
+        uint64_t idNum = std::stoull(shooterID);
+        normalizedID = std::to_string(idNum);
+    } catch (const std::exception& e) {
+        std::cout << "[PM] Error normalizing shooter ID: " << e.what() << "\n";
+    }
+    
+    // Apply bullet speed multiplier from player if available
+    float adjustedVelocity = velocity;
+    auto it = players.find(normalizedID);
+    if (it != players.end()) {
+        adjustedVelocity *= it->second.player.GetBulletSpeedMultiplier();
+    }
+    
+    // Add the bullet with the normalized ID
+    bullets.emplace_back(position, direction, adjustedVelocity, normalizedID);
+    
+    // If game settings manager exists, apply settings to the new bullet
+    if (game->GetGameSettingsManager()) {
+        bullets.back().ApplySettings(game->GetGameSettingsManager());
+    }
 }
 
 void PlayerManager::AddOrUpdatePlayer(const std::string& id, const RemotePlayer& player) {
@@ -268,38 +270,42 @@ bool PlayerManager::AreAllPlayersReady() const {
     return !players.empty(); // Only true if there are players and all are ready
 }
 
-void PlayerManager::AddBullet(const std::string& shooterID, const sf::Vector2f& position, const sf::Vector2f& direction, float velocity) {
-    // Validate input parameters
-    if (direction.x == 0.f && direction.y == 0.f) {
-        return;
+void PlayerManager::UpdateBullets(float dt) {
+    std::vector<size_t> bulletsToRemove;
+    
+    for (size_t i = 0; i < bullets.size(); i++) {
+        bullets[i].Update(dt);
+        
+        // Mark expired bullets or those far away from all players
+        if (bullets[i].IsExpired()) {
+            bulletsToRemove.push_back(i);
+        } else {
+            // Also remove bullets that are far away from any player
+            bool tooFarFromAllPlayers = true;
+            sf::Vector2f bulletPos = bullets[i].GetPosition();
+            
+            for (const auto& pair : players) {
+                if (pair.second.player.IsDead()) continue;
+                
+                sf::Vector2f playerPos = pair.second.player.GetPosition();
+                float distSquared = (bulletPos.x - playerPos.x) * (bulletPos.x - playerPos.x) +
+                                    (bulletPos.y - playerPos.y) * (bulletPos.y - playerPos.y);
+                
+                // If bullet is within reasonable distance of any player, keep it
+                if (distSquared < 1000*1000) {  // 1000 pixels
+                    tooFarFromAllPlayers = false;
+                    break;
+                }
+            }
+            
+            if (tooFarFromAllPlayers) {
+                bulletsToRemove.push_back(i);
+            }
+        }
     }
     
-    if (shooterID.empty()) {
-        return;
-    }
-    
-    // For debugging: print the ID being added and local ID for comparison
-    std::string localSteamIDStr = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
-
-    // Ensure we use the exact same string format for IDs
-    std::string normalizedID = shooterID;
-    try {
-        // Convert to uint64, then back to string to normalize format
-        uint64_t idNum = std::stoull(shooterID);
-        normalizedID = std::to_string(idNum);
-    } catch (const std::exception& e) {
-        std::cout << "[PM] Error normalizing shooter ID: " << e.what() << "\n";
-    }
-    
-    // Apply bullet speed multiplier from player if available
-    float adjustedVelocity = velocity;
-    auto it = players.find(normalizedID);
-    if (it != players.end()) {
-        adjustedVelocity *= it->second.player.GetBulletSpeedMultiplier();
-    }
-    
-    // Add the bullet with the normalized ID
-    bullets.emplace_back(position, direction, adjustedVelocity, normalizedID);
+    // Remove expired bullets safely (from back to front)
+    RemoveBullets(bulletsToRemove);
 }
 
 bool PlayerManager::PlayerShoot(const sf::Vector2f& mouseWorldPos) {
@@ -312,8 +318,8 @@ bool PlayerManager::PlayerShoot(const sf::Vector2f& mouseWorldPos) {
     
     // If shooting was successful, create a bullet and send network message
     if (bulletParams.success) {
-        // Apply bullet speed multiplier
-        float bulletSpeed = BULLET_SPEED * localPlayer.player.GetBulletSpeedMultiplier();
+        // Get bullet speed from settings and apply multiplier
+        float bulletSpeed = this->bulletSpeed * localPlayer.player.GetBulletSpeedMultiplier();
         
         // Add the bullet locally
         AddBullet(localPlayerID, bulletParams.position, bulletParams.direction, bulletSpeed);
@@ -405,6 +411,7 @@ const std::vector<Bullet>& PlayerManager::GetAllBullets() const {
     return bullets;
 }
 
+
 void PlayerManager::CheckBulletCollisions() {
     for (auto bulletIt = bullets.begin(); bulletIt != bullets.end();) {
         bool bulletHit = false;
@@ -422,20 +429,13 @@ void PlayerManager::CheckBulletCollisions() {
             if (bulletIt->CheckCollision(remotePlayer.player.GetShape(), playerID)) {
                 // Get the shooter
                 std::string shooterID = bulletIt->GetShooterID();
-                float damageAmount = BULLET_DAMAGE; // Default damage
+                float damageAmount = bulletIt->GetDamage(); // Use bullet's damage value
                 
-                // Try to get bullet damage from the shooter's player
-                auto shooterIt = players.find(shooterID);
-                if (shooterIt != players.end()) {
-                    damageAmount = shooterIt->second.player.GetBulletDamage();
-                }
-                
-                // Apply damage to player with the shooter's bullet damage
+                // Apply damage to player
                 remotePlayer.player.TakeDamage(damageAmount);
                 
                 if (remotePlayer.player.IsDead()) {
-                    // CHANGE: Don't increment kills here directly
-                    // Just report the death to the network
+                    // Report the death to the network
                     PlayerDied(playerID, bulletIt->GetShooterID());
                 }
                 
@@ -471,10 +471,10 @@ void PlayerManager::PlayerDied(const std::string& playerID, const std::string& k
     it->second.player.SetRespawnPosition(currentPos);
     
     // Apply the damage to kill the player and set their state to dead
-    it->second.player.TakeDamage(100);
+    it->second.player.TakeDamage(it->second.player.GetHealth()); // Kill player with exact damage needed
     
-    // Schedule respawn after 3 seconds
-    it->second.respawnTimer = 3.0f;
+    // Schedule respawn after respawnTime seconds (from settings)
+    it->second.respawnTimer = respawnTime;
     
     // If this is the local player, notify the network
     if (playerID == localPlayerID) {
@@ -508,7 +508,6 @@ void PlayerManager::HandleKill(const std::string& killerID, int enemyId) {
         normalizedKillerID = killerID;
     }
     
-    std::cout << "[PM::HandleKill] Player " << normalizedKillerID << " got kill for enemy " << enemyId << "\n";
     
     // Check if we're the host
     CSteamID localSteamID = SteamUser()->GetSteamID();
@@ -574,10 +573,7 @@ void PlayerManager::HandleKill(const std::string& killerID, int enemyId) {
             // This ensures the host's state matches what it broadcasts
             players[normalizedKillerID].kills++;
             players[normalizedKillerID].money += 50;
-            
-            std::cout << "[HOST] Player " << normalizedKillerID 
-                      << " awarded kill for enemy " << enemyId 
-                      << " (sequence: " << killSequence << ")\n";
+
             
             // Broadcast the kill information with sequence number to all clients
             game->GetNetworkManager().BroadcastMessage(killMsg);
@@ -588,9 +584,7 @@ void PlayerManager::HandleKill(const std::string& killerID, int enemyId) {
         // They wait for the host to broadcast the kill message back
         std::string killMsg = PlayerMessageHandler::FormatKillMessage(normalizedKillerID, enemyId);
         game->GetNetworkManager().SendMessage(hostID, killMsg);
-        
-        std::cout << "[CLIENT] Sent kill claim to host for player " << normalizedKillerID 
-                  << " and enemy " << enemyId << "\n";
+
     }
 }
 
@@ -642,8 +636,6 @@ void PlayerManager::RespawnPlayer(const std::string& playerID) {
                 // We are the host, broadcast to all clients
                 std::string respawnMsg = PlayerMessageHandler::FormatPlayerRespawnMessage(normalizedID, usedRespawnPos);
                 if (game->GetNetworkManager().BroadcastMessage(respawnMsg)) {
-                    std::cout << "[PM] Broadcast respawn message for local player at position ("
-                              << usedRespawnPos.x << "," << usedRespawnPos.y << ")\n";
                 } else {
                     std::cout << "[PM] Failed to broadcast respawn message\n";
                 }
@@ -651,8 +643,6 @@ void PlayerManager::RespawnPlayer(const std::string& playerID) {
                 // We are a client, send to host
                 std::string respawnMsg = PlayerMessageHandler::FormatPlayerRespawnMessage(normalizedID, usedRespawnPos);
                 if (game->GetNetworkManager().SendMessage(hostID, respawnMsg)) {
-                    std::cout << "[PM] Sent respawn message to host at position ("
-                              << usedRespawnPos.x << "," << usedRespawnPos.y << ")\n";
                 } else {
                     std::cout << "[PM] Failed to send respawn message to host\n";
                 }
@@ -683,7 +673,6 @@ void PlayerManager::RemoveBullets(const std::vector<size_t>& indicesToRemove) {
 
 // Updated implementation for PlayerManager::InitializeForceFields()
 void PlayerManager::InitializeForceFields() {
-    std::cout << "[PlayerManager] Initializing force fields for " << players.size() << " players" << std::endl;
     
     for (auto& pair : players) {
         std::string playerID = pair.first;
@@ -691,7 +680,6 @@ void PlayerManager::InitializeForceFields() {
         
         // Initialize force field if not already done
         if (!rp.player.HasForceField()) {
-            std::cout << "[PlayerManager] Creating force field for player " << rp.baseName << std::endl;
             rp.player.InitializeForceField();
             
             // Always make sure the force field is enabled after initialization
@@ -704,9 +692,7 @@ void PlayerManager::InitializeForceFields() {
                 HandleForceFieldZap(playerID, enemyId, damage, killed);
             });
             
-            std::cout << "[PlayerManager] Force field initialized for player " << rp.baseName << std::endl;
         } else {
-            std::cout << "[PlayerManager] Player " << rp.baseName << " already has a force field" << std::endl;
             
             // Make sure callback is set even for existing force fields
             rp.player.GetForceField()->SetZapCallback([this, playerID](int enemyId, float damage, bool killed) {
@@ -746,5 +732,50 @@ void PlayerManager::HandleForceFieldZap(const std::string& playerID, int enemyId
             // We are a client, send to host
             game->GetNetworkManager().SendMessage(hostID, zapMsg);
         }
+    }
+}
+
+void PlayerManager::ApplySettings() {
+    GameSettingsManager* settingsManager = game->GetGameSettingsManager();
+    if (!settingsManager) return;
+    
+    // Retrieve and cache common settings
+    GameSetting* respawnTimeSetting = settingsManager->GetSetting("respawn_time");
+    if (respawnTimeSetting) {
+        respawnTime = respawnTimeSetting->GetFloatValue();
+    }
+    
+    GameSetting* bulletDamageSetting = settingsManager->GetSetting("bullet_damage");
+    if (bulletDamageSetting) {
+        bulletDamage = bulletDamageSetting->GetFloatValue();
+    }
+    
+    GameSetting* bulletSpeedSetting = settingsManager->GetSetting("bullet_speed");
+    if (bulletSpeedSetting) {
+        bulletSpeed = bulletSpeedSetting->GetFloatValue();
+    }
+    
+    // Apply settings to all players and bullets
+    ApplySettingsToAllPlayers();
+    ApplySettingsToAllBullets();
+}
+
+void PlayerManager::ApplySettingsToAllPlayers() {
+    GameSettingsManager* settingsManager = game->GetGameSettingsManager();
+    if (!settingsManager) return;
+    
+    // Apply settings to each player
+    for (auto& pair : players) {
+        pair.second.player.ApplySettings(settingsManager);
+    }
+}
+
+void PlayerManager::ApplySettingsToAllBullets() {
+    GameSettingsManager* settingsManager = game->GetGameSettingsManager();
+    if (!settingsManager) return;
+    
+    // Apply settings to each bullet
+    for (auto& bullet : bullets) {
+        bullet.ApplySettings(settingsManager);
     }
 }

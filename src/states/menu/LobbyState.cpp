@@ -242,12 +242,12 @@ void LobbyState::Render() {
 }
 
 void LobbyState::ProcessEvents(const sf::Event& event) {
-    InputManager& inputManager = game->GetInputManager();
     if (settingsUI && settingsUI->IsVisible()) {
-        if (settingsUI->ProcessEvent(event)) {
-            return; // Event handled by settings UI
-        }
+        settingsUI->ProcessEvent(event);
+        return; // Don't process any other inputs when settings UI is open
     }
+    InputManager& inputManager = game->GetInputManager();
+    
     if (event.type == sf::Event::KeyPressed) {
         // Check if the ready toggle key was pressed using InputManager
         if (event.key.code == inputManager.GetKeyBinding(GameAction::ToggleReady)) {

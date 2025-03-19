@@ -64,9 +64,6 @@ std::string SettingsMessageHandler::FormatSettingsRequestMessage() {
     return oss.str();
 }
 void SettingsMessageHandler::ProcessSettingsUpdateForClient(Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
-    // Client received settings update from host
-    std::cout << "[Client] Received game settings update from host" << std::endl;
-    
     if (!parsed.chatMessage.empty()) {
         // Update game settings
         if (game.GetGameSettingsManager()) {
@@ -86,9 +83,6 @@ void SettingsMessageHandler::ProcessSettingsUpdateForClient(Game& game, ClientNe
 }
 
 void SettingsMessageHandler::ProcessSettingsUpdateForHost(Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender) {
-    // Host doesn't normally receive settings updates unless from UI
-    std::cout << "[Host] Received settings update request from client " 
-              << SteamFriends()->GetFriendPersonaName(sender) << std::endl;
     
     // In case this is a UI change from the host itself
     if (sender == SteamUser()->GetSteamID() && !parsed.chatMessage.empty()) {

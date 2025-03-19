@@ -7,6 +7,7 @@
 #include <string>
 #include "../../network/messages/MessageHandler.h"
 #include "../../utils/config/Config.h"
+#include "../../states/GameSettingsManager.h"
 #include "EnemyTypes.h"
 
 // Forward declarations
@@ -35,10 +36,12 @@ public:
     void SetID(int newId) { id = newId; }
     virtual EnemyType GetType() const = 0;
     float GetRadius() const { return radius; }
+    void SetRadius(float newRadius) { radius = newRadius; UpdateVisualRepresentation(); }
     float GetSpeed() const { return speed; }
     float GetDamage() const { return damage; }
     float SetSpeed(float newSpeed);
     float SetDamage(float newDamage);
+    virtual void ApplySettings(GameSettingsManager* settingsManager);
 
     // Network serialization
     virtual std::string Serialize() const;
@@ -48,7 +51,10 @@ public:
     bool TakeDamage(float amount);
     sf::Vector2f GetVelocity() const { return velocity; }
     void SetVelocity(const sf::Vector2f& vel) { velocity = vel; }
-    
+    virtual void SetSize(float size) {
+        radius = size / 2.0f;
+        UpdateVisualRepresentation();
+    }
 protected:
     // Core properties
     int id;

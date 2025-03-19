@@ -14,9 +14,14 @@
 
 PlayingStateUI::PlayingStateUI(Game* game, PlayerManager* playerManager, EnemyManager* enemyManager)
     : m_game(game), m_playerManager(playerManager), m_enemyManager(enemyManager),
-      m_continueHovered(false), m_returnHovered(false) {
+      m_continueHovered(false), m_returnHovered(false), m_isHost(false) {
     
     InitializeUI();
+    
+    // Check if we're the host
+    CSteamID myID = SteamUser()->GetSteamID();
+    CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(m_game->GetLobbyID());
+    m_isHost = (myID == hostID);
 }
 
 PlayingStateUI::~PlayingStateUI() {
@@ -180,6 +185,17 @@ void PlayingStateUI::InitializeUI() {
     m_returnButtonText.setString("Return to Main Menu");
     m_returnButtonText.setCharacterSize(20);
     m_returnButtonText.setFillColor(sf::Color(220, 220, 220));
+    
+    // Return to lobby button (only for host)
+    m_returnToLobbyButton.setSize(sf::Vector2f(220.f, 50.f));
+    m_returnToLobbyButton.setFillColor(sf::Color(60, 60, 60, 230));
+    m_returnToLobbyButton.setOutlineColor(sf::Color(200, 120, 120));
+    m_returnToLobbyButton.setOutlineThickness(1.5f);
+
+    m_returnToLobbyButtonText.setFont(m_game->GetFont());
+    m_returnToLobbyButtonText.setString("Return All to Lobby");
+    m_returnToLobbyButtonText.setCharacterSize(20);
+    m_returnToLobbyButtonText.setFillColor(sf::Color(220, 220, 220));
 
     // Continue button
     m_continueButton.setSize(sf::Vector2f(220.f, 50.f));
@@ -345,10 +361,19 @@ void PlayingStateUI::RenderEscapeMenu(sf::RenderWindow& window) {
     overlay.setSize(sf::Vector2f(BASE_WIDTH, BASE_HEIGHT));
     overlay.setFillColor(sf::Color(0, 0, 0, 150));
     window.draw(overlay);
-    
+    float centerX = BASE_WIDTH / 2.0f;
+    float centerY = BASE_HEIGHT / 2.0f;
     // Position the menu elements
     PositionEscapeMenuElements();
-    
+    if (m_isHost) {
+        m_returnToLobbyButton.setPosition(
+            centerX - m_returnToLobbyButton.getSize().x / 2.0f,
+            centerY + 100.0f
+        );
+        
+        // Position the return to lobby button text
+        CenterTextInButton(m_returnToLobbyButtonText, m_returnToLobbyButton);
+    }
     // Draw the menu components
     window.draw(m_menuBackground);
     window.draw(m_menuTitle);
@@ -356,6 +381,13 @@ void PlayingStateUI::RenderEscapeMenu(sf::RenderWindow& window) {
     window.draw(m_continueButtonText);
     window.draw(m_returnButton);
     window.draw(m_returnButtonText);
+    if (m_isHost) {
+        window.draw(m_returnToLobbyButton);
+        window.draw(m_returnToLobbyButtonText);
+    }
+}
+void PlayingStateUI::SetHostStatus(bool isHost) {
+    m_isHost = isHost;
 }
 
 bool PlayingStateUI::ProcessUIEvent(const sf::Event& event, bool& showEscapeMenu, bool& showGrid, 
@@ -437,6 +469,21 @@ bool PlayingStateUI::ProcessUIEvent(const sf::Event& event, bool& showEscapeMenu
                     returnToMainMenu = true;
                     uiEventProcessed = true;
                     return uiEventProcessed;
+                }
+                if (m_isHost) {
+                    sf::FloatRect returnToLobbyBounds = m_returnToLobbyButton.getGlobalBounds();
+                    if (returnToLobbyBounds.contains(mouseUIPos)) {
+                        // Send return to lobby command to all players
+                        CSteamID myID = SteamUser()->GetSteamID();
+                        std::string myIDStr = std::to_string(myID.ConvertToUint64());
+                        std::string returnToLobbyMsg = StateMessageHandler::FormatReturnToLobbyMessage(myIDStr);
+                        m_game->GetNetworkManager().BroadcastMessage(returnToLobbyMsg);
+                        
+                        // Also apply to ourselves
+                        m_game->SetCurrentState(GameState::Lobby);
+                        uiEventProcessed = true;
+                        return uiEventProcessed;
+                    }
                 }
             } else {
                 // Check for UI element clicks

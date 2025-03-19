@@ -52,9 +52,6 @@ void SystemMessageHandler::Initialize() {
             int totalChunks = std::stoi(parts[2]);
             std::string chunkId = parts[3];
             
-            std::cout << "[MessageHandler] Starting new chunked message " << chunkId 
-                      << " of type " << messageType << " with " << totalChunks << " chunks\n";
-            
             MessageHandler::chunkTypes[chunkId] = messageType;
             MessageHandler::chunkCounts[chunkId] = totalChunks;
             MessageHandler::chunkStorage[chunkId].resize(totalChunks);
@@ -69,8 +66,6 @@ void SystemMessageHandler::Initialize() {
             int chunkNum = std::stoi(parts[2]);
             std::string chunkData = parts[3];
             
-            std::cout << "[MessageHandler] Processing chunk part " << chunkNum 
-                      << " for message " << chunkId << "\n";
             
             AddChunk(chunkId, chunkNum, chunkData);
         }
@@ -80,7 +75,6 @@ void SystemMessageHandler::Initialize() {
     MessageHandler::messageParsers["CHUNK_END"] = [](const std::vector<std::string>& parts) {
         if (parts.size() >= 2) {
             std::string chunkId = parts[1];
-            std::cout << "[MessageHandler] Processing CHUNK_END for " << chunkId << "\n";
             
             if (MessageHandler::chunkStorage.find(chunkId) != MessageHandler::chunkStorage.end() && 
                 MessageHandler::chunkCounts.find(chunkId) != MessageHandler::chunkCounts.end()) {
@@ -104,20 +98,11 @@ void SystemMessageHandler::Initialize() {
                         return parserIt->second(messageParts);
                     }
                     else {
-                        std::cout << "[MessageHandler] No parser found for message type: " << messageType << "\n";
                         ClearChunks(chunkId);
                     }
                 }
-                else {
-                    std::cout << "[MessageHandler] Chunks incomplete for " << chunkId << ". Expected: " 
-                              << expectedChunks << ", Have: " << MessageHandler::chunkStorage[chunkId].size() << "\n";
-                }
             }
-            else {
-                std::cout << "[MessageHandler] Chunk storage or counts not found for " << chunkId << "\n";
-            }
-        }
-        
+        }       
         return ParsedMessage{MessageType::ChunkEnd};
     };
 }
@@ -212,18 +197,13 @@ void SystemMessageHandler::AddChunk(const std::string& chunkId, int chunkNum, co
             // If we don't know how many chunks to expect, use a reasonable default
             expectedCount = std::max(10, chunkNum + 1);
             MessageHandler::chunkCounts[chunkId] = expectedCount;
-        }
-        
+        }        
         MessageHandler::chunkStorage[chunkId].resize(expectedCount);
-        std::cout << "[MessageHandler] Created storage for chunk ID " << chunkId 
-                  << " with " << expectedCount << " slots\n";
     }
     
     // Ensure the vector is large enough
     if (static_cast<size_t>(chunkNum) >= MessageHandler::chunkStorage[chunkId].size()) {
         size_t newSize = chunkNum + 1;
-        std::cout << "[MessageHandler] Resizing chunk storage for " << chunkId 
-                  << " from " << MessageHandler::chunkStorage[chunkId].size() << " to " << newSize << "\n";
         MessageHandler::chunkStorage[chunkId].resize(newSize);
         
         // Update expected count if necessary
@@ -235,28 +215,19 @@ void SystemMessageHandler::AddChunk(const std::string& chunkId, int chunkNum, co
     // Store the chunk
     MessageHandler::chunkStorage[chunkId][chunkNum] = chunkData;
     
-    // Debug output
-    std::cout << "[MessageHandler] Added chunk " << chunkNum << " of " << MessageHandler::chunkCounts[chunkId] 
-              << " for ID " << chunkId << "\n";
 }
 
 bool SystemMessageHandler::IsChunkComplete(const std::string& chunkId, int expectedChunks) {
     if (MessageHandler::chunkStorage.find(chunkId) == MessageHandler::chunkStorage.end()) {
-        std::cout << "[MessageHandler] Chunk ID " << chunkId << " not found in storage\n";
         return false;
     }
-    
     // Verify all chunks are present
     if (MessageHandler::chunkStorage[chunkId].size() != static_cast<size_t>(expectedChunks)) {
-        std::cout << "[MessageHandler] Chunk count mismatch for " << chunkId 
-                  << ": have " << MessageHandler::chunkStorage[chunkId].size() 
-                  << ", need " << expectedChunks << "\n";
-                  
+
         // If we have more chunks than expected, update the expected count
         if (MessageHandler::chunkStorage[chunkId].size() > static_cast<size_t>(expectedChunks)) {
             MessageHandler::chunkCounts[chunkId] = static_cast<int>(MessageHandler::chunkStorage[chunkId].size());
             expectedChunks = MessageHandler::chunkCounts[chunkId];
-            std::cout << "[MessageHandler] Updated expected chunk count to " << expectedChunks << "\n";
         } else {
             return false;
         }
@@ -266,7 +237,6 @@ bool SystemMessageHandler::IsChunkComplete(const std::string& chunkId, int expec
     bool complete = true;
     for (size_t i = 0; i < MessageHandler::chunkStorage[chunkId].size(); i++) {
         if (MessageHandler::chunkStorage[chunkId][i].empty()) {
-            std::cout << "[MessageHandler] Missing chunk " << i << " for " << chunkId << "\n";
             complete = false;
             break;
         }
@@ -298,8 +268,6 @@ std::string SystemMessageHandler::GetReconstructedMessage(const std::string& chu
     }
     
     std::string finalMessage = result.str();
-    std::cout << "[MessageHandler] Reconstructed message with type " << messageType 
-              << ", length: " << finalMessage.length() << "\n";
     
     return finalMessage;
 }

@@ -9,7 +9,8 @@
 #include "../entities/Player.h"
 #include "../utils/SteamHelpers.h"
 #include "../entities/PlayerManager.h"
-
+#include "../states/GameSettingsManager.h"
+#include "messages/SettingsMessageHandler.h" 
 class Game;
 class EnemyManager;
 class PlayingState;
@@ -26,6 +27,11 @@ public:
     void BroadcastPlayersList();
     void ProcessChatMessage(const std::string& message, CSteamID sender);
     void Update();
+    
+    // Settings management
+    void BroadcastGameSettings();
+    void ProcessGameSettingsMessage(Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender);
+    void ApplySettings();
 
     // Updated handler signatures
     void ProcessConnectionMessage(Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender);
@@ -41,12 +47,15 @@ public:
     void ProcessForceFieldZapMessage(Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender);
     void ProcessForceFieldUpdateMessage(Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender);
     void ProcessKillMessage(Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender);
+    void SendReturnToLobbyCommand();
 private:
     Game* game;
     PlayerManager* playerManager;
     std::unordered_map<std::string, RemotePlayer> remotePlayers;
     std::chrono::steady_clock::time_point lastBroadcastTime;
+    std::chrono::steady_clock::time_point lastSettingsBroadcastTime;
     static constexpr float BROADCAST_INTERVAL = 0.1f;
+    static constexpr float SETTINGS_BROADCAST_INTERVAL = 5.0f; // Broadcast settings every 5 seconds
 };
 
 #endif // HOST_H

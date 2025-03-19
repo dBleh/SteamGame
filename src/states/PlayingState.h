@@ -5,6 +5,7 @@
 #include "../ui/Grid.h"
 #include "../entities/enemies/EnemyManager.h"
 #include "../entities/enemies/Enemy.h"
+#include "../states/GameSettingsManager.h"
 #include <memory>
 #include <algorithm>  // For std::sort
 #include <SFML/Graphics.hpp>
@@ -33,7 +34,11 @@ public:
     
     // Static method to access the shop instance
     static Shop* GetShopInstance() { return shopInstance; }
+    
+    // Settings management
     void OnSettingsChanged();
+    void ApplyAllSettings();
+
 private:
     // Static shop instance
     static Shop* shopInstance;
@@ -41,10 +46,10 @@ private:
     void ProcessGameplayEvents(const sf::Event& event);
     float currentZoom;
    
-    
     // Zoom handling methods
     void HandleZoom(float delta);
     void AdjustViewToWindow();
+    
     // Game components
     std::unique_ptr<PlayerManager> playerManager;
     std::unique_ptr<PlayerRenderer> playerRenderer;
@@ -57,6 +62,7 @@ private:
     float waveTimer;
     bool waitingForNextWave;
     float waveCooldownTime = WAVE_COOLDOWN_TIME;
+    
     // Game state
     Grid grid;
     bool showGrid;
@@ -78,6 +84,12 @@ private:
     // Shop system
     std::unique_ptr<Shop> shop;
     bool showShop;
+    
+    // Settings cache
+    float defaultZoom = DEFAULT_ZOOM;
+    float minZoom = MIN_ZOOM;
+    float maxZoom = MAX_ZOOM;
+    float zoomSpeed = ZOOM_SPEED;
 };
 
 #endif // PLAYING_STATE_H

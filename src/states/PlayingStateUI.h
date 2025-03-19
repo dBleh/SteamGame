@@ -49,7 +49,7 @@ public:
     sf::FloatRect GetButtonBounds(const std::string& buttonId);
     bool IsMouseOverUIElement(const std::string& elementId, const sf::Vector2f& mousePos);
     void SetWaveCompleteMessage(int currentWave, float timer);
-
+    void SetHostStatus(bool isHost);
 private:
     Game* m_game;
     PlayerManager* m_playerManager;
@@ -70,6 +70,11 @@ private:
     // Helper methods for UI positioning
     void PositionEscapeMenuElements();
     void CenterTextInButton(sf::Text& text, const sf::RectangleShape& button);
+
+    // Add a new member to PlayingStateUI class:
+    sf::RectangleShape m_returnToLobbyButton;
+    sf::Text m_returnToLobbyButtonText;
+    bool m_isHost;
 };
 
 #endif // PLAYING_STATE_UI_H

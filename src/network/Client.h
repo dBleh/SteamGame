@@ -9,6 +9,8 @@
 #include "../entities/Player.h"
 #include "../utils/SteamHelpers.h"
 #include "../entities/PlayerManager.h"
+#include "../states/GameSettingsManager.h"
+#include "messages/SettingsMessageHandler.h"  // Add settings message handler
 
 class Game;
 class PlayingState;
@@ -27,6 +29,11 @@ public:
     void SendReadyStatus(bool isReady);
     void Update();
     CSteamID GetHostID() const { return hostID; }
+    
+    // Settings management
+    void ApplySettings();
+    void RequestGameSettings();
+    void ProcessSettingsUpdateMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed);
 
     // Updated handler signatures
     void ProcessConnectionMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed);
@@ -50,11 +57,14 @@ private:
     bool pendingConnectionMessage{false};
     std::string pendingMessage;
     std::string pendingReadyMessage;
+    std::string pendingSettingsRequest;
     std::unordered_map<std::string, RemotePlayer> remotePlayers;
     static constexpr float SEND_INTERVAL = 0.1f;
     float m_validationRequestTimer = -1.0f;
     std::chrono::steady_clock::time_point m_lastValidationTime = std::chrono::steady_clock::now();
     float m_periodicValidationTimer = 10.0f;
+    float m_settingsRequestTimer = 1.0f;  // Request settings 1 second after connecting
+    bool m_initialSettingsReceived = false;
 };
 
 #endif // CLIENT_H
