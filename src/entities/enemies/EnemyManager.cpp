@@ -67,7 +67,7 @@ void EnemyManager::Update(float dt) {
         // Sync enemy positions more frequently
         syncTimer += dt;
         if (syncTimer >= POSITION_SYNC_INTERVAL) {
-            SyncEnemyPositions();
+            //SyncEnemyPositions();
             syncTimer = 0.0f;
         }
         
