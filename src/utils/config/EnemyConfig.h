@@ -13,7 +13,7 @@
 #define ENEMY_SPAWN_BATCH_SIZE 10
 
 // Performance optimization constants
-#define MAX_ENEMIES_PER_UPDATE 50          // Max enemies to update in a single sync message
+#define MAX_ENEMIES_PER_UPDATE 10          // Max enemies to update in a single sync message
 #define MAX_ENEMIES_SPAWNABLE 100000       // Maximum enemies allowed in the game
 #define ENEMY_CULLING_DISTANCE 2000.0f     // Distance from player at which enemies are culled
 #define ENEMY_OPTIMIZATION_THRESHOLD 200
