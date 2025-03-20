@@ -89,7 +89,31 @@ void EnemyMessageHandler::Initialize() {
         [](Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender) {
             // Host typically sends state, not receives it
         });
-
+        MessageHandler::RegisterMessageType("EP", 
+            ParseEnemyPositionUpdateMessage,
+            [](Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
+                PlayingState* state = GetPlayingState(&game);
+                if (state && state->GetEnemyManager()) {
+                    // Update enemy positions from network message
+                    for (size_t i = 0; i < parsed.enemyIds.size(); ++i) {
+                        int id = parsed.enemyIds[i];
+                        Enemy* enemy = state->GetEnemyManager()->FindEnemy(id);
+                        if (enemy) {
+                            // Update existing enemy position
+                            enemy->SetPosition(parsed.enemyPositions[i]);
+                            
+                            // If velocity is provided, update it too
+                            if (i < parsed.enemyVelocities.size()) {
+                                enemy->SetVelocity(parsed.enemyVelocities[i]);
+                            }
+                        }
+                    }
+                }
+            },
+            [](Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender) {
+                // Host doesn't usually receive EP messages, but could process them if needed
+                std::cout << "[HOST] Received enemy position update from client, ignoring\n";
+            });
     MessageHandler::RegisterMessageType("ESR", 
         ParseEnemyStateRequestMessage,
         [](Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
