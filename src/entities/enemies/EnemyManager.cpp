@@ -537,22 +537,31 @@ sf::Vector2f EnemyManager::GetRandomSpawnPosition(const sf::Vector2f& targetPosi
 void EnemyManager::RemoveEnemiesNotInList(const std::vector<int>& validIds) {
     std::vector<int> enemyIdsToRemove;
     
+    // First identify all enemies that aren't in the valid list
     for (const auto& pair : enemies) {
+        int currentId = pair.first;
         bool found = false;
         for (int id : validIds) {
-            if (pair.first == id) {
+            if (currentId == id) {
                 found = true;
                 break;
             }
         }
         
         if (!found) {
-            enemyIdsToRemove.push_back(pair.first);
+            enemyIdsToRemove.push_back(currentId);
         }
     }
     
+    // Then remove them
     for (int id : enemyIdsToRemove) {
+        std::cout << "[CLIENT] Removing enemy " << id << " not present in sync message\n";
         RemoteRemoveEnemy(id);
+    }
+    
+    if (!enemyIdsToRemove.empty()) {
+        std::cout << "[CLIENT] Removed " << enemyIdsToRemove.size() 
+                 << " enemies to stay in sync with host\n";
     }
 }
 

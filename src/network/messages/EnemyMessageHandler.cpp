@@ -62,33 +62,53 @@ void EnemyMessageHandler::Initialize() {
                 state->GetEnemyManager()->InflictDamage(parsed.enemyId, parsed.damage);
             }
         });
-
-    MessageHandler::RegisterMessageType("ES", 
-        ParseEnemyStateMessage,
-        [](Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
-            // Handle enemy state
-            PlayingState* state = GetPlayingState(&game);
-            if (state && state->GetEnemyManager()) {
-                for (size_t i = 0; i < parsed.enemyIds.size(); ++i) {
-                    int id = parsed.enemyIds[i];
-                    auto enemyManager = state->GetEnemyManager();
-                    auto enemy = enemyManager->FindEnemy(id);
-                    
-                    if (enemy) {
-                        // Update existing enemy
-                        enemy->SetPosition(parsed.enemyPositions[i]);
-                    } else if (i < parsed.enemyTypes.size() && i < parsed.enemyHealths.size()) {
-                        // Create new enemy
-                        EnemyType type = static_cast<EnemyType>(parsed.enemyTypes[i]);
-                        enemyManager->RemoteAddEnemy(id, type, parsed.enemyPositions[i], 
-                                                   parsed.enemyHealths[i]);
+        MessageHandler::RegisterMessageType("ES", 
+            ParseEnemyStateMessage,
+            [](Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
+                // Handle enemy state
+                PlayingState* state = GetPlayingState(&game);
+                if (state && state->GetEnemyManager()) {
+                    // Create a set of valid enemy IDs from this message
+                    std::unordered_set<int> validIds;
+                    for (size_t i = 0; i < parsed.enemyIds.size(); ++i) {
+                        validIds.insert(parsed.enemyIds[i]);
                     }
+                    auto enemyManager = state->GetEnemyManager();
+                    // First pass: Update or create enemies
+                    for (size_t i = 0; i < parsed.enemyIds.size(); ++i) {
+                        int id = parsed.enemyIds[i];
+                        
+                        auto enemy = enemyManager->FindEnemy(id);
+                        
+                        if (enemy) {
+                            // Update existing enemy
+                            enemy->SetPosition(parsed.enemyPositions[i]);
+                            
+                            // Update health if available
+                            if (i < parsed.enemyHealths.size()) {
+                                enemy->SetHealth(parsed.enemyHealths[i]);
+                            }
+                            
+                            // Update velocity if available
+                            if (i < parsed.enemyVelocities.size()) {
+                                enemy->SetVelocity(parsed.enemyVelocities[i]);
+                            }
+                        } else if (i < parsed.enemyTypes.size() && i < parsed.enemyHealths.size()) {
+                            // Create new enemy
+                            EnemyType type = static_cast<EnemyType>(parsed.enemyTypes[i]);
+                            enemyManager->RemoteAddEnemy(id, type, parsed.enemyPositions[i], 
+                                                       parsed.enemyHealths[i]);
+                        }
+                    }
+                    
+                    // Second pass: Remove enemies not in the valid set
+                    // This ensures client and host stay in sync
+                    enemyManager->RemoveEnemiesNotInList(std::vector<int>(validIds.begin(), validIds.end()));
                 }
-            }
-        },
-        [](Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender) {
-            // Host typically sends state, not receives it
-        });
+            },
+            [](Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender) {
+                // Host typically sends state, not receives it
+            });
         MessageHandler::RegisterMessageType("EP", 
             ParseEnemyPositionUpdateMessage,
             [](Game& game, ClientNetwork& client, const ParsedMessage& parsed) {

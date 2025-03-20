@@ -3,6 +3,7 @@
 
 #include <string>
 #include <vector>
+#include <unordered_set>
 #include <SFML/Graphics.hpp>
 #include "../../entities/enemies/EnemyTypes.h"
 

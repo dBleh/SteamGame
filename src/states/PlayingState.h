@@ -34,6 +34,9 @@ public:
     // Static method to access the shop instance
     static Shop* GetShopInstance() { return shopInstance; }
 
+    // Ui Management method
+    PlayingStateUI* GetUI() { return ui.get(); }
+
 private:
     // Static shop instance
     static Shop* shopInstance;

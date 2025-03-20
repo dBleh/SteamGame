@@ -181,33 +181,69 @@ void PlayingState::Update(float dt) {
         if (playerLoaded && enemyManager) {
             enemyManager->Update(dt);
             
+            // Check if we're the host for wave management
+            CSteamID myID = SteamUser()->GetSteamID();
+            CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+            bool isHost = (myID == hostID);
+            
             // Handle wave logic
-            if (enemyManager->IsWaveComplete() && !waitingForNextWave) {
-                waitingForNextWave = true;
-                waveTimer = WAVE_COOLDOWN_TIME; // 5 second delay between waves
+            if (isHost) {
+                // Only the host manages wave progression
+                if (enemyManager->IsWaveComplete() && !waitingForNextWave) {
+                    waitingForNextWave = true;
+                    waveTimer = WAVE_COOLDOWN_TIME; // 5 second delay between waves
+                    
+                    // Display wave complete message using UI
+                    if (ui) {
+                        ui->SetWaveCompleteMessage(enemyManager->GetCurrentWave(), waveTimer);
+                    }
+                }
                 
-                // Display wave complete message using UI
-                if (ui) {
+                if (waitingForNextWave) {
+                    waveTimer -= dt;
+                    
+                    // Update the countdown timer
+                    if (waveTimer > 0.0f && ui) {
+                        ui->SetWaveCompleteMessage(enemyManager->GetCurrentWave(), waveTimer);
+                    }
+                    
+                    if (waveTimer <= 0.0f) {
+                        waitingForNextWave = false;
+                        int nextWave = enemyManager->GetCurrentWave() + 1;
+                        int enemyCount = BASE_ENEMIES_PER_WAVE + (nextWave * ENEMIES_SCALE_PER_WAVE);
+                        StartWave(enemyCount);
+                    }
+                }
+                
+                // Only the host starts the first wave
+                if (enemyManager->GetCurrentWave() == 0 && playerLoaded && !waitingForNextWave) {
+                    StartWave(FIRST_WAVE_ENEMY_COUNT); // First wave with defined number of enemies
+                }
+            } else {
+                // If client, only update wave complete UI but don't start new waves
+                if (waitingForNextWave && ui) {
+                    // Just update the UI with the current wave info
                     ui->SetWaveCompleteMessage(enemyManager->GetCurrentWave(), waveTimer);
                 }
             }
             
-            if (waitingForNextWave) {
-                waveTimer -= dt;
-                
-                // Update the countdown timer
-                if (waveTimer > 0.0f && ui) {
-                    ui->SetWaveCompleteMessage(enemyManager->GetCurrentWave(), waveTimer);
-                }
-                
-                if (waveTimer <= 0.0f) {
-                    waitingForNextWave = false;
-                    int nextWave = enemyManager->GetCurrentWave() + 1;
-                    int enemyCount = BASE_ENEMIES_PER_WAVE + (nextWave * ENEMIES_SCALE_PER_WAVE);
-                    StartWave(enemyCount);
+            // Update wave info on HUD if not waiting for next wave
+            if (!waitingForNextWave && ui) {
+                ui->UpdateWaveInfo();
+            }
+            
+            // Update force fields for all players
+            if (playerLoaded && enemyManager && playerManager) {
+                for (auto& pair : playerManager->GetPlayers()) {
+                    RemotePlayer& rp = pair.second;
+                    if (rp.player.HasForceField() && !rp.player.IsDead()) {
+                        // Update force field
+                        rp.player.GetForceField()->Update(dt, *playerManager, *enemyManager);
+                    }
                 }
             }
 
+            // Handle bullet-enemy collisions
             if (playerLoaded && enemyManager && playerManager) {
                 std::vector<size_t> bulletsToRemove;
                 const auto& bullets = playerManager->GetAllBullets();
@@ -243,29 +279,6 @@ void PlayingState::Update(float dt) {
                     playerManager->RemoveBullets(bulletsToRemove);
                 }
             }
-            
-            // Only the host starts the first wave
-            CSteamID myID = SteamUser()->GetSteamID();
-            CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
-            
-            if (myID == hostID && enemyManager->GetCurrentWave() == 0 && playerLoaded && !waitingForNextWave) {
-                StartWave(FIRST_WAVE_ENEMY_COUNT); // First wave with defined number of enemies
-            }
-            
-            // Update wave info on HUD if not waiting for next wave
-            if (!waitingForNextWave && ui) {
-                ui->UpdateWaveInfo();
-            }
-            if (playerLoaded && enemyManager && playerManager) {
-                for (auto& pair : playerManager->GetPlayers()) {
-                    RemotePlayer& rp = pair.second;
-                    if (rp.player.HasForceField() && rp.player.HasForceField() && !rp.player.IsDead()) {
-                        // Update force field
-                        rp.player.GetForceField()->Update(dt, *playerManager, *enemyManager);
-                    }
-                    
-                }
-            }
         }
         
         // Update UI components
@@ -287,7 +300,6 @@ void PlayingState::Update(float dt) {
             if (playerManager->GetLocalPlayer().player.HasForceField()) {
                 bool forceFieldEnabled = playerManager->GetLocalPlayer().player.HasForceField();
                 ui->SetButtonState("forceFieldHint", forceFieldEnabled);
-                
             }
         }
         
