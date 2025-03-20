@@ -10,7 +10,7 @@
 // Spawning configuration
 #define SPAWN_RADIUS 300.0f
 #define ENEMY_SPAWN_BATCH_INTERVAL 0.5f
-#define ENEMY_SPAWN_BATCH_SIZE 20
+#define ENEMY_SPAWN_BATCH_SIZE 200
 
 // Performance optimization constants
 #define MAX_ENEMIES_PER_UPDATE 10          // Max enemies to update in a single sync message
