@@ -86,6 +86,7 @@ private:
     std::unique_ptr<Shop> shop;
     bool showShop;
     bool forceFieldsInitialized = false;
+    float forceFieldInitDelay = 1.0f;
     // Settings cache
     float defaultZoom = DEFAULT_ZOOM;
     float minZoom = MIN_ZOOM;

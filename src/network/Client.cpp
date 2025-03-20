@@ -498,8 +498,7 @@ void ClientNetwork::ProcessUnknownMessage(Game& game, ClientNetwork& client, con
 }
 
 void ClientNetwork::ProcessForceFieldZapMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
-    // First ensure force fields are properly initialized (defensive)
-    EnsureForceFieldInitialization();
+    // Safe function that continues even if settings haven't been received
     
     std::string zapperID = parsed.steamID;
     int enemyId = parsed.enemyId;
@@ -539,51 +538,54 @@ void ClientNetwork::ProcessForceFieldZapMessage(Game& game, ClientNetwork& clien
     }
     
     EnemyManager* enemyManager = playingState->GetEnemyManager();
-    Enemy* enemy = enemyManager->FindEnemy(enemyId);
+    Enemy* enemy = nullptr;
+    
+    try {
+        enemy = enemyManager->FindEnemy(enemyId);
+    } catch (const std::exception& e) {
+        std::cerr << "[CLIENT] Error finding enemy: " << e.what() << std::endl;
+        return;
+    }
     
     // If we found the enemy, apply the visual effect and possibly remove it
     if (enemy) {
-        // Apply the damage locally to keep in sync with the host
-        bool killed = enemyManager->InflictDamage(enemyId, damage);
-        
-        // Get the player who owns the force field
-        auto& players = playerManager->GetPlayers();
-        auto it = players.find(normalizedZapperID);
-        if (it != players.end()) {
-            RemotePlayer& rp = it->second;
+        try {
+            // Apply the damage locally to keep in sync with the host
+            bool killed = enemyManager->InflictDamage(enemyId, damage);
             
-            // Make sure the player has a force field
-            if (!rp.player.HasForceField()) {
-                rp.player.InitializeForceField();
+            // Get the player who owns the force field
+            auto& players = playerManager->GetPlayers();
+            auto it = players.find(normalizedZapperID);
+            if (it != players.end()) {
+                RemotePlayer& rp = it->second;
                 
-                // Safety check - enable force field after initialization
-                rp.player.EnableForceField(true);
-            }
-            
-            ForceField* forceField = rp.player.GetForceField();
-            if (forceField) {
-                // Ensure zap callback is set (defensive)
-                if (!forceField->HasZapCallback()) {
-                    forceField->SetZapCallback([this, normalizedZapperID](int enemyId, float damage, bool killed) {
-                        if (playerManager) {
-                            playerManager->HandleForceFieldZap(normalizedZapperID, enemyId, damage, killed);
-                        }
-                    });
+                // Make sure the player has a force field
+                if (!rp.player.HasForceField()) {
+                    std::cout << "[CLIENT] Initializing missing force field for zap message\n";
+                    rp.player.InitializeForceField();
+                    
+                    // Safety check - enable force field after initialization
+                    rp.player.EnableForceField(true);
                 }
                 
-                // Get player and enemy positions safely
-                sf::Vector2f playerPos = rp.player.GetPosition() + sf::Vector2f(25.0f, 25.0f); // Assuming 50x50 player
-                sf::Vector2f enemyPos = enemy->GetPosition();
-                
-                // Create the zap effect with try-catch for safety
-                try {
-                    forceField->CreateZapEffect(playerPos, enemyPos);
-                    forceField->SetIsZapping(true);
-                    forceField->SetZapEffectTimer(0.3f); // Show effect for 0.3 seconds
-                } catch (const std::exception& e) {
-                    std::cerr << "[CLIENT] Exception in force field zap effect: " << e.what() << std::endl;
+                ForceField* forceField = rp.player.GetForceField();
+                if (forceField) {
+                    // Get player and enemy positions
+                    sf::Vector2f playerPos = rp.player.GetPosition() + sf::Vector2f(25.0f, 25.0f); // Assuming 50x50 player
+                    sf::Vector2f enemyPos = enemy->GetPosition();
+                    
+                    // Create the zap effect - critical part that was crashing
+                    try {
+                        forceField->CreateZapEffect(playerPos, enemyPos);
+                        forceField->SetIsZapping(true);
+                        forceField->SetZapEffectTimer(0.3f); // Show effect for 0.3 seconds
+                    } catch (const std::exception& e) {
+                        std::cerr << "[CLIENT] Error creating zap effect: " << e.what() << std::endl;
+                    }
                 }
             }
+        } catch (const std::exception& e) {
+            std::cerr << "[CLIENT] Error processing zap effect: " << e.what() << std::endl;
         }
     }
 }
@@ -686,10 +688,12 @@ void ClientNetwork::ProcessSettingsUpdateMessage(Game& game, ClientNetwork& clie
             
             // IMPORTANT: Mark that we've received the initial settings
             // PlayingState will wait for this flag before initializing force fields
-            m_initialSettingsReceived = true;
-            std::cout << "[CLIENT] Successfully received and applied settings from host" << std::endl;
-            
-            // Don't initialize force fields here - PlayingState will do it
+            if (!m_initialSettingsReceived) {
+                m_initialSettingsReceived = true;
+                std::cout << "[CLIENT] Successfully received and applied initial settings from host" << std::endl;
+            } else {
+                std::cout << "[CLIENT] Successfully updated settings from host" << std::endl;
+            }
         } catch (const std::exception& e) {
             std::cerr << "[CLIENT] Error applying settings: " << e.what() << std::endl;
         }
@@ -697,6 +701,7 @@ void ClientNetwork::ProcessSettingsUpdateMessage(Game& game, ClientNetwork& clie
         isProcessingSettings = false;
     }
 }
+
 
 void ClientNetwork::EnsureForceFieldInitialization() {
     // Always try to initialize force fields, even if not marked as received settings

@@ -145,8 +145,6 @@ public:
     
     // Event callback
     void SetZapCallback(ZapCallback callback) { zapCallback = callback; }
-    
-private:
     Player* player;                       // The player this force field belongs to
     sf::CircleShape fieldShape;           // Visual representation of the force field
     std::array<sf::CircleShape, NUM_FIELD_RINGS> fieldRings; // Decorative rings around the field
@@ -188,6 +186,8 @@ private:
     FieldType fieldType;                  // Type of force field
     
     ZapCallback zapCallback;              // Callback for zap events
+private:
+   
 };
 
 #endif // FORCE_FIELD_H
