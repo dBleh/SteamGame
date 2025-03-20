@@ -48,6 +48,7 @@ public:
     void ProcessForceFieldUpdateMessage(Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender);
     void ProcessKillMessage(Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender);
     void SendReturnToLobbyCommand();
+    
 private:
     Game* game;
     PlayerManager* playerManager;

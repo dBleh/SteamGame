@@ -300,6 +300,7 @@ void PlayingState::Update(float dt) {
 }
 
 
+
 void PlayingState::Render() {
     game->GetWindow().clear(MAIN_BACKGROUND_COLOR);
     
