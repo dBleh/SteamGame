@@ -81,7 +81,8 @@ public:
     // Force field methods
     void InitializeForceField();
     void EnableForceField(bool enable);
-    bool HasForceField() const { return forceField && forceFieldEnabled; }
+    //Setting ff to false for now
+    bool HasForceField() const { return forceField && false; }
     ForceField* GetForceField() const { return forceField.get(); }
     void SetForceFieldZapCallback(const std::function<void(int, float, bool)>& callback);
     
