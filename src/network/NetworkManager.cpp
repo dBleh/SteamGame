@@ -88,7 +88,7 @@ void NetworkManager::ReceiveMessages() {
 bool NetworkManager::SendMessage(CSteamID target, const std::string& msg) {
     // Add packet size check
     if (msg.size() > MAX_PACKET_SIZE) {
-        std::cerr << "[NETWORK] Message too large for direct send: " msg.size() << "\n";
+        std::cerr << "[NETWORK] Message too large for direct send: "<< msg.size() << "\n";
         
         // Extract message type and create chunks
         std::string messageType = msg.substr(0, msg.find('|'));

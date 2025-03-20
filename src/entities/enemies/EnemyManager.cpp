@@ -44,18 +44,18 @@ void EnemyManager::Update(float dt) {
     CSteamID myID = SteamUser()->GetSteamID();
     CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
     if (myID == hostID) {
-        // Sync only critical updates (e.g., target changes) every POSITION_SYNC_INTERVAL
         syncTimer += dt;
         if (syncTimer >= POSITION_SYNC_INTERVAL) {
             SyncCriticalUpdates();
             syncTimer = 0.0f;
         }
 
-        // Full sync less frequently to correct drift
         fullSyncTimer += dt;
-        if (fullSyncTimer >= FULL_SYNC_INTERVAL) {
+        if (fullSyncTimer >= FULL_SYNC_INTERVAL || !recentlyAddedIds.empty() || !recentlyRemovedIds.empty()) {
             SyncFullState();
             fullSyncTimer = 0.0f;
+            recentlyAddedIds.clear(); // Clear after sync
+            recentlyRemovedIds.clear();
         }
     }
 }

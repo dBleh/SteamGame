@@ -34,6 +34,7 @@ public:
     static std::string FormatEnemyClearMessage();
     static std::string FormatCompleteEnemyStateMessage(const std::vector<int>& enemyIds, const std::vector<EnemyType>& types, const std::vector<sf::Vector2f>& positions, const std::vector<float>& healths);
     static std::string EnemyMessageHandler::FormatEnemyStateRequestMessage();
+    static ParsedMessage ParseCompleteEnemyStateMessage(const std::vector<std::string>& parts);
 };
 
 #endif // ENEMY_MESSAGE_HANDLER_H
