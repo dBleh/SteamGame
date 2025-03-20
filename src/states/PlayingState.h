@@ -38,8 +38,7 @@ public:
     // Settings management
     void OnSettingsChanged();
     void ApplyAllSettings();
-    void UpdateForceFields(float dt);
-    void InitializeForceFields();
+
 private:
     // Static shop instance
     static Shop* shopInstance;
@@ -85,8 +84,7 @@ private:
     // Shop system
     std::unique_ptr<Shop> shop;
     bool showShop;
-    bool forceFieldsInitialized = false;
-    float forceFieldInitDelay = 1.0f;
+
     // Settings cache
     float defaultZoom = DEFAULT_ZOOM;
     float minZoom = MIN_ZOOM;

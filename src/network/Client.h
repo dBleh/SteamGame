@@ -46,10 +46,8 @@ public:
     void ProcessStartGameMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed);
     void ProcessPlayerDamageMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed);
     void ProcessUnknownMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed);
-    void ProcessForceFieldZapMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed);
-    void ProcessForceFieldUpdateMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed);
     void ProcessKillMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed);
-    void EnsureForceFieldInitialization();
+    
     bool HasReceivedInitialSettings() const { return m_initialSettingsReceived; }
 private:
     Game* game;
@@ -67,8 +65,6 @@ private:
     float m_periodicValidationTimer = 10.0f;
     float m_settingsRequestTimer = 1.0f;  // Request settings 1 second after connecting
     bool m_initialSettingsReceived = false;
-    bool m_hasInitializedForceFields = false;
-    std::atomic<bool> m_forceFieldInitInProgress{false};
     bool m_calledFromMessageHandler{false};
 
 };

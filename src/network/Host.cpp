@@ -30,9 +30,7 @@ HostNetwork::HostNetwork(Game* game, PlayerManager* manager)
     hostPlayer.isReady = false;
     playerManager->AddOrUpdatePlayer(hostIDStr, std::move(hostPlayer));
     std::cout << "[HOST] Added host to player list: " << hostName << " (" << hostIDStr << ")\n";
-    
-    // Initialize force fields for the host player
-    playerManager->InitializeForceFields();
+   
     
     // Apply settings to all players
     ApplySettings();
@@ -73,10 +71,7 @@ void HostNetwork::ProcessConnectionMessage(Game& game, HostNetwork& host, const 
         
         // Initialize force field for the newly connected client
         auto& playerRef = players.find(parsed.steamID)->second;
-        if (!playerRef.player.HasForceField()) {
-            playerRef.player.InitializeForceField();
-            std::cout << "[HOST] Initialized force field for new player: " << parsed.steamName << " (" << parsed.steamID << ")\n";
-        }
+      
         
         std::cout << "[HOST] New player connected: " << parsed.steamName << " (" << parsed.steamID << ")\n";
     } else {
@@ -89,11 +84,7 @@ void HostNetwork::ProcessConnectionMessage(Game& game, HostNetwork& host, const 
             std::cout << "[HOST] Updated name for " << parsed.steamID << " to " << parsed.steamName << "\n";
         }
         
-        // Initialize force field if it doesn't exist
-        if (!it->second.player.HasForceField()) {
-            it->second.player.InitializeForceField();
-            std::cout << "[HOST] Initialized force field for existing player: " << parsed.steamName << " (" << parsed.steamID << ")\n";
-        }
+      
     }
     playerManager->SetReadyStatus(parsed.steamID, parsed.isReady);
     BroadcastFullPlayerList();
@@ -216,64 +207,7 @@ void HostNetwork::SendReturnToLobbyCommand() {
     std::cout << "[HOST] Returning all players to lobby\n";
 }
 
-void HostNetwork::ProcessForceFieldUpdateMessage(Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender) {
-    // Get the player ID from the message
-    std::string playerID = parsed.steamID;
-    
-    // Normalize player ID for consistent comparison
-    std::string normalizedPlayerID;
-    try {
-        uint64_t idNum = std::stoull(playerID);
-        normalizedPlayerID = std::to_string(idNum);
-    } catch (const std::exception& e) {
-        std::cout << "[HOST] Error normalizing player ID in ProcessForceFieldUpdateMessage: " << e.what() << "\n";
-        normalizedPlayerID = playerID;
-    }
-    
-    // Look up the player in the players map
-    auto& players = playerManager->GetPlayers();
-    auto it = players.find(normalizedPlayerID);
-    
-    if (it != players.end()) {
-        RemotePlayer& rp = it->second;
-        
-        // Make sure the player has a force field
-        if (!rp.player.HasForceField()) {
-            rp.player.InitializeForceField();
-        }
-        
-        ForceField* forceField = rp.player.GetForceField();
-        if (forceField) {
-            // Update the force field parameters
-            forceField->SetRadius(parsed.ffRadius);
-            forceField->SetDamage(parsed.ffDamage);
-            forceField->SetCooldown(parsed.ffCooldown);
-            forceField->SetChainLightningTargets(parsed.ffChainTargets);
-            forceField->SetChainLightningEnabled(parsed.ffChainEnabled);
-            forceField->SetPowerLevel(parsed.ffPowerLevel);
-            forceField->SetFieldType(static_cast<FieldType>(parsed.ffType));
-            
-            std::cout << "[HOST] Updated force field for player " << normalizedPlayerID 
-                      << " - Radius: " << parsed.ffRadius
-                      << ", Damage: " << parsed.ffDamage
-                      << ", Type: " << parsed.ffType << "\n";
-        }
-    }
-    
-    // Broadcast the force field update to all clients
-    std::string updateMsg = PlayerMessageHandler::FormatForceFieldUpdateMessage(
-        normalizedPlayerID,
-        parsed.ffRadius,
-        parsed.ffDamage,
-        parsed.ffCooldown,
-        parsed.ffChainTargets,
-        parsed.ffType,
-        parsed.ffPowerLevel,
-        parsed.ffChainEnabled
-    );
-    
-    game.GetNetworkManager().BroadcastMessage(updateMsg);
-}
+
 
 void HostNetwork::ProcessKillMessage(Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender) {
     std::string killerID = parsed.steamID;
@@ -460,88 +394,3 @@ void HostNetwork::ProcessUnknownMessage(Game& game, HostNetwork& host, const Par
     std::cout << "[HOST] Unknown message type received\n";
 }
 
-void HostNetwork::ProcessForceFieldZapMessage(Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender) {
-    std::string zapperID = parsed.steamID;
-    int enemyId = parsed.enemyId;
-    float damage = parsed.damage;
-    
-    // Normalize player ID for consistent comparison
-    std::string normalizedZapperID;
-    try {
-        uint64_t zapperIdNum = std::stoull(zapperID);
-        normalizedZapperID = std::to_string(zapperIdNum);
-    } catch (const std::exception& e) {
-        std::cout << "[HOST] Error normalizing zapper ID: " << e.what() << "\n";
-        normalizedZapperID = zapperID;
-    }
-    
-    // Get the local player ID
-    std::string localID = std::to_string(game.GetLocalSteamID().ConvertToUint64());
-    std::string normalizedLocalID;
-    try {
-        uint64_t localIdNum = std::stoull(localID);
-        normalizedLocalID = std::to_string(localIdNum);
-    } catch (const std::exception& e) {
-        std::cout << "[HOST] Error normalizing local ID: " << e.what() << "\n";
-        normalizedLocalID = localID;
-    }
-    
-    // Get the playing state to access the enemy manager
-    PlayingState* playingState = GetPlayingState(&game);
-    if (!playingState || !playingState->GetEnemyManager()) {
-        std::cout << "[HOST] No playing state or enemy manager available for zap message\n";
-        return;
-    }
-    
-    try {
-        EnemyManager* enemyManager = playingState->GetEnemyManager();
-        
-        // Apply damage to the enemy
-        bool killed = false;
-        Enemy* enemy = enemyManager->FindEnemy(enemyId);
-        if (enemy) {
-            killed = enemyManager->InflictDamage(enemyId, damage);
-            
-            // If the enemy was killed, use centralized kill handling
-            if (killed) {
-                playerManager->HandleKill(normalizedZapperID, enemyId);
-            }
-            
-            // Apply visual effect if this isn't our own zap
-            if (normalizedZapperID != normalizedLocalID) {
-                // Get the player who owns the force field
-                auto& players = playerManager->GetPlayers();
-                auto it = players.find(normalizedZapperID);
-                if (it != players.end()) {
-                    RemotePlayer& rp = it->second;
-                    
-                    // Make sure the player has a force field
-                    if (!rp.player.HasForceField()) {
-                        rp.player.InitializeForceField();
-                    }
-                    
-                    // Get player and enemy positions
-                    sf::Vector2f playerPos = rp.player.GetPosition() + sf::Vector2f(25.0f, 25.0f); // Assuming 50x50 player
-                    sf::Vector2f enemyPos = enemy->GetPosition();
-                    
-                    try {
-                        // Create the zap effect
-                        rp.player.GetForceField()->CreateZapEffect(playerPos, enemyPos);
-                        rp.player.GetForceField()->SetIsZapping(true);
-                        rp.player.GetForceField()->SetZapEffectTimer(0.3f); // Show effect for 0.3 seconds
-                    } catch (const std::exception& e) {
-                        std::cerr << "[HOST] Error creating zap effect: " << e.what() << std::endl;
-                    }
-                }
-            }
-        } else {
-            std::cout << "[HOST] Enemy ID " << enemyId << " not found for zap message\n";
-        }
-        
-        // Broadcast this zap to all clients (even if we don't find the enemy)
-        std::string zapMsg = PlayerMessageHandler::FormatForceFieldZapMessage(normalizedZapperID, enemyId, damage);
-        game.GetNetworkManager().BroadcastMessage(zapMsg);
-    } catch (const std::exception& e) {
-        std::cerr << "[HOST] Exception processing force field zap: " << e.what() << std::endl;
-    }
-}

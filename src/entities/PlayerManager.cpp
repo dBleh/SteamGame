@@ -5,7 +5,7 @@
 #include "../network/messages/EnemyMessageHandler.h"
 #include "../network/messages/StateMessageHandler.h"
 #include "../network/messages/SystemMessageHandler.h"
-#include "ForceField.h"
+
 
 #include <iostream>
 #include <algorithm>
@@ -671,93 +671,7 @@ void PlayerManager::RemoveBullets(const std::vector<size_t>& indicesToRemove) {
     }
 }
 
-// Updated implementation for PlayerManager::InitializeForceFields()
-void PlayerManager::InitializeForceFields() {
-    GameSettingsManager* settingsManager = game->GetGameSettingsManager();
-    
-    for (auto& pair : players) {
-        std::string playerID = pair.first;
-        RemotePlayer& rp = pair.second;
-        
-        // Initialize force field if not already done
-        if (!rp.player.HasForceField()) {
-            rp.player.InitializeForceField(settingsManager);
-            
-            // Always make sure the force field is enabled after initialization
-            rp.player.EnableForceField(true);
-            
-            // Set up callback for zap events
-            // We set this for all players, not just local, to ensure kill tracking works for all
-            rp.player.GetForceField()->SetZapCallback([this, playerID](int enemyId, float damage, bool killed) {
-                // Handle zap event
-                HandleForceFieldZap(playerID, enemyId, damage, killed);
-            });
-            
-        } else {
-            // Apply settings to existing force field
-            if (settingsManager && rp.player.GetForceField()) {
-                rp.player.GetForceField()->ApplySettings(settingsManager);
-            }
-            
-            // Make sure callback is set even for existing force fields
-            rp.player.GetForceField()->SetZapCallback([this, playerID](int enemyId, float damage, bool killed) {
-                // Handle zap event
-                HandleForceFieldZap(playerID, enemyId, damage, killed);
-            });
-        }
-    }
-}
-void PlayerManager::HandleForceFieldZap(const std::string& playerID, int enemyId, float damage, bool killed) {
-    // Validate inputs
-    if (playerID.empty() || enemyId < 0) {
-        std::cerr << "[PM] Invalid parameters in HandleForceFieldZap: playerID=" 
-                  << playerID << ", enemyId=" << enemyId << std::endl;
-        return;
-    }
-    
-    // Only update rewards for hits, not kills (as those are handled by HandleKill)
-    if (!killed) {
-        try {
-            // Reward for hits (not kills) - with safe lookup
-            auto it = players.find(playerID);
-            if (it != players.end()) {
-                it->second.money += 10; // 10 money for hitting an enemy with force field
-            }
-        } catch (const std::exception& e) {
-            std::cerr << "[PM] Exception updating player money: " << e.what() << std::endl;
-        }
-    } else {
-        // If the enemy was killed, use the centralized kill handling
-        // This ensures consistent kill tracking for all kill types
-        try {
-            HandleKill(playerID, enemyId);
-        } catch (const std::exception& e) {
-            std::cerr << "[PM] Exception in HandleKill: " << e.what() << std::endl;
-        }
-    }
-    
-    // If this is the local player, send a network message for the zap effect
-    if (playerID == localPlayerID) {
-        try {
-            // Format and send force field zap message
-            std::string zapMsg = PlayerMessageHandler::FormatForceFieldZapMessage(playerID, enemyId, damage);
-            
-            // Check if we're the host
-            CSteamID localSteamID = SteamUser()->GetSteamID();
-            CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
-            
-            if (localSteamID == hostID) {
-                // We are the host, broadcast to all clients
-                game->GetNetworkManager().BroadcastMessage(zapMsg);
-            } else {
-                // We are a client, send to host
-                game->GetNetworkManager().SendMessage(hostID, zapMsg);
-            }
-        } catch (const std::exception& e) {
-            std::cerr << "[PM] Exception sending network message: " << e.what() << std::endl;
-        }
-    }
-}
+
 
 void PlayerManager::ApplySettings() {
     GameSettingsManager* settingsManager = game->GetGameSettingsManager();
@@ -783,7 +697,6 @@ void PlayerManager::ApplySettings() {
     ApplySettingsToAllPlayers();
     ApplySettingsToAllBullets();
 
-    InitializeForceFields();
 }
 
 void PlayerManager::ApplySettingsToAllPlayers() {

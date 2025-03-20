@@ -32,8 +32,8 @@ PlayingState::PlayingState(Game* game)
       showEscapeMenu(false),
       waveTimer(0.0f),
       showShop(false),
-      waitingForNextWave(false),
-      forceFieldsInitialized(false) {  // Add new flag to track force field initialization
+      waitingForNextWave(false)
+       {  // Add new flag to track force field initialization
     
     std::cout << "[DEBUG] PlayingState constructor start\n";
     
@@ -156,106 +156,7 @@ PlayingState::PlayingState(Game* game)
     // to ensure settings are fully loaded
     std::cout << "[DEBUG] PlayingState constructor completed\n";
 }
-void PlayingState::InitializeForceFields() {
-    if (forceFieldsInitialized) return; // Only do this once
-    GameSettingsManager* settingsManager = game->GetGameSettingsManager();
 
-    std::cout << "[PlayingState] Now initializing force fields after settings are applied\n";
-    
-    CSteamID myID = SteamUser()->GetSteamID();
-    CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
-    bool isHost = (myID == hostID);
-    
-    try {
-        // Initialize force fields for all players
-        auto& players = playerManager->GetPlayers();
-        
-        for (auto& pair : players) {
-            std::string playerID = pair.first;
-            RemotePlayer& rp = pair.second;
-            
-            // Initialize force field if not already done
-            if (!rp.player.HasForceField()) {
-                try {
-                    rp.player.InitializeForceField(settingsManager);
-                    std::cout << "[PlayingState] Initialized force field for player " << rp.baseName << "\n";
-                    
-                    // Always explicitly enable the force field after initialization
-                    rp.player.EnableForceField(true);
-                } catch (const std::exception& e) {
-                    std::cerr << "[ERROR] Exception initializing force field for " 
-                             << rp.baseName << ": " << e.what() << std::endl;
-                }
-            } else if (settingsManager) {
-                // If force field exists, apply settings
-                ForceField* forceField = rp.player.GetForceField();
-                if (forceField) {
-                    forceField->ApplySettings(settingsManager);
-                }
-            }
-            // Ensure the force field has a zap callback set
-            try {
-                if (rp.player.HasForceField() && rp.player.GetForceField()) {
-                    ForceField* forceField = rp.player.GetForceField();
-                    
-                    if (!forceField->HasZapCallback()) {
-                        // Store player ID by value to avoid reference issues
-                        std::string callbackPlayerID = playerID;
-                        forceField->SetZapCallback([this, callbackPlayerID](int enemyId, float damage, bool killed) {
-                            // Additional null check
-                            if (playerManager) {
-                                try {
-                                    playerManager->HandleForceFieldZap(callbackPlayerID, enemyId, damage, killed);
-                                } catch (const std::exception& e) {
-                                    std::cerr << "[ERROR] Exception in force field zap callback: " 
-                                             << e.what() << std::endl;
-                                }
-                            }
-                        });
-                        std::cout << "[PlayingState] Set zap callback for player " << rp.baseName << "\n";
-                    }
-                } else {
-                    std::cerr << "[ERROR] Failed to get force field pointer for " << rp.baseName << std::endl;
-                }
-            } catch (const std::exception& e) {
-                std::cerr << "[ERROR] Exception setting zap callback for " 
-                         << rp.baseName << ": " << e.what() << std::endl;
-            }
-        }
-        
-        // If we're hosting, broadcast force field info to all clients
-        if (isHost && hostNetwork) {
-            for (auto& pair : players) {
-                try {
-                    RemotePlayer& rp = pair.second;
-                    
-                    if (rp.player.HasForceField() && rp.player.GetForceField()) {
-                        ForceField* forceField = rp.player.GetForceField();
-                        std::string updateMsg = PlayerMessageHandler::FormatForceFieldUpdateMessage(
-                            pair.first,
-                            forceField->GetRadius(),
-                            forceField->GetDamage(),
-                            forceField->GetCooldown(),
-                            forceField->GetChainLightningTargets(),
-                            static_cast<int>(forceField->GetFieldType()),
-                            forceField->GetPowerLevel(),
-                            forceField->IsChainLightningEnabled()
-                        );
-                        
-                        game->GetNetworkManager().BroadcastMessage(updateMsg);
-                        std::cout << "[HOST] Broadcast force field info for player " << rp.baseName << "\n";
-                    }
-                } catch (const std::exception& e) {
-                    std::cerr << "[ERROR] Exception broadcasting force field info: " << e.what() << std::endl;
-                }
-            }
-        }
-        
-        forceFieldsInitialized = true;
-    } catch (const std::exception& e) {
-        std::cerr << "[ERROR] Exception in force field initialization: " << e.what() << std::endl;
-    }
-}
 PlayingState::~PlayingState() {
     game->GetWindow().setMouseCursorGrabbed(false);
     
@@ -301,48 +202,6 @@ void PlayingState::Update(float dt) {
     } else {
         // Once player is loaded, initialize force fields if not already done
         // This ensures we have received settings first
-        if (!forceFieldsInitialized) {
-            forceFieldInitDelay -= dt;
-            
-            if (forceFieldInitDelay <= 0.0f) {
-                // If we're a client, check if we've received settings from host
-                bool isClient = false;
-                CSteamID myID = SteamUser()->GetSteamID();
-                CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
-                
-                if (myID != hostID) {
-                    isClient = true;
-                }
-                
-                // For clients, check if the client has received settings
-                if (isClient && clientNetwork) {
-                    if (clientNetwork->HasReceivedInitialSettings()) {
-                        std::cout << "[CLIENT] Initial settings received, initializing force fields\n";
-                        InitializeForceFields();
-                    } else {
-                        static float requestTimer = 0.0f;
-                        requestTimer += dt;
-                        if (requestTimer >= 1.0f) {
-                            std::cout << "[CLIENT] Waiting for initial settings before force field initialization\n";
-                            clientNetwork->RequestGameSettings();
-                            requestTimer = 0.0f;
-                            
-                            // Even if we don't have settings, initialize after a while
-                            static float totalWaitTime = 0.0f;
-                            totalWaitTime += dt;
-                            
-                            if (totalWaitTime > 5.0f) {
-                                std::cout << "[CLIENT] Initializing force fields with default values after timeout\n";
-                                InitializeForceFields();
-                            }
-                        }
-                    }
-                } else {
-                    // Host can initialize immediately
-                    InitializeForceFields();
-                }
-            }
-        }
         
         // Update PlayerManager with the game instance (for InputManager access)
         playerManager->Update(game);
@@ -451,8 +310,7 @@ void PlayingState::Update(float dt) {
                 ui->UpdateWaveInfo();
             }
             
-            // Update force fields using the safer method
-            UpdateForceFields(dt);
+            
         }
         
         // Rest of Update method remains the same...
@@ -483,20 +341,7 @@ void PlayingState::Render() {
             }
             
             // MODIFIED: Safely render force fields for all players
-            for (auto& pair : playerManager->GetPlayers()) {
-                try {
-                    RemotePlayer& rp = pair.second;
-                    if (rp.player.HasForceField() && !rp.player.IsDead()) {
-                        ForceField* forceField = rp.player.GetForceField();
-                        if (forceField) {
-                            forceField->Render(game->GetWindow());
-                        }
-                    }
-                } catch (const std::exception& e) {
-                    std::cerr << "[ERROR] Exception rendering force field: " << e.what() << std::endl;
-                }
-            }
-            
+           
             // Render enemies after players
             if (enemyManager) {
                 enemyManager->Render(game->GetWindow());
@@ -606,50 +451,14 @@ void PlayingState::ProcessGameplayEvents(const sf::Event& event) {
     else if (event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::F) {
         // Toggle force field for local player
         auto& localPlayer = playerManager->GetLocalPlayer();
+    }
         
-        // Initialize force field if not already done
-        if (!localPlayer.player.HasForceField()) {
-            localPlayer.player.InitializeForceField();
-        }
-        
-        // Toggle the force field
-        bool newState = !localPlayer.player.HasForceField();
-        localPlayer.player.EnableForceField(newState);
-        
-        // Display a message about the force field status
-        std::string statusMsg = newState ? 
-                              "Force Field Activated" : 
-                              "Force Field Deactivated";
+      
+       
+  
         
         // Send force field update to network
-        if (localPlayer.player.GetForceField()) {
-            ForceField* forceField = localPlayer.player.GetForceField();
-            
-            // Create the force field update message
-            std::string updateMsg = PlayerMessageHandler::FormatForceFieldUpdateMessage(
-                localPlayer.playerID,
-                forceField->GetRadius(),
-                forceField->GetDamage(),
-                forceField->GetCooldown(),
-                forceField->GetChainLightningTargets(),
-                static_cast<int>(forceField->GetFieldType()),
-                forceField->GetPowerLevel(),
-                forceField->IsChainLightningEnabled()
-            );
-            
-            // Check if we're the host
-            CSteamID localSteamID = SteamUser()->GetSteamID();
-            CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
-            
-            if (localSteamID == hostID) {
-                // We are the host, broadcast to all clients
-                game->GetNetworkManager().BroadcastMessage(updateMsg);
-            } else {
-                // We are a client, send to host
-                game->GetNetworkManager().SendMessage(hostID, updateMsg);
-            }
-        }
-    }
+      
     else if (event.type == sf::Event::LostFocus) {
         // Release mouse if window loses focus
         if (cursorLocked) {
@@ -804,73 +613,3 @@ void PlayingState::ApplyAllSettings() {
     std::cout << "[PlayingState] Applied all game settings" << std::endl;
 }
 
-void PlayingState::UpdateForceFields(float dt) {
-    if (!playerLoaded || !playerManager) return;
-    
-    CSteamID myID = SteamUser()->GetSteamID();
-    CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
-    bool isHost = (myID == hostID);
-    
-    // For clients, use a very simplified update to avoid triggering more network messages
-    if (!isHost) {
-        // Only update force field positions and visuals
-        for (auto& pair : playerManager->GetPlayers()) {
-            try {
-                RemotePlayer& rp = pair.second;
-                
-                // Skip dead players or those without force fields
-                if (rp.player.IsDead() || !rp.player.HasForceField()) continue;
-                
-                ForceField* forceField = rp.player.GetForceField();
-                if (!forceField) continue;
-                
-                // Update position to follow player
-                sf::Vector2f playerCenter = rp.player.GetPosition() + sf::Vector2f(25.0f, 25.0f);
-                forceField->fieldShape.setPosition(playerCenter);
-                
-                // Update force field rings
-                for (int i = 0; i < ForceField::NUM_FIELD_RINGS; i++) {
-                    forceField->fieldRings[i].setPosition(playerCenter);
-                }
-                
-                // Decrease zap timer if active
-                if (forceField->isZapping) {
-                    forceField->zapEffectTimer -= dt;
-                    if (forceField->zapEffectTimer <= 0.0f) {
-                        forceField->isZapping = false;
-                    }
-                }
-                
-                // Only perform full update for local player
-                if (pair.first == playerManager->GetLocalPlayer().playerID) {
-                    forceField->fieldRotation += dt * 15.0f;
-                    forceField->fieldPulsePhase += dt * 3.0f;
-                }
-            } catch (...) {
-                // Silently handle errors to prevent crashes
-            }
-        }
-    } else {
-        // Host uses regular update
-        for (auto& pair : playerManager->GetPlayers()) {
-            try {
-                RemotePlayer& rp = pair.second;
-                
-                // Skip dead players
-                if (rp.player.IsDead()) continue;
-                
-                // Ensure player has a force field initialized
-                if (!rp.player.HasForceField()) {
-                    rp.player.InitializeForceField();
-                }
-                
-                ForceField* forceField = rp.player.GetForceField();
-                if (forceField) {
-                    forceField->Update(dt, *playerManager, *enemyManager);
-                }
-            } catch (const std::exception& e) {
-                std::cerr << "[ERROR] Exception in force field update: " << e.what() << std::endl;
-            }
-        }
-    }
-}

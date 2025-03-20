@@ -130,28 +130,7 @@ Shop::Shop(Game* game, PlayerManager* playerManager)
     items.push_back(ShopItem(ShopItemType::Health, "Health Boost", 
                              "Increases maximum health", 
                              SHOP_HEALTH_BASE_COST, 0, SHOP_DEFAULT_MAX_LEVEL));
-    
-    // Add new ForceField upgrade items
-    items.push_back(ShopItem(ShopItemType::ForceFieldRadius, "Force Field Radius", 
-                             "Increases the size of your force field", 
-                             100, 0, 5));
-    
-    items.push_back(ShopItem(ShopItemType::ForceFieldDamage, "Force Field Damage", 
-                             "Increases damage dealt to enemies", 
-                             150, 0, 5));
-    
-    items.push_back(ShopItem(ShopItemType::ForceFieldCooldown, "Force Field Speed", 
-                             "Reduces time between zaps", 
-                             200, 0, 5));
-    
-    items.push_back(ShopItem(ShopItemType::ForceFieldChain, "Chain Lightning", 
-                             "Increases chain lightning targets", 
-                             250, 0, 3));
-    
-    items.push_back(ShopItem(ShopItemType::ForceFieldType, "Force Field Type", 
-                             "Upgrade to more powerful field types", 
-                             300, 0, 3));
-    
+       
     // Set font for all items
     for (auto& item : items) {
         item.SetFont(game->GetFont());
@@ -405,43 +384,7 @@ void Shop::ProcessEvent(const sf::Event& event) {
         }
     }
 }
-void Shop::SendForceFieldUpdateToNetwork(const Player& player) {
-    // Check if the player has a force field
-    ForceField* forceField = player.GetForceField();
-    if (!forceField) {
-        std::cout << "[SHOP] Cannot send update - player has no force field\n";
-        return;
-    }
-    
-    // Get the local player ID
-    std::string playerID = playerManager->GetLocalPlayer().playerID;
-    
-    // Create the force field update message
-    std::string updateMsg = PlayerMessageHandler::FormatForceFieldUpdateMessage(
-        playerID,
-        forceField->GetRadius(),
-        forceField->GetDamage(),
-        forceField->GetCooldown(),
-        forceField->GetChainLightningTargets(),
-        static_cast<int>(forceField->GetFieldType()),
-        forceField->GetPowerLevel(),
-        forceField->IsChainLightningEnabled()
-    );
-    
-    // Check if we're the host
-    CSteamID localSteamID = SteamUser()->GetSteamID();
-    CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
-    
-    if (localSteamID == hostID) {
-        // We are the host, broadcast to all clients
-        game->GetNetworkManager().BroadcastMessage(updateMsg);
-        std::cout << "[SHOP] Broadcast force field update as host\n";
-    } else {
-        // We are a client, send to host
-        game->GetNetworkManager().SendMessage(hostID, updateMsg);
-        std::cout << "[SHOP] Sent force field update to host\n";
-    }
-}
+
 
 void Shop::PurchaseSelectedItem() {
     if (selectedIndex >= 0 && selectedIndex < items.size()) {
@@ -467,22 +410,7 @@ void Shop::PurchaseSelectedItem() {
         // Update display
         UpdateMoneyDisplay();
         
-        // Send force field update to network if this was a force field upgrade
-        if (item.GetType() == ShopItemType::ForceFieldRadius || 
-            item.GetType() == ShopItemType::ForceFieldDamage ||
-            item.GetType() == ShopItemType::ForceFieldCooldown ||
-            item.GetType() == ShopItemType::ForceFieldChain ||
-            item.GetType() == ShopItemType::ForceFieldType) {
-            
-            // Make sure the force field is enabled
-            if (!localPlayer.player.HasForceField() && localPlayer.player.GetForceField()) {
-                localPlayer.player.EnableForceField(true);
-            }
-            
-            // Send the update to the network
-            SendForceFieldUpdateToNetwork(localPlayer.player);
         }
-    }
 }
 
 bool Shop::CanAffordItem(const ShopItem& item) const {
@@ -514,67 +442,8 @@ void Shop::ApplyUpgrades(Player& player) {
                 player.SetHealth(player.GetMaxHealth());
                 break;
                 
-            case ShopItemType::ForceFieldRadius:
-                // Force field radius upgrade
-                if (player.GetForceField()) {
-                    float newRadius = FORCE_FIELD_RADIUS_BASE + (level * FORCE_FIELD_RADIUS_INCREMENT);
-                    player.GetForceField()->SetRadius(newRadius);
-                }
-                break;
-                
-            case ShopItemType::ForceFieldDamage:
-                // Force field damage upgrade
-                if (player.GetForceField()) {
-                    float newDamage = FORCE_FIELD_DAMAGE_BASE + (level * FORCE_FIELD_DAMAGE_INCREMENT);
-                    player.GetForceField()->SetDamage(newDamage);
-                }
-                break;
-                
-            case ShopItemType::ForceFieldCooldown:
-                // Force field cooldown reduction upgrade
-                if (player.GetForceField()) {
-                    float newCooldown = std::max(0.1f, FORCE_FIELD_COOLDOWN_BASE - (level * FORCE_FIELD_COOLDOWN_DECREMENT));
-                    player.GetForceField()->SetCooldown(newCooldown);
-                }
-                break;
-                
-            case ShopItemType::ForceFieldChain:
-                // Force field chain lightning targets upgrade
-                if (player.GetForceField()) {
-                    int chainTargets = FORCE_FIELD_CHAIN_BASE + (level * FORCE_FIELD_CHAIN_INCREMENT);
-                    player.GetForceField()->SetChainLightningTargets(chainTargets);
-                    player.GetForceField()->SetChainLightningEnabled(true);
-                }
-                break;
-                
-            case ShopItemType::ForceFieldType:
-                // Force field type upgrade
-                if (player.GetForceField() && level > 0) {
-                    FieldType newType;
-                    switch (static_cast<int>(level)) {
-                        case 1:
-                            newType = FieldType::SHOCK;
-                            break;
-                        case 2:
-                            newType = FieldType::PLASMA;
-                            break;
-                        case 3:
-                            newType = FieldType::VORTEX;
-                            break;
-                        default:
-                            newType = FieldType::STANDARD;
-                    }
-                    player.GetForceField()->SetFieldType(newType);
-                    
-                    // Also increase power level with field type upgrades
-                    player.GetForceField()->SetPowerLevel(static_cast<int>(level) + 1);
-                }
-                break;
         }
     }
     
-    // Make sure the force field is enabled after purchasing upgrades
-    if (player.GetForceField() && !player.HasForceField()) {
-        player.EnableForceField(true);
-    }
+   
 }

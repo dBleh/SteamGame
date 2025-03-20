@@ -5,11 +5,10 @@
 #include <iostream>
 #include "../utils/input/InputHandler.h"
 #include "../utils/input/InputManager.h" 
-#include "ForceField.h"
 #include "../utils/config/Config.h"
 #include "../states/GameSettingsManager.h"
 
-class ForceField;
+
 class Player {
 public:
     static constexpr float SHOOT_COOLDOWN_DURATION = 0.1f; // seconds between shots
@@ -71,13 +70,7 @@ public:
     void SetHealth(float newHealth);
     float GetMaxHealth() const { return maxHealth; }
     void SetMaxHealth(float newMaxHealth) { maxHealth = newMaxHealth; }
-    
-    // Force field methods
-    void InitializeForceField(GameSettingsManager* settingsManager = nullptr);
-    void EnableForceField(bool enable);
-    bool HasForceField() { return forceFieldEnabled; }
-    ForceField* GetForceField() const { return forceField.get(); }
-    
+
     // Bullet properties
     float GetBulletDamage() const { return bulletDamage; }
     void SetBulletDamage(float newDamage) { bulletDamage = newDamage; }
@@ -105,8 +98,6 @@ private:
     // Respawn property
     sf::Vector2f respawnPosition;
 
-    std::unique_ptr<ForceField> forceField;
-    bool forceFieldEnabled = false;
 
     float bulletDamage = BULLET_DAMAGE;
     float shootCooldownDuration = SHOOT_COOLDOWN_DURATION;

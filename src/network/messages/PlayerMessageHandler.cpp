@@ -78,27 +78,6 @@ void PlayerMessageHandler::Initialize() {
                                 [](Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender) {
                                     host.ProcessKillMessage(game, host, parsed, sender);
                                 });                        
-    MessageHandler::RegisterMessageType("FZ", 
-                        ParseForceFieldZapMessage,
-                        [](Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
-                            // Handle force field zap on client
-                            client.ProcessForceFieldZapMessage(game, client, parsed);
-                        },
-                        [](Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender) {
-                            // Handle force field zap on host
-                            host.ProcessForceFieldZapMessage(game, host, parsed, sender);
-                        });
-                        
-    MessageHandler::RegisterMessageType("FFU", 
-                      ParseForceFieldUpdateMessage,
-                      [](Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
-                          // Handle force field update on client
-                          client.ProcessForceFieldUpdateMessage(game, client, parsed);
-                      },
-                      [](Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender) {
-                          // Handle force field update on host
-                          host.ProcessForceFieldUpdateMessage(game, host, parsed, sender);
-                      });
 }
 
 // Connection message parsing

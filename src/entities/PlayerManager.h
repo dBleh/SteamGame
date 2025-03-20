@@ -52,9 +52,6 @@ public:
     // New method for handling player shooting action
     bool PlayerShoot(const sf::Vector2f& mouseWorldPos);
     void SendBulletMessageToNetwork(const sf::Vector2f& position, const sf::Vector2f& direction, float bulletSpeed);
-
-    void InitializeForceFields();
-    void HandleForceFieldZap(const std::string& playerID, int enemyId, float damage, bool killed);
     
     // Settings management
     void ApplySettings();

@@ -32,8 +32,6 @@ Player::Player(Player&& other) noexcept
       maxHealth(other.maxHealth),
       isDead(other.isDead),
       respawnPosition(other.respawnPosition),
-      forceField(std::move(other.forceField)),
-      forceFieldEnabled(other.forceFieldEnabled),
       shootCooldownDuration(other.shootCooldownDuration) {
 }
 
@@ -49,8 +47,6 @@ Player& Player::operator=(Player&& other) noexcept {
         maxHealth = other.maxHealth;
         isDead = other.isDead;
         respawnPosition = other.respawnPosition;
-        forceField = std::move(other.forceField);
-        forceFieldEnabled = other.forceFieldEnabled;
         shootCooldownDuration = other.shootCooldownDuration;
     }
     return *this;
@@ -220,90 +216,8 @@ sf::Vector2f Player::GetRespawnPosition() const {
     return respawnPosition;
 }
 
-void Player::InitializeForceField(GameSettingsManager* settingsManager) {
-    try {
-        // If we already have a force field, don't recreate it
-        if (forceField) {
-            std::cout << "[PLAYER] Force field already exists, not reinitializing" << std::endl;
-            forceFieldEnabled = true;
-            return;
-        }
-        
-        // Start with a smaller radius based on settings or default
-        float startingRadius = 100.0f;  // Smaller than the default 150.0f
-        
-        // Get radius from settings if available
-        if (settingsManager) {
-            GameSetting* radiusSetting = settingsManager->GetSetting("forcefield_radius");
-            if (radiusSetting) {
-                startingRadius = radiusSetting->GetFloatValue() * 0.7f; // 70% of default size
-            }
-        }
-        
-        // Create the force field with settings
-        forceField = std::make_unique<ForceField>(this, startingRadius, settingsManager);
-        
-        // Set initial properties to be weaker than default
-        if (forceField) {
-            // Reduced damage (either from settings or default)
-            float baseDamage = ForceField::GetDefaultDamage(settingsManager);
-            forceField->SetDamage(baseDamage * 0.6f);  // 60% of the base damage
-            
-            // Slower firing rate
-            float baseCooldown = ForceField::GetDefaultCooldown(settingsManager);
-            forceField->SetCooldown(baseCooldown * 1.5f);  // 50% slower than default
-            
-            // Disable chain lightning initially (player will unlock with upgrades)
-            forceField->SetChainLightningEnabled(false);
-            forceField->SetChainLightningTargets(1);
-            
-            // Set to lowest power level
-            forceField->SetPowerLevel(1);
-            
-            // Standard field type initially
-            forceField->SetFieldType(FieldType::STANDARD);
-        } else {
-            std::cerr << "[PLAYER] Failed to create ForceField - null after initialization" << std::endl;
-            return;
-        }
-        
-        forceFieldEnabled = true;
-        
-    } catch (const std::exception& e) {
-        std::cerr << "[PLAYER] Exception in InitializeForceField: " << e.what() << std::endl;
-        forceFieldEnabled = false;
-        forceField.reset(); // Clean up any partially initialized field
-    }
-}
 
-void Player::EnableForceField(bool enable) {
-    // Only change state if we have a force field
-    if (forceField) {
-        bool previousState = forceFieldEnabled;
-        forceFieldEnabled = enable;
-        
-        // Create a visual pulse effect when toggling to enabled
-        if (enable && !previousState) {
-            // Make it pulse by temporarily increasing size
-            float originalRadius = forceField->GetRadius();
-            forceField->SetRadius(originalRadius * 1.2f); // 20% larger
-            
-            // Return to normal size after 0.2 seconds
-            sf::Clock timer;
-            sf::Time duration = sf::seconds(0.2f);
-            
-            // This is a simple approach; in a real implementation,
-            // you'd want to add this to a queue of effects to apply during update
-            while (timer.getElapsedTime() < duration) {
-                // Wait for the pulse effect
-                sf::sleep(sf::milliseconds(10));
-            }
-            
-            // Return to normal size
-            forceField->SetRadius(originalRadius);
-        }
-    }
-}
+
 
 void Player::ApplySettings(GameSettingsManager* settingsManager) {
     if (!settingsManager) return;
@@ -359,9 +273,5 @@ void Player::ApplySettings(GameSettingsManager* settingsManager) {
         // Update the player's collision radius/hitbox if needed
         // This might affect the shape size or separate collision detection
     }
-    
-    // Apply force field settings if it exists
-    if (forceField && forceFieldEnabled) {
-        forceField->ApplySettings(settingsManager);
-    }
+
 }
