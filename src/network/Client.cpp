@@ -371,12 +371,16 @@ void ClientNetwork::Update() {
         }
     }
     
-    // Periodically check force field initialization (every 3 seconds)
+    // More frequent force field checking when settings are still missing
     static float forceFieldCheckTimer = 0.0f;
     forceFieldCheckTimer += elapsed;
-    if (forceFieldCheckTimer >= 3.0f) {
-        // Only check if we're in the playing state and have received settings
-        if (game->GetCurrentState() == GameState::Playing && m_initialSettingsReceived) {
+    
+    // Check more often (every 1 second) when we haven't received settings yet
+    float checkInterval = m_initialSettingsReceived ? 3.0f : 1.0f;
+    
+    if (forceFieldCheckTimer >= checkInterval) {
+        // Only initialize force fields if we're in the playing state
+        if (game->GetCurrentState() == GameState::Playing) {
             EnsureForceFieldInitialization();
         }
         forceFieldCheckTimer = 0.0f;
@@ -494,6 +498,12 @@ void ClientNetwork::ProcessUnknownMessage(Game& game, ClientNetwork& client, con
 }
 
 void ClientNetwork::ProcessForceFieldZapMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
+    // Skip processing if settings haven't been received yet
+    if (!m_initialSettingsReceived) {
+        std::cout << "[CLIENT] Ignoring force field zap message until settings are received\n";
+        return;
+    }
+
     std::string zapperID = parsed.steamID;
     int enemyId = parsed.enemyId;
     float damage = parsed.damage;
@@ -526,36 +536,51 @@ void ClientNetwork::ProcessForceFieldZapMessage(Game& game, ClientNetwork& clien
     
     // Apply damage to the enemy (if we have access to it)
     PlayingState* playingState = GetPlayingState(&game);
-    if (playingState && playingState->GetEnemyManager()) {
-        EnemyManager* enemyManager = playingState->GetEnemyManager();
-        Enemy* enemy = enemyManager->FindEnemy(enemyId);
+    if (!playingState || !playingState->GetEnemyManager()) {
+        std::cout << "[CLIENT] No playing state or enemy manager available\n";
+        return;
+    }
+    
+    EnemyManager* enemyManager = playingState->GetEnemyManager();
+    Enemy* enemy = enemyManager->FindEnemy(enemyId);
+    
+    // If we found the enemy, apply the visual effect and possibly remove it
+    if (enemy) {
+        // Apply the damage locally to keep in sync with the host
+        bool killed = enemyManager->InflictDamage(enemyId, damage);
         
-        // If we found the enemy, apply the visual effect and possibly remove it
-        if (enemy) {
-            // Apply the damage locally to keep in sync with the host
-            bool killed = enemyManager->InflictDamage(enemyId, damage);
+        // Get the player who owns the force field
+        auto& players = playerManager->GetPlayers();
+        auto it = players.find(normalizedZapperID);
+        if (it != players.end()) {
+            RemotePlayer& rp = it->second;
             
-            // Get the player who owns the force field
-            auto& players = playerManager->GetPlayers();
-            auto it = players.find(normalizedZapperID);
-            if (it != players.end()) {
-                RemotePlayer& rp = it->second;
+            // Make sure the player has a force field
+            if (!rp.player.HasForceField()) {
+                rp.player.InitializeForceField();
                 
-                // Make sure the player has a force field
-                if (!rp.player.HasForceField()) {
-                    rp.player.InitializeForceField();
-                }
+                // Safety check - enable force field after initialization
+                rp.player.EnableForceField(true);
+            }
+            
+            ForceField* forceField = rp.player.GetForceField();
+            if (forceField) {
+                // Get player and enemy positions
+                sf::Vector2f playerPos = rp.player.GetPosition() + sf::Vector2f(25.0f, 25.0f); // Assuming 50x50 player
+                sf::Vector2f enemyPos = enemy->GetPosition();
                 
-                ForceField* forceField = rp.player.GetForceField();
-                if (forceField) {
-                    // Get player and enemy positions
-                    sf::Vector2f playerPos = rp.player.GetPosition() + sf::Vector2f(25.0f, 25.0f); // Assuming 50x50 player
-                    sf::Vector2f enemyPos = enemy->GetPosition();
-                    
-                    // Create the zap effect
-                    forceField->CreateZapEffect(playerPos, enemyPos);
-                    forceField->SetIsZapping(true);
-                    forceField->SetZapEffectTimer(0.3f); // Show effect for 0.3 seconds
+                // Create the zap effect
+                forceField->CreateZapEffect(playerPos, enemyPos);
+                forceField->SetIsZapping(true);
+                forceField->SetZapEffectTimer(0.3f); // Show effect for 0.3 seconds
+                
+                // Ensure zap callback is set
+                if (!forceField->HasZapCallback()) {
+                    forceField->SetZapCallback([this, normalizedZapperID](int enemyId, float damage, bool killed) {
+                        if (playerManager) {
+                            playerManager->HandleForceFieldZap(normalizedZapperID, enemyId, damage, killed);
+                        }
+                    });
                 }
             }
         }
@@ -680,7 +705,30 @@ void ClientNetwork::EnsureForceFieldInitialization() {
         return;
     }
 
-    std::cout << "[CLIENT] Ensuring all players have properly initialized force fields\n";
+    // Skip if we've already done a full initialization
+    if (m_hasInitializedForceFields) {
+        // Just check for missing callbacks
+        auto& players = playerManager->GetPlayers();
+        for (auto& pair : players) {
+            RemotePlayer& rp = pair.second;
+            std::string playerID = pair.first;
+            
+            if (rp.player.HasForceField() && rp.player.GetForceField() && !rp.player.GetForceField()->HasZapCallback()) {
+                std::cout << "[CLIENT] Re-setting missing zap callback for player " << rp.baseName << "\n";
+                
+                // Set the zap callback
+                rp.player.GetForceField()->SetZapCallback([this, playerID](int enemyId, float damage, bool killed) {
+                    // Handle zap event safely
+                    if (playerManager) {
+                        playerManager->HandleForceFieldZap(playerID, enemyId, damage, killed);
+                    }
+                });
+            }
+        }
+        return;
+    }
+
+    std::cout << "[CLIENT] Performing initial force field initialization for all players\n";
     auto& players = playerManager->GetPlayers();
     
     for (auto& pair : players) {
@@ -694,13 +742,15 @@ void ClientNetwork::EnsureForceFieldInitialization() {
                 rp.player.InitializeForceField();
             }
             
+            // Always explicitly enable the force field after initialization
+            rp.player.EnableForceField(true);
+            
             // Ensure the force field has a zap callback set
-            ForceField* forceField = rp.player.GetForceField();
-            if (forceField && !forceField->HasZapCallback()) {
+            if (rp.player.HasForceField() && rp.player.GetForceField() && !rp.player.GetForceField()->HasZapCallback()) {
                 std::cout << "[CLIENT] Setting zap callback for player " << rp.baseName << "\n";
                 
                 // Set the zap callback
-                forceField->SetZapCallback([this, playerID](int enemyId, float damage, bool killed) {
+                rp.player.GetForceField()->SetZapCallback([this, playerID](int enemyId, float damage, bool killed) {
                     // Handle zap event safely
                     if (playerManager) {
                         playerManager->HandleForceFieldZap(playerID, enemyId, damage, killed);
@@ -712,4 +762,7 @@ void ClientNetwork::EnsureForceFieldInitialization() {
                     << rp.baseName << ": " << e.what() << std::endl;
         }
     }
+    
+    // Mark that we've done the full initialization
+    m_hasInitializedForceFields = true;
 }

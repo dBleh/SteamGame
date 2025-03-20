@@ -221,32 +221,40 @@ sf::Vector2f Player::GetRespawnPosition() const {
 }
 
 void Player::InitializeForceField() {
-    // Start with a smaller radius to make upgrades meaningful
-    float startingRadius = 100.0f;  // Smaller than the default 150.0f
-    
-    // Create the force field with reduced initial power
-    forceField = std::make_unique<ForceField>(this, startingRadius);
-    
-    // Set initial properties to be weaker than default
-    if (forceField) {
-        // Reduced damage
-        forceField->SetDamage(15.0f);  // Lower than DEFAULT_DAMAGE of 25.0f
+    try {
+        // Start with a smaller radius to make upgrades meaningful
+        float startingRadius = 100.0f;  // Smaller than the default 150.0f
         
-        // Slower firing rate
-        forceField->SetCooldown(0.5f);  // Higher than DEFAULT_COOLDOWN of 0.3f
+        // Create the force field with reduced initial power
+        forceField = std::make_unique<ForceField>(this, startingRadius);
         
-        // Disable chain lightning initially (player will unlock with upgrades)
-        forceField->SetChainLightningEnabled(false);
-        forceField->SetChainLightningTargets(1);
+        // Set initial properties to be weaker than default
+        if (forceField) {
+            // Reduced damage
+            forceField->SetDamage(15.0f);  // Lower than DEFAULT_DAMAGE of 25.0f
+            
+            // Slower firing rate
+            forceField->SetCooldown(0.5f);  // Higher than DEFAULT_COOLDOWN of 0.3f
+            
+            // Disable chain lightning initially (player will unlock with upgrades)
+            forceField->SetChainLightningEnabled(false);
+            forceField->SetChainLightningTargets(1);
+            
+            // Set to lowest power level
+            forceField->SetPowerLevel(1);
+            
+            // Standard field type initially
+            forceField->SetFieldType(FieldType::STANDARD);
+        } else {
+            std::cerr << "[PLAYER] Failed to create ForceField - null after initialization" << std::endl;
+        }
         
-        // Set to lowest power level
-        forceField->SetPowerLevel(1);
+        forceFieldEnabled = true;
         
-        // Standard field type initially
-        forceField->SetFieldType(FieldType::STANDARD);
+    } catch (const std::exception& e) {
+        std::cerr << "[PLAYER] Exception in InitializeForceField: " << e.what() << std::endl;
+        forceFieldEnabled = false;
     }
-    
-    forceFieldEnabled = true;
 }
 
 void Player::EnableForceField(bool enable) {

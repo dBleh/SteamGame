@@ -66,6 +66,8 @@ private:
     float m_periodicValidationTimer = 10.0f;
     float m_settingsRequestTimer = 1.0f;  // Request settings 1 second after connecting
     bool m_initialSettingsReceived = false;
+    bool m_hasInitializedForceFields = false;
+    
 };
 
 #endif // CLIENT_H
