@@ -29,43 +29,32 @@ EnemyManager::EnemyManager(Game* game, PlayerManager* playerManager)
 }
 
 void EnemyManager::Update(float dt) {
-    // Skip updates if paused or not in gameplay
     if (game->GetCurrentState() != GameState::Playing) return;
-    
-    // Update batch spawning if needed
-    if (remainingEnemiesInWave > 0) {
+
+    if (!queuedEnemies.empty()) {
         UpdateSpawning(dt);
     }
-    
-    // Update all enemies
+
     for (auto& pair : enemies) {
         pair.second->Update(dt, *playerManager);
     }
-    
-    // Check for collisions with players
+
     CheckPlayerCollisions();
-    
-    // Optimize enemy list if we have a large number
-    if (enemies.size() > ENEMY_OPTIMIZATION_THRESHOLD) {
-        OptimizeEnemyList();
-    }
-    
-    // Handle network synchronization if we're the host
+
     CSteamID myID = SteamUser()->GetSteamID();
     CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
-    
     if (myID == hostID) {
-        // Sync enemy positions frequently
+        // Sync only critical updates (e.g., target changes) every POSITION_SYNC_INTERVAL
         syncTimer += dt;
         if (syncTimer >= POSITION_SYNC_INTERVAL) {
-            SyncEnemyPositions();
+            SyncCriticalUpdates();
             syncTimer = 0.0f;
         }
-        
-        // Send full state less frequently
+
+        // Full sync less frequently to correct drift
         fullSyncTimer += dt;
         if (fullSyncTimer >= FULL_SYNC_INTERVAL) {
-            HandleSyncFullState();
+            SyncFullState();
             fullSyncTimer = 0.0f;
         }
     }
@@ -441,49 +430,40 @@ void EnemyManager::RemoteRemoveEnemy(int enemyId) {
 }
 
 void EnemyManager::StartNewWave(int enemyCount, EnemyType type) {
-    // Clear any remaining enemies
     ClearEnemies();
-    
-    // Increment wave counter
     currentWave++;
-    
-    // Find player positions to spawn enemies away from them
+
     auto& players = playerManager->GetPlayers();
     std::vector<sf::Vector2f> playerPositions;
-    
     for (const auto& pair : players) {
         if (!pair.second.player.IsDead()) {
             playerPositions.push_back(pair.second.player.GetPosition());
         }
     }
-    
-    // If no players, use origin
     if (playerPositions.empty()) {
         playerPositions.push_back(sf::Vector2f(0.0f, 0.0f));
     }
-    
-    // Cache player positions for batch spawning
     playerPositionsCache = playerPositions;
-    
-    // Set up wave parameters
+
     remainingEnemiesInWave = enemyCount;
     currentWaveEnemyType = type;
     batchSpawnTimer = 0.0f;
-    
-    // Broadcast wave start if we're the host
+
+    // Queue enemies for spawning instead of adding them immediately
+    queuedEnemies.clear();
+    for (int i = 0; i < enemyCount; ++i) {
+        sf::Vector2f targetPos = playerPositionsCache[rand() % playerPositionsCache.size()];
+        sf::Vector2f spawnPos = GetRandomSpawnPosition(targetPos, TRIANGLE_MIN_SPAWN_DISTANCE, TRIANGLE_MAX_SPAWN_DISTANCE);
+        queuedEnemies.push_back({nextEnemyId++, type, spawnPos, TRIANGLE_HEALTH});
+    }
+
+    // If host, start broadcasting spawn chunks
     CSteamID myID = SteamUser()->GetSteamID();
     CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
-    
     if (myID == hostID) {
         std::string waveMsg = StateMessageHandler::FormatWaveStartMessage(currentWave, enemyCount);
         game->GetNetworkManager().BroadcastMessage(waveMsg);
-        
-        // Also send a full state sync to ensure all clients are in sync
-        HandleSyncFullState(true);
     }
-    
-    std::cout << "[WAVE] Starting wave " << currentWave << " with " 
-              << enemyCount << " enemies" << std::endl;
 }
 
 void EnemyManager::OptimizeEnemyList() {
@@ -626,51 +606,58 @@ sf::Vector2f EnemyManager::GetRandomSpawnPosition(const sf::Vector2f& targetPosi
 }
 
 void EnemyManager::UpdateSpawning(float dt) {
-    // Update batch timer
+    if (queuedEnemies.empty()) {
+        remainingEnemiesInWave = 0;
+        return;
+    }
+
     batchSpawnTimer += dt;
-    
-    // Check if it's time to spawn a batch
-    if (batchSpawnTimer >= ENEMY_SPAWN_BATCH_INTERVAL) {
-        // Reset timer
-        batchSpawnTimer = 0.0f;
-        
-        // Calculate how many enemies to spawn in this batch
-        int spawnCount = std::min(ENEMY_SPAWN_BATCH_SIZE, remainingEnemiesInWave);
-        
-        if (spawnCount > 0) {
-            // Debug log
-            std::cout << "[WAVE] Spawning batch of " << spawnCount 
-                      << " enemies. Remaining after batch: " 
-                      << (remainingEnemiesInWave - spawnCount) << std::endl;
-            
-            // Spawn the batch
-            for (int i = 0; i < spawnCount; ++i) {
-                // Randomly select a player position to spawn relative to
-                sf::Vector2f targetPos = playerPositionsCache[rand() % playerPositionsCache.size()];
-                
-                // Get a spawn position away from the player
-                sf::Vector2f spawnPos = GetRandomSpawnPosition(targetPos, 
-                                                             TRIANGLE_MIN_SPAWN_DISTANCE, 
-                                                             TRIANGLE_MAX_SPAWN_DISTANCE);
-                
-                // Add the enemy
-                AddEnemy(currentWaveEnemyType, spawnPos);
+    if (batchSpawnTimer < ENEMY_SPAWN_BATCH_INTERVAL) return;
+
+    batchSpawnTimer = 0.0f;
+    int spawnCount = std::min(ENEMY_SPAWN_BATCH_SIZE, static_cast<int>(queuedEnemies.size()));
+    std::vector<QueuedEnemy> batch(queuedEnemies.begin(), queuedEnemies.begin() + spawnCount);
+    queuedEnemies.erase(queuedEnemies.begin(), queuedEnemies.begin() + spawnCount);
+
+    CSteamID myID = SteamUser()->GetSteamID();
+    CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+    bool isHost = (myID == hostID);
+
+    // Spawn locally
+    for (const auto& queued : batch) {
+        auto enemy = CreateEnemy(queued.type, queued.id, queued.position);
+        enemy->SetHealth(queued.health);
+        InitializeEnemyCallbacks(enemy.get());
+        enemies[queued.id] = std::move(enemy);
+        recentlyAddedIds.insert(queued.id);
+    }
+
+    // If host, send this batch to clients
+    if (isHost) {
+        std::vector<int> enemyIds;
+        std::vector<EnemyType> types;
+        std::vector<sf::Vector2f> positions;
+        std::vector<float> healths;
+
+        for (const auto& queued : batch) {
+            enemyIds.push_back(queued.id);
+            types.push_back(queued.type);
+            positions.push_back(queued.position);
+            healths.push_back(queued.health);
+        }
+
+        std::string spawnMsg = EnemyMessageHandler::FormatEnemyStateMessage(enemyIds, types, positions, healths);
+        if (spawnMsg.length() > MAX_PACKET_SIZE) {
+            std::vector<std::string> chunks = SystemMessageHandler::ChunkMessage(spawnMsg, "ES");
+            for (const auto& chunk : chunks) {
+                game->GetNetworkManager().BroadcastMessage(chunk);
             }
-            
-            // Update remaining count
-            remainingEnemiesInWave -= spawnCount;
-            
-            // If we're the host, sync the full state after creating new enemies
-            CSteamID myID = SteamUser()->GetSteamID();
-            CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
-            
-            if (myID == hostID && !recentlyAddedIds.empty()) {
-                // Force a sync if this was the first batch of a new wave
-                bool forceSync = (remainingEnemiesInWave == enemyCount - spawnCount);
-                HandleSyncFullState(forceSync);
-            }
+        } else {
+            game->GetNetworkManager().BroadcastMessage(spawnMsg);
         }
     }
+
+    remainingEnemiesInWave = queuedEnemies.size();
 }
 
 bool EnemyManager::IsWaveComplete() const {
@@ -742,4 +729,41 @@ void EnemyManager::PrintEnemyStats() const {
     }
     std::cout << std::endl;
     std::cout << "============================" << std::endl;
+}
+
+void EnemyManager::SyncCriticalUpdates() {
+    std::vector<int> enemyIds;
+    std::vector<sf::Vector2f> positions;
+    std::vector<sf::Vector2f> velocities;
+
+    for (const auto& pair : enemies) {
+        int id = pair.first;
+        Enemy* enemy = pair.second.get();
+
+        // Sync if target changed recently or enemy is near a player
+        bool shouldSync = recentlyAddedIds.count(id) > 0 || IsNearPlayer(enemy);
+        if (shouldSync) {
+            enemyIds.push_back(id);
+            positions.push_back(enemy->GetPosition());
+            velocities.push_back(enemy->GetVelocity());
+        }
+
+        if (enemyIds.size() >= MAX_ENEMIES_PER_UPDATE) break;
+    }
+
+    if (!enemyIds.empty()) {
+        std::string epMessage = EnemyMessageHandler::FormatEnemyPositionUpdateMessage(enemyIds, positions, velocities);
+        game->GetNetworkManager().BroadcastMessage(epMessage);
+    }
+}
+
+bool EnemyManager::IsNearPlayer(Enemy* enemy) {
+    auto& players = playerManager->GetPlayers();
+    for (const auto& pair : players) {
+        if (pair.second.player.IsDead()) continue;
+        float distSquared = std::pow(enemy->GetPosition().x - pair.second.player.GetPosition().x, 2) +
+                            std::pow(enemy->GetPosition().y - pair.second.player.GetPosition().y, 2);
+        if (distSquared < 500.0f * 500.0f) return true; // Within 500 units
+    }
+    return false;
 }

@@ -62,52 +62,28 @@ void EnemyMessageHandler::Initialize() {
                 state->GetEnemyManager()->InflictDamage(parsed.enemyId, parsed.damage);
             }
         });
-        MessageHandler::RegisterMessageType("ES", 
+        MessageHandler::RegisterMessageType("ES",
             ParseEnemyStateMessage,
             [](Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
-                // Handle enemy state
                 PlayingState* state = GetPlayingState(&game);
                 if (state && state->GetEnemyManager()) {
-                    // Create a set of valid enemy IDs from this message
-                    std::unordered_set<int> validIds;
-                    for (size_t i = 0; i < parsed.enemyIds.size(); ++i) {
-                        validIds.insert(parsed.enemyIds[i]);
-                    }
                     auto enemyManager = state->GetEnemyManager();
-                    // First pass: Update or create enemies
                     for (size_t i = 0; i < parsed.enemyIds.size(); ++i) {
                         int id = parsed.enemyIds[i];
-                        
-                        auto enemy = enemyManager->FindEnemy(id);
-                        
-                        if (enemy) {
-                            // Update existing enemy
-                            enemy->SetPosition(parsed.enemyPositions[i]);
-                            
-                            // Update health if available
-                            if (i < parsed.enemyHealths.size()) {
-                                enemy->SetHealth(parsed.enemyHealths[i]);
-                            }
-                            
-                            // Update velocity if available
-                            if (i < parsed.enemyVelocities.size()) {
-                                enemy->SetVelocity(parsed.enemyVelocities[i]);
-                            }
-                        } else if (i < parsed.enemyTypes.size() && i < parsed.enemyHealths.size()) {
-                            // Create new enemy
+                        Enemy* enemy = enemyManager->FindEnemy(id);
+                        if (!enemy) {
                             EnemyType type = static_cast<EnemyType>(parsed.enemyTypes[i]);
-                            enemyManager->RemoteAddEnemy(id, type, parsed.enemyPositions[i], 
-                                                       parsed.enemyHealths[i]);
+                            enemyManager->RemoteAddEnemy(id, type, parsed.enemyPositions[i], parsed.enemyHealths[i]);
+                        } else {
+                            enemy->SetPosition(parsed.enemyPositions[i]);
+                            enemy->SetHealth(parsed.enemyHealths[i]);
                         }
                     }
-                    
-                    // Second pass: Remove enemies not in the valid set
-                    // This ensures client and host stay in sync
-                    enemyManager->RemoveEnemiesNotInList(std::vector<int>(validIds.begin(), validIds.end()));
+                    // No need to remove enemies here; full state ("ECS") will handle that
                 }
             },
             [](Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender) {
-                // Host typically sends state, not receives it
+                // Host ignores ES from clients
             });
         MessageHandler::RegisterMessageType("EP", 
             ParseEnemyPositionUpdateMessage,
@@ -327,25 +303,14 @@ ParsedMessage EnemyMessageHandler::ParseEnemyPositionUpdateMessage(const std::ve
     
     return parsed;
 }
-
 ParsedMessage EnemyMessageHandler::ParseEnemyStateMessage(const std::vector<std::string>& parts) {
     ParsedMessage parsed;
-    parsed.type = MessageType::EnemyState;
-    
-    std::cout << "[MessageHandler] Parsing ES message with " << parts.size() << " parts\n";
-    
-    // First, let's handle the case where we have a full message with multiple entities
-    // Format might be: ES|entity1|entity2|entity3|...
+    parsed.type = (parts[0] == "ECS") ? MessageType::EnemyState : MessageType::EnemyState;
+
     for (size_t i = 1; i < parts.size(); ++i) {
-        std::string entityData = parts[i];
-        
-        // Skip empty parts
-        if (entityData.empty()) continue;
-        
-        // Try to parse individual entity data
-        std::vector<std::string> fields = MessageHandler::SplitString(entityData, ',');
-        
-        // Expected format: id,type,x,y,health,vx,vy
+        if (parts[i].empty()) continue;
+        std::vector<std::string> fields = MessageHandler::SplitString(parts[i], ',');
+
         if (fields.size() >= 5) {
             try {
                 int id = std::stoi(fields[0]);
@@ -353,42 +318,17 @@ ParsedMessage EnemyMessageHandler::ParseEnemyStateMessage(const std::vector<std:
                 float x = std::stof(fields[2]);
                 float y = std::stof(fields[3]);
                 float health = std::stof(fields[4]);
-                
+
                 parsed.enemyIds.push_back(id);
                 parsed.enemyTypes.push_back(type);
                 parsed.enemyPositions.push_back(sf::Vector2f(x, y));
                 parsed.enemyHealths.push_back(health);
-                
-                // Parse velocity if available (fields 5 and 6)
-                if (fields.size() >= 7) {
-                    float vx = std::stof(fields[5]);
-                    float vy = std::stof(fields[6]);
-                    parsed.enemyVelocities.push_back(sf::Vector2f(vx, vy));
-                    
-                    std::cout << "[MessageHandler] Parsed enemy: id=" << id 
-                              << ", pos=(" << x << "," << y << ")"
-                              << ", vel=(" << vx << "," << vy << ")\n";
-                } else {
-                    // Add a zero velocity if not available
-                    parsed.enemyVelocities.push_back(sf::Vector2f(0.0f, 0.0f));
-                    
-                    std::cout << "[MessageHandler] Parsed enemy: id=" << id 
-                              << ", pos=(" << x << "," << y << ")"
-                              << ", vel=(0,0) [default]\n";
-                }
+                parsed.enemyVelocities.push_back(sf::Vector2f(0.0f, 0.0f)); // Clients will calculate velocity locally
+            } catch (const std::exception& e) {
+                std::cout << "[MessageHandler] Error parsing enemy data: " << parts[i] << " - " << e.what() << "\n";
             }
-            catch (const std::exception& e) {
-                std::cout << "[MessageHandler] Error parsing enemy data: " << entityData 
-                          << " - Error: " << e.what() << "\n";
-            }
-        }
-        else {
-            std::cout << "[MessageHandler] Skipping malformed enemy data: " << entityData 
-                      << " (fields: " << fields.size() << ")\n";
         }
     }
-    
-    std::cout << "[MessageHandler] Successfully parsed " << parsed.enemyIds.size() << " enemies\n";
     return parsed;
 }
 

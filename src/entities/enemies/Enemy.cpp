@@ -18,14 +18,9 @@ Enemy::Enemy(int id, const sf::Vector2f& position, float health, float speed)
 
 void Enemy::Update(float dt, PlayerManager& playerManager) {
     if (IsDead()) return;
-    
-    // Find and update target
+
     FindTarget(playerManager);
-    
-    // Update movement based on target
     UpdateMovement(dt, playerManager);
-    
-    // Update visual representation
     UpdateVisualRepresentation();
 }
 

@@ -18,6 +18,13 @@ class PlayerManager;
 
 class EnemyManager {
 public:
+    struct QueuedEnemy {
+        int id;
+        EnemyType type;
+        sf::Vector2f position;
+        float health;
+    };
+    std::vector<QueuedEnemy> queuedEnemies;
     explicit EnemyManager(Game* game, PlayerManager* playerManager);
     ~EnemyManager() = default;
 
@@ -46,10 +53,12 @@ public:
     // Network synchronization
     void SyncEnemyPositions();
     void SyncFullState();
+    void SyncCriticalUpdates();
     void ApplyNetworkUpdate(int enemyId, const sf::Vector2f& position, float health);
     void RemoteAddEnemy(int enemyId, EnemyType type, const sf::Vector2f& position, float health);
     void RemoteRemoveEnemy(int enemyId);
     void HandleSyncFullState(bool forceSend = false);
+    bool IsNearPlayer(Enemy* enemy);
     
     // Wave management
     void StartNewWave(int enemyCount, EnemyType type = EnemyType::Triangle);
