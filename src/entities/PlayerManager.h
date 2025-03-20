@@ -14,6 +14,12 @@
 #include "../utils/SteamHelpers.h"
 
 class Game;
+class EnemyManager;
+
+// Forward declarations
+class NetworkManager;
+class HostNetwork;
+class ClientNetwork;
 
 class PlayerManager {
 public:
@@ -21,8 +27,9 @@ public:
     ~PlayerManager();
 
     // Main update methods
-    void Update(Game* game);         // Primary update method with game reference
-    void Update();                   // Legacy update method for backward compatibility
+    void Update(float dt, Game* game);    // Primary update method with game reference
+    void Update(Game* game);             // Secondary method that calls primary with default dt
+    void Update();                      // Legacy update method for backward compatibility
 
     // Player management
     void AddLocalPlayer(const std::string& id, const std::string& name, 
@@ -32,14 +39,24 @@ public:
     void RemovePlayer(const std::string& id);
     RemotePlayer& GetLocalPlayer();
     std::unordered_map<std::string, RemotePlayer>& GetPlayers();
-    void HandleKill(const std::string& killerID, int enemyId);
     
-    // Player status management
+    // Player actions and status
+    bool PlayerShoot(const sf::Vector2f& mouseWorldPos);
     void SetReadyStatus(const std::string& playerID, bool isReady);
     bool AreAllPlayersReady() const;
+    
+    // Event handlers (called by Player callbacks)
+    void HandlePlayerDeath(const std::string& playerID, const sf::Vector2f& position, const std::string& killerID);
+    void HandlePlayerRespawn(const std::string& playerID, const sf::Vector2f& position);
+    void HandlePlayerDamage(const std::string& playerID, int amount, int actualDamage);
+    
+    // Tracking statistics
     void IncrementPlayerKills(const std::string& playerID);
-    void PlayerDied(const std::string& playerID, const std::string& killerID);
-    void RespawnPlayer(const std::string& playerID);
+    void HandleKill(const std::string& killerID, int enemyId);
+    
+    // Force field management
+    void InitializeForceFields();
+    void HandleForceFieldZap(const std::string& playerID, int enemyId, float damage, bool killed);
     
     // Bullet management
     void AddBullet(const std::string& playerID, const sf::Vector2f& position, 
@@ -48,25 +65,18 @@ public:
     void RemoveBullets(const std::vector<size_t>& indicesToRemove);
     void CheckBulletCollisions();
     
-    // New method for handling player shooting action
-    bool PlayerShoot(const sf::Vector2f& mouseWorldPos);
+    // Network-related methods
     void SendBulletMessageToNetwork(const sf::Vector2f& position, const sf::Vector2f& direction, float bulletSpeed);
-
-    void InitializeForceFields();
-    void HandleForceFieldZap(const std::string& playerID, int enemyId, float damage, bool killed);
+    void BroadcastPlayerDeath(const std::string& playerID, const sf::Vector2f& position, const std::string& killerID);
+    void BroadcastPlayerRespawn(const std::string& playerID, const sf::Vector2f& position);
     
-    // Settings management
-    void ApplySettings();
-    void ApplySettingsToAllPlayers();
-    void ApplySettingsToAllBullets();
-
 private:
     // Helper methods for organization
     void UpdatePlayers(float dt, Game* game);
-    void HandlePlayerRespawn(float dt, const std::string& playerID, RemotePlayer& rp);
-    void UpdatePlayerPosition(float dt, const std::string& playerID, RemotePlayer& rp, Game* game);
+    void UpdateRemotePlayerPosition(float dt, const std::string& playerID, RemotePlayer& rp);
     void UpdatePlayerNameDisplay(const std::string& playerID, RemotePlayer& rp, Game* game);
     void UpdateBullets(float dt);
+    void InitializePlayerCallbacks(RemotePlayer& rp, const std::string& playerID);
 
     // Private member variables
     Game* game;                      // Reference to main game object
@@ -76,7 +86,6 @@ private:
     std::chrono::steady_clock::time_point lastFrameTime; // Time of the last frame update
     
     // Settings cache for quick reference
-    float respawnTime = 3.0f;
     float bulletDamage = BULLET_DAMAGE;
     float bulletSpeed = BULLET_SPEED;
 };

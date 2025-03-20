@@ -175,16 +175,39 @@ float Player::GetSpeed() const {
 }
 
 void Player::TakeDamage(int amount) {
+    // Call the overloaded version with empty attacker ID
+    TakeDamage(amount, "");
+}
+
+void Player::TakeDamage(int amount, const std::string& attackerID) {
     // Skip if already dead
     if (isDead) return;
     
+    // Store the attacker ID for death callback
+    if (!attackerID.empty()) {
+        lastAttackerID = attackerID;
+    }
+    
+    int oldHealth = health;
     health -= amount;
+    
+    // Call damage callback if set
+    if (onDamage && amount > 0) {
+        onDamage(playerID, amount, oldHealth - health);
+    }
+    
     if (health <= 0) {
         health = 0;
         isDead = true;
+        
         // Only save respawn position if it's not already set
         if (respawnPosition.x == 0.f && respawnPosition.y == 0.f) {
             respawnPosition = shape.getPosition();
+        }
+        
+        // Call death callback if set, passing the lastAttackerID
+        if (onDeath) {
+            onDeath(playerID, shape.getPosition(), lastAttackerID);
         }
     }
 }
@@ -203,6 +226,11 @@ void Player::Respawn() {
     isDead = false;
     // Move player to their respawn position
     shape.setPosition(respawnPosition);
+    
+    // Call respawn callback if set
+    if (onRespawn) {
+        onRespawn(playerID, respawnPosition);
+    }
 }
 
 void Player::SetRespawnPosition(const sf::Vector2f& position) {
@@ -214,33 +242,50 @@ sf::Vector2f Player::GetRespawnPosition() const {
 }
 
 void Player::InitializeForceField() {
-    // Start with a smaller radius to make upgrades meaningful
-    float startingRadius = 100.0f;  // Smaller than the default 150.0f
+    // Initialize with default values
+    forceField = std::make_unique<ForceField>(this, 100.0f);
     
-    // Create the force field with reduced initial power
-    forceField = std::make_unique<ForceField>(this, startingRadius);
-    
-    // Set initial properties to be weaker than default
+    // Set initial properties appropriate for starting level
     if (forceField) {
-        // Reduced damage
-        forceField->SetDamage(15.0f);  // Lower than DEFAULT_DAMAGE of 25.0f
-        
-        // Slower firing rate
-        forceField->SetCooldown(0.5f);  // Higher than DEFAULT_COOLDOWN of 0.3f
-        
-        // Disable chain lightning initially (player will unlock with upgrades)
+        forceField->SetDamage(15.0f);
+        forceField->SetCooldown(0.5f);
         forceField->SetChainLightningEnabled(false);
         forceField->SetChainLightningTargets(1);
-        
-        // Set to lowest power level
         forceField->SetPowerLevel(1);
-        
-        // Standard field type initially
         forceField->SetFieldType(FieldType::STANDARD);
     }
     
     forceFieldEnabled = true;
 }
+
+void Player::SetForceFieldZapCallback(const std::function<void(int, float, bool)>& callback) {
+    if (forceField) {
+        forceField->SetZapCallback(callback);
+    }
+}
+
+bool Player::CheckBulletCollision(const sf::Vector2f& bulletPos, float bulletRadius) const {
+    if (isDead) return false;
+    
+    // Get player bounds
+    sf::FloatRect playerBounds = shape.getGlobalBounds();
+    
+    // Calculate distance between bullet and player center
+    sf::Vector2f playerCenter(
+        playerBounds.left + playerBounds.width / 2.0f,
+        playerBounds.top + playerBounds.height / 2.0f
+    );
+    
+    float distX = bulletPos.x - playerCenter.x;
+    float distY = bulletPos.y - playerCenter.y;
+    float distSquared = distX * distX + distY * distY;
+    
+    // Use approximate circle-rectangle collision
+    float combinedRadius = bulletRadius + std::min(playerBounds.width, playerBounds.height) / 2.0f;
+    return distSquared <= (combinedRadius * combinedRadius);
+}
+
+
 void Player::EnableForceField(bool enable) {
     // Only change state if we have a force field
     if (forceField) {
@@ -270,3 +315,30 @@ void Player::EnableForceField(bool enable) {
     }
 }
 
+void Player::Die(const sf::Vector2f& deathPosition) {
+    // Only process if not already dead
+    if (!isDead) {
+        health = 0;
+        isDead = true;
+        respawnTimer = RESPAWN_TIME;
+        isRespawning = true;
+        
+        // Save respawn position if not already set
+        if (respawnPosition.x == 0.f && respawnPosition.y == 0.f) {
+            respawnPosition = deathPosition;
+        }
+    }
+}
+
+void Player::UpdateRespawn(float dt) {
+    // Only update timer if player is dead and respawning
+    if (isDead && isRespawning) {
+        respawnTimer -= dt;
+        
+        if (respawnTimer <= 0.0f) {
+            // Time to respawn
+            Respawn();
+            isRespawning = false;
+        }
+    }
+}

@@ -172,8 +172,9 @@ void EnemyManager::CheckPlayerCollisions() {
                 // Apply damage to player
                 playerPair.second.player.TakeDamage(TRIANGLE_DAMAGE);
                 
-                if (playerPair.second.player.IsDead()) {
-                    playerManager->PlayerDied(playerPair.first, "");
+                if (!playerPair.second.player.IsDead()) {
+                    // Directly call Die on the player - the player will handle death notifications
+                    playerPair.second.player.Die(playerPair.second.player.GetPosition());
                 }
                 
                 // Remove enemy after collision
