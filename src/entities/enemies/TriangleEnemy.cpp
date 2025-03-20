@@ -10,7 +10,11 @@ TriangleEnemy::TriangleEnemy(int id, const sf::Vector2f& position, float health,
       currentAxisIndex(0),
       playerIntersectsLine(false),
       lastIntersectionPoint(position),
-      lineLength(300.0f) {
+      lineLength(TRIANGLE_LINE_LENGTH),
+      bounceTimer(0.0f),
+      bounceDirection(1.0f),
+      bounceAmplitude(TRIANGLE_BOUNCE_AMPLITUDE),
+      bounceFrequency(TRIANGLE_BOUNCE_FREQUENCY) {
     
     // Setup the triangle shape
     shape.setPointCount(3);
@@ -31,16 +35,25 @@ TriangleEnemy::TriangleEnemy(int id, const sf::Vector2f& position, float health,
     // Update position to match the starting position
     UpdateVisualRepresentation();
 }
-bool TriangleEnemy::CheckLineIntersectsPlayer(const sf::Vector2f& lineStart, const sf::Vector2f& lineEnd, const sf::Vector2f& playerPos) {
-    // Player radius (approximate for collision)
-    const float playerRadius = 15.0f; 
+
+
+bool TriangleEnemy::CheckLineIntersectsPlayer(const sf::Vector2f& lineStart, const sf::Vector2f& lineEnd, const sf::RectangleShape& playerShape) {
+    // Get player bounds
+    sf::FloatRect playerBounds = playerShape.getGlobalBounds();
     
-    // Calculate the closest point on the line to the player
+    // Get player center
+    sf::Vector2f playerCenter = playerShape.getPosition();
+    
+    // Calculate the half width and half height of the player rectangle
+    float halfWidth = playerBounds.width / 2.0f;
+    float halfHeight = playerBounds.height / 2.0f;
+    
+    // Calculate the closest point on the line to the player center
     sf::Vector2f lineDir = lineEnd - lineStart;
     float lineLengthSquared = lineDir.x * lineDir.x + lineDir.y * lineDir.y;
     
     // Calculate the projection of player-lineStart onto the line
-    sf::Vector2f toPlayer = playerPos - lineStart;
+    sf::Vector2f toPlayer = playerCenter - lineStart;
     float dotProduct = (toPlayer.x * lineDir.x + toPlayer.y * lineDir.y) / lineLengthSquared;
     
     // Clamp to ensure the point is on the line segment
@@ -49,12 +62,21 @@ bool TriangleEnemy::CheckLineIntersectsPlayer(const sf::Vector2f& lineStart, con
     // Find the closest point on the line
     sf::Vector2f closestPoint = lineStart + dotProduct * lineDir;
     
-    // Check if the distance from player to the closest point is less than the player radius
-    sf::Vector2f distanceVec = playerPos - closestPoint;
-    float distanceSquared = distanceVec.x * distanceVec.x + distanceVec.y * distanceVec.y;
+    // Adjust for rotation - convert closest point to player's local coordinate system
+    float playerRotation = playerShape.getRotation() * 3.14159f / 180.0f; // Convert to radians
     
-    return distanceSquared < (playerRadius * playerRadius);
+    // Vector from player center to closest point
+    sf::Vector2f relativePoint = closestPoint - playerCenter;
+    
+    // Apply inverse rotation
+    sf::Vector2f rotatedPoint;
+    rotatedPoint.x = relativePoint.x * std::cos(-playerRotation) - relativePoint.y * std::sin(-playerRotation);
+    rotatedPoint.y = relativePoint.x * std::sin(-playerRotation) + relativePoint.y * std::cos(-playerRotation);
+    
+    // Check if the rotated point is inside the rectangle's bounds
+    return std::abs(rotatedPoint.x) <= halfWidth && std::abs(rotatedPoint.y) <= halfHeight;
 }
+
 void TriangleEnemy::FindTarget(PlayerManager& playerManager) {
     // First check if any player intersects with our lines
     playerIntersectsLine = CheckPlayerIntersectsAnyLine(playerManager);
@@ -65,6 +87,7 @@ void TriangleEnemy::FindTarget(PlayerManager& playerManager) {
         Enemy::FindTarget(playerManager);
     }
 }
+
 bool TriangleEnemy::CheckPlayerIntersectsAnyLine(PlayerManager& playerManager) {
     const auto& players = playerManager.GetPlayers();
     
@@ -72,27 +95,31 @@ bool TriangleEnemy::CheckPlayerIntersectsAnyLine(PlayerManager& playerManager) {
         // Skip dead players
         if (pair.second.player.IsDead()) continue;
         
-        sf::Vector2f playerPos = pair.second.player.GetPosition();
+
+        
         
         // Check each axis line
         for (int i = 0; i < axes.size(); i++) {
             // Line start is at the enemy position
+            const sf::RectangleShape& playerShape = pair.second.player.GetShape();
             sf::Vector2f lineStart = position;
             // Line end is at lineLength distance along the axis
             sf::Vector2f lineEnd = position + axes[i] * lineLength;
-            
-            if (CheckLineIntersectsPlayer(lineStart, lineEnd, playerPos)) {
+            if (CheckLineIntersectsPlayer(lineStart, lineEnd, playerShape))  {
                 // Record which axis the player is intersecting
                 currentAxisIndex = i;
                 // Record the intersection point (use player position for simplicity)
-                lastIntersectionPoint = playerPos;
+                lastIntersectionPoint = playerShape.getPosition();
+
                 return true;
             }
         }
+        
     }
     
     return false;
 }
+
 void TriangleEnemy::InitializeAxes() {
     axes.clear();
     
@@ -120,7 +147,7 @@ std::vector<sf::Vector2f> TriangleEnemy::GetAxes() const {
 }
 
 void TriangleEnemy::UpdateVisualRepresentation() {
-    // Set position
+    // Set position with bounce effect
     shape.setPosition(position);
     
     // Update rotation to face the target if we have one
@@ -132,6 +159,15 @@ void TriangleEnemy::UpdateVisualRepresentation() {
 
 void TriangleEnemy::UpdateMovement(float dt, PlayerManager& playerManager) {
     if (!hasTarget) return;
+    
+    // Update bounce timer
+    bounceTimer += dt;
+    if (bounceTimer > 2.0f * 3.14159f / bounceFrequency) {
+        bounceTimer -= 2.0f * 3.14159f / bounceFrequency;
+    }
+    
+    // Calculate bounce offset
+    float bounceOffset = bounceAmplitude * std::sin(bounceFrequency * bounceTimer);
     
     // If player is currently intersecting any line
     if (playerIntersectsLine) {
@@ -150,8 +186,11 @@ void TriangleEnemy::UpdateMovement(float dt, PlayerManager& playerManager) {
                 moveAxis = -moveAxis; // Flip the direction if needed
             }
             
-            // Apply velocity along the chosen axis
-            velocity = moveAxis * speed;
+            // Create perpendicular vector for bounce effect
+            sf::Vector2f perpVector(-moveAxis.y, moveAxis.x);
+            
+            // Apply velocity along the chosen axis with bounce effect
+            velocity = moveAxis * speed + perpVector * bounceOffset;
             position += velocity * dt;
         }
     } else {
@@ -186,20 +225,23 @@ void TriangleEnemy::UpdateMovement(float dt, PlayerManager& playerManager) {
                 moveAxis = -moveAxis; // Flip the direction if needed
             }
             
-            // Apply velocity, but move slower when returning to last intersection
-            velocity = moveAxis * (speed * 0.6f);
+            // Create perpendicular vector for bounce effect (smaller when returning)
+            sf::Vector2f perpVector(-moveAxis.y, moveAxis.x);
+            float returnBounceScale = 0.5f; // Smaller bounce when returning
+            
+            // Apply velocity, but move slower when returning to last intersection with reduced bounce
+            velocity = moveAxis * (speed * 0.6f) + perpVector * (bounceOffset * TRIANGLE_RETURN_BOUNCE_SCALE);
             position += velocity * dt;
         } else {
-            // We've reached the last intersection point, stop moving
+            // We've reached the last intersection point, stop moving but still update bounce
             velocity = sf::Vector2f(0.0f, 0.0f);
         }
     }
     
-    // Continue with normal rotation update
-    rotationAngle += rotationSpeed * dt;
-    if (rotationAngle > 360.0f) {
-        rotationAngle -= 360.0f;
-    }
+    
+    
+    // Update axes based on rotation
+    UpdateAxes();
 }
 
 void TriangleEnemy::Render(sf::RenderWindow& window) {
@@ -207,7 +249,7 @@ void TriangleEnemy::Render(sf::RenderWindow& window) {
         // Draw the triangle
         window.draw(shape);
         
-        // Draw the three axis lines
+        // Debug visualization: Draw the three axis lines
         /*for (int i = 0; i < axes.size(); i++) {
             const auto& axis = axes[i];
             
@@ -231,4 +273,3 @@ void TriangleEnemy::Render(sf::RenderWindow& window) {
         }
     }
 }
-

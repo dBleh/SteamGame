@@ -40,16 +40,23 @@ SquareEnemy::SquareEnemy(int id, const sf::Vector2f& position)
     // This delegates to the full constructor - no additional code needed
 }
 
-bool SquareEnemy::CheckLineIntersectsPlayer(const sf::Vector2f& lineStart, const sf::Vector2f& lineEnd, const sf::Vector2f& playerPos) {
-    // Player radius (approximate for collision)
-    const float playerRadius = 15.0f;
+bool SquareEnemy::CheckLineIntersectsPlayer(const sf::Vector2f& lineStart, const sf::Vector2f& lineEnd, const sf::RectangleShape& playerShape) {
+    // Get player bounds
+    sf::FloatRect playerBounds = playerShape.getGlobalBounds();
     
-    // Calculate the closest point on the line to the player
+    // Get player center
+    sf::Vector2f playerCenter = playerShape.getPosition();
+    
+    // Calculate the half width and half height of the player rectangle
+    float halfWidth = playerBounds.width / 2.0f;
+    float halfHeight = playerBounds.height / 2.0f;
+    
+    // Calculate the closest point on the line to the player center
     sf::Vector2f lineDir = lineEnd - lineStart;
     float lineLengthSquared = lineDir.x * lineDir.x + lineDir.y * lineDir.y;
     
     // Calculate the projection of player-lineStart onto the line
-    sf::Vector2f toPlayer = playerPos - lineStart;
+    sf::Vector2f toPlayer = playerCenter - lineStart;
     float dotProduct = (toPlayer.x * lineDir.x + toPlayer.y * lineDir.y) / lineLengthSquared;
     
     // Clamp to ensure the point is on the line segment
@@ -58,11 +65,19 @@ bool SquareEnemy::CheckLineIntersectsPlayer(const sf::Vector2f& lineStart, const
     // Find the closest point on the line
     sf::Vector2f closestPoint = lineStart + dotProduct * lineDir;
     
-    // Check if the distance from player to the closest point is less than the player radius
-    sf::Vector2f distanceVec = playerPos - closestPoint;
-    float distanceSquared = distanceVec.x * distanceVec.x + distanceVec.y * distanceVec.y;
+    // Adjust for rotation - convert closest point to player's local coordinate system
+    float playerRotation = playerShape.getRotation() * 3.14159f / 180.0f; // Convert to radians
     
-    return distanceSquared < (playerRadius * playerRadius);
+    // Vector from player center to closest point
+    sf::Vector2f relativePoint = closestPoint - playerCenter;
+    
+    // Apply inverse rotation
+    sf::Vector2f rotatedPoint;
+    rotatedPoint.x = relativePoint.x * std::cos(-playerRotation) - relativePoint.y * std::sin(-playerRotation);
+    rotatedPoint.y = relativePoint.x * std::sin(-playerRotation) + relativePoint.y * std::cos(-playerRotation);
+    
+    // Check if the rotated point is inside the rectangle's bounds
+    return std::abs(rotatedPoint.x) <= halfWidth && std::abs(rotatedPoint.y) <= halfHeight;
 }
 
 void SquareEnemy::FindTarget(PlayerManager& playerManager) {
@@ -83,20 +98,19 @@ bool SquareEnemy::CheckPlayerIntersectsAnyLine(PlayerManager& playerManager) {
         // Skip dead players
         if (pair.second.player.IsDead()) continue;
         
-        sf::Vector2f playerPos = pair.second.player.GetPosition();
-        
-        // Check each axis line
-        for (int i = 0; i < axes.size(); i++) {
+         // Check each axis line
+         for (int i = 0; i < axes.size(); i++) {
             // Line start is at the enemy position
+            const sf::RectangleShape& playerShape = pair.second.player.GetShape();
             sf::Vector2f lineStart = position;
             // Line end is at lineLength distance along the axis
             sf::Vector2f lineEnd = position + axes[i] * lineLength;
-            
-            if (CheckLineIntersectsPlayer(lineStart, lineEnd, playerPos)) {
+            if (CheckLineIntersectsPlayer(lineStart, lineEnd, playerShape))  {
                 // Record which axis the player is intersecting
                 currentAxisIndex = i;
                 // Record the intersection point (use player position for simplicity)
-                lastIntersectionPoint = playerPos;
+                lastIntersectionPoint = playerShape.getPosition();
+
                 return true;
             }
         }
@@ -206,11 +220,7 @@ void SquareEnemy::UpdateMovement(float dt, PlayerManager& playerManager) {
         }
     }
     
-    // Continue with normal rotation update
-    rotationAngle += rotationSpeed * dt;
-    if (rotationAngle > 360.0f) {
-        rotationAngle -= 360.0f;
-    }
+    
     
     // Update axes based on rotation
     UpdateAxes();

@@ -41,7 +41,7 @@ private:
     sf::Vector2f lastIntersectionPoint;
     
     bool CheckPlayerIntersectsAnyLine(PlayerManager& playerManager);
-    bool CheckLineIntersectsPlayer(const sf::Vector2f& lineStart, const sf::Vector2f& lineEnd, const sf::Vector2f& playerPos);
+    bool CheckLineIntersectsPlayer(const sf::Vector2f& lineStart, const sf::Vector2f& lineEnd, const sf::RectangleShape& playerShape);
 };
 
 #endif // PENTAGON_ENEMY_H

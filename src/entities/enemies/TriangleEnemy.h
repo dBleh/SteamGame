@@ -35,7 +35,13 @@ private:
     float lineLength;
     bool playerIntersectsLine;
     bool CheckPlayerIntersectsAnyLine(PlayerManager& playerManager);
-    bool CheckLineIntersectsPlayer(const sf::Vector2f& lineStart, const sf::Vector2f& lineEnd, const sf::Vector2f& playerPos);
+    bool CheckLineIntersectsPlayer(const sf::Vector2f& lineStart, const sf::Vector2f& lineEnd, const sf::RectangleShape& playerShape);
+    
+    // New bounce-related properties
+    float bounceTimer;
+    float bounceDirection;
+    float bounceAmplitude;
+    float bounceFrequency;
 };
 
 #endif // TRIANGLE_ENEMY_H

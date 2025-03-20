@@ -26,6 +26,15 @@
 #define TRIANGLE_HEALTH 40                  // Default triangle enemy health
 #define TRIANGLE_KILL_REWARD 10             // Money rewarded for killing a triangle
 
+// Triangle enemy line of sight and movement config
+#define TRIANGLE_LINE_LENGTH 500.0f         // Length of line of sight rays
+#define TRIANGLE_PLAYER_DETECTION_RADIUS 500.0f // Radius for detecting players on line of sight
+
+// Triangle enemy bounce behavior
+#define TRIANGLE_BOUNCE_AMPLITUDE 5.0f      // How far to bounce perpendicular to movement
+#define TRIANGLE_BOUNCE_FREQUENCY 2.0f      // How fast to bounce (cycles per second)
+#define TRIANGLE_RETURN_BOUNCE_SCALE 0.5f   // Scale factor for bounce when returning to last position
+
 // Visual settings
 #define ENEMY_ROTATION_SPEED 90.0f
 #define ENEMY_OUTLINE_THICKNESS 1.0f
@@ -45,4 +54,4 @@
 #define PENTAGON_FILL_COLOR sf::Color(128, 0, 128)
 #define PENTAGON_OUTLINE_COLOR sf::Color(75, 0, 75)
 
-#endif // ENEMY_CONFIG_H 
+#endif // ENEMY_CONFIG_H
