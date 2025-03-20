@@ -14,6 +14,7 @@
 
 class State;
 class NetworkManager;
+class GameSettingsManager; 
 
 class Game {
 public:
@@ -30,6 +31,7 @@ public:
     std::shared_ptr<InputHandler> GetInputHandler() const {return inputHandler; }
     std::string& GetLobbyNameInput() { return lobbyNameInput; }
     bool IsSteamInitialized() const { return steamInitialized; }
+    bool HasSteamConnectionError() const { return steamConnectionError; }
     
     void SetLocalSteamID(const CSteamID& id) { localSteamID = id; }
     CSteamID GetLocalSteamID() const { return localSteamID; }
@@ -43,6 +45,7 @@ public:
     float GetDeltaTime() const { return deltaTime; }
         
     InputManager& GetInputManager() { return inputManager; }
+    GameSettingsManager* GetGameSettingsManager() { return gameSettingsManager.get(); }
     bool IsInLobby() const { return inLobby; }
     void SetInLobby(bool status) { 
         inLobby = status; 
@@ -65,10 +68,12 @@ private:
     std::unique_ptr<State> state;
     std::unique_ptr<NetworkManager> networkManager;
     std::shared_ptr<SettingsManager> settingsManager;
+    std::unique_ptr<GameSettingsManager> gameSettingsManager;
     std::shared_ptr<InputHandler> inputHandler;   
     InputManager inputManager;
     GameState currentState{GameState::MainMenu};
     bool steamInitialized{false};
+    bool steamConnectionError{false};  // New variable to track Steam connection errors
     bool inLobby{false};
     CSteamID currentLobby{k_steamIDNil};
     std::string lobbyNameInput;

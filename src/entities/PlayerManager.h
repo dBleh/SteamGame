@@ -12,6 +12,7 @@
 #include "Player.h"
 #include "Bullet.h"
 #include "../utils/SteamHelpers.h"
+#include "../states/GameSettingsManager.h"
 
 class Game;
 
@@ -27,12 +28,13 @@ public:
     // Player management
     void AddLocalPlayer(const std::string& id, const std::string& name, 
         const sf::Vector2f& position, const sf::Color& color);
-void AddOrUpdatePlayer(const std::string& playerID, const RemotePlayer& player);
-void AddOrUpdatePlayer(const std::string& playerID, RemotePlayer&& player);
-void RemovePlayer(const std::string& id);
+    void AddOrUpdatePlayer(const std::string& playerID, const RemotePlayer& player);
+    void AddOrUpdatePlayer(const std::string& playerID, RemotePlayer&& player);
+    void RemovePlayer(const std::string& id);
     RemotePlayer& GetLocalPlayer();
     std::unordered_map<std::string, RemotePlayer>& GetPlayers();
     void HandleKill(const std::string& killerID, int enemyId);
+    
     // Player status management
     void SetReadyStatus(const std::string& playerID, bool isReady);
     bool AreAllPlayersReady() const;
@@ -53,6 +55,11 @@ void RemovePlayer(const std::string& id);
 
     void InitializeForceFields();
     void HandleForceFieldZap(const std::string& playerID, int enemyId, float damage, bool killed);
+    
+    // Settings management
+    void ApplySettings();
+    void ApplySettingsToAllPlayers();
+    void ApplySettingsToAllBullets();
 
 private:
     // Helper methods for organization
@@ -68,6 +75,11 @@ private:
     std::unordered_map<std::string, RemotePlayer> players; // All players in the game
     std::vector<Bullet> bullets;     // All active bullets
     std::chrono::steady_clock::time_point lastFrameTime; // Time of the last frame update
+    
+    // Settings cache for quick reference
+    float respawnTime = 3.0f;
+    float bulletDamage = BULLET_DAMAGE;
+    float bulletSpeed = BULLET_SPEED;
 };
 
 #endif // PLAYER_MANAGER_H

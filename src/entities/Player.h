@@ -7,6 +7,8 @@
 #include "../utils/input/InputManager.h" 
 #include "ForceField.h"
 #include "../utils/config/Config.h"
+#include "../states/GameSettingsManager.h"
+
 class ForceField;
 class Player {
 public:
@@ -28,6 +30,7 @@ public:
     // Delete copy constructor and assignment
     Player(const Player&) = delete;
     Player& operator=(const Player&) = delete;
+    
     // Update methods
     void Update(float dt); // Base update for cooldowns only
     void Update(float dt, const InputManager& inputManager); // Full update with input handling
@@ -68,10 +71,20 @@ public:
     void SetHealth(float newHealth);
     float GetMaxHealth() const { return maxHealth; }
     void SetMaxHealth(float newMaxHealth) { maxHealth = newMaxHealth; }
-    void InitializeForceField();
+    
+    // Force field methods
+    void InitializeForceField(GameSettingsManager* settingsManager = nullptr);
     void EnableForceField(bool enable);
-    bool HasForceField(){ return forceFieldEnabled;}
+    bool HasForceField() { return forceFieldEnabled; }
     ForceField* GetForceField() const { return forceField.get(); }
+    
+    // Bullet properties
+    float GetBulletDamage() const { return bulletDamage; }
+    void SetBulletDamage(float newDamage) { bulletDamage = newDamage; }
+    
+    // Settings management
+    void ApplySettings(GameSettingsManager* settingsManager);
+    
 private:
     // Visual representation
     sf::RectangleShape shape;
@@ -94,6 +107,9 @@ private:
 
     std::unique_ptr<ForceField> forceField;
     bool forceFieldEnabled = false;
+
+    float bulletDamage = BULLET_DAMAGE;
+    float shootCooldownDuration = SHOOT_COOLDOWN_DURATION;
 };
 
 #endif // PLAYER_H

@@ -11,6 +11,8 @@
 #include "../../network/messages/EnemyMessageHandler.h"
 #include "../../network/messages/StateMessageHandler.h"
 #include "../../network/messages/SystemMessageHandler.h" // Updated import
+#include "../GameSettingsManager.h"
+#include "../../ui/GameSettingsUI.h"
 
 LobbyState::LobbyState(Game* game)
     : State(game), 
@@ -58,55 +60,70 @@ LobbyState::LobbyState(Game* game)
                                   HUD::RenderMode::ScreenSpace,
                                   30);
     
-    // Player count and loading status
-    game->GetHUD().addElement("playerLoading", "Loading players...", 20, 
-                             sf::Vector2f(centerX - 100.0f, titleY + 80.0f), 
+    // Player count and loading status - precisely centered beneath lobby name
+    std::string loadingText = "Loading players...";
+    float textWidth = loadingText.length() * 10.0f; // Approximate width based on character count and font size
+    game->GetHUD().addElement("playerLoading", loadingText, 20, 
+                             sf::Vector2f(centerX - (textWidth / 2.0f), titleY + 80.0f), 
                              GameState::Lobby, 
                              HUD::RenderMode::ScreenSpace, false);
     
-    // ===== BOTTOM STATUS BAR =====
-    // Bottom status bar background
-    game->GetHUD().addGradientLine("statusBarLine", 
-                                  lineStartX,
-                                  statusBarY, 
-                                  lineWidth, 
-                                  lineThickness,
-                                  sf::Color::Black, 
-                                  GameState::Lobby, 
-                                  HUD::RenderMode::ScreenSpace,
-                                  30);
+   
     
-    // Ready status toggle button
-    game->GetHUD().addElement("readyButton", "Press R to Ready Up", 20, 
-                             sf::Vector2f(centerX - 280.0f, statusBarY + 40.0f), 
+    // Main action buttons in the status bar
+    float leftMargin = 50.0f;
+    float buttonGap = 200.0f; // Significant gap between buttons
+    
+    // Ready status toggle button - leftmost in status bar (moved up for better spacing)
+    float readyButtonX = lineStartX + leftMargin;
+    game->GetHUD().addElement("readyButton", "Ready Up [R]", 20, 
+                             sf::Vector2f(readyButtonX- 120.0f, statusBarY + 10.0f), // Moved up further for better spacing
                              GameState::Lobby, 
                              HUD::RenderMode::ScreenSpace, true,
                              "statusBarLine", "");
     game->GetHUD().updateBaseColor("readyButton", sf::Color::Black);
     
-    // Start game button (for host)
-    game->GetHUD().addElement("startGame", "Waiting for players...", 24, 
-                             sf::Vector2f(centerX, statusBarY + 40.0f), 
+    // Start game button - centered in status bar
+    game->GetHUD().addElement("startGame", "Start Game", 20,
+                             sf::Vector2f(centerX - 100.0f, statusBarY + 10.0f), 
                              GameState::Lobby, 
                              HUD::RenderMode::ScreenSpace, true,
                              "statusBarLine", "");
     game->GetHUD().updateBaseColor("startGame", sf::Color::Black);
     
-    // Grid toggle button
-    game->GetHUD().addElement("gridToggle", "Toggle Grid [G]", 20, 
-                             sf::Vector2f(centerX + 280.0f, statusBarY + 40.0f), 
+    // ===== TOP RIGHT BUTTONS =====
+    // Calculate positions for top right utility buttons
+    float topRightX = BASE_WIDTH - 30.0f; // Right margin
+    float topY = 30.0f; // Top margin
+    float topButtonSpacing = 40.0f; // Vertical spacing between top buttons
+    
+    // Grid toggle button - top right with fixed width text
+    game->GetHUD().addElement("gridToggle", "Grid [G]               ", 20, 
+                             sf::Vector2f(topRightX - 180.0f, topY), 
                              GameState::Lobby, 
                              HUD::RenderMode::ScreenSpace, true,
-                             "statusBarLine", "");
+                             "", "");
     game->GetHUD().updateBaseColor("gridToggle", sf::Color::Black);
     
-    // Return to main menu button
-    game->GetHUD().addElement("returnMain", "Back to Menu [M]", 20, 
-                             sf::Vector2f(centerX, statusBarY + 80.0f), 
+    // Settings button - second from top with fixed width text
+    game->GetHUD().addElement("settingsButton", "Settings [S]          ", 20, 
+                            sf::Vector2f(topRightX - 180.0f, topY + topButtonSpacing), 
+                            GameState::Lobby, 
+                            HUD::RenderMode::ScreenSpace, true,
+                            "", "");
+    game->GetHUD().updateBaseColor("settingsButton", sf::Color::Black);
+    
+    // Return to main menu button - bottom right corner
+    float bottomY = BASE_HEIGHT - 50.0f; // 50px from bottom of screen
+    game->GetHUD().addElement("returnMain", "Back to Menu [M]       ", 20, 
+                             sf::Vector2f(topRightX - 180.0f, bottomY), 
                              GameState::Lobby, 
                              HUD::RenderMode::ScreenSpace, true,
                              "", "");
     game->GetHUD().updateBaseColor("returnMain", sf::Color::Black);
+    
+    // Initialize the settings UI
+    settingsUI = std::make_unique<GameSettingsUI>(game, game->GetGameSettingsManager());
     
     // ===== PLAYER SETUP =====
     CSteamID myID = SteamUser()->GetSteamID();
@@ -120,7 +137,7 @@ LobbyState::LobbyState(Game* game)
     RemotePlayer localPlayer;
     localPlayer.playerID = myIDStr;
     localPlayer.isHost = (myID == hostIDSteam);
-    localPlayer.player = Player(sf::Vector2f(400.f, 300.f), sf::Color::Blue);
+    localPlayer.player = Player(sf::Vector2f(0.f, 0.f), sf::Color::Blue);
     localPlayer.nameText.setFont(game->GetFont());
     localPlayer.nameText.setString(myName);
     localPlayer.baseName = myName;
@@ -159,7 +176,7 @@ LobbyState::LobbyState(Game* game)
         clientNetwork->SendConnectionMessage();  // Request initial player list
     }
     
-    // Add player list display
+    // Add player list display with more space above
     game->GetHUD().addElement("playerList", "Players:", 20, 
                              sf::Vector2f(50.f, titleY + 120.0f), 
                              GameState::Lobby, 
@@ -191,7 +208,7 @@ void LobbyState::UpdateRemotePlayers() {
         const RemotePlayer& player = pair.second;
         std::string readyStatus = player.isReady ? " [READY]" : " [NOT READY]";
         std::string hostStatus = player.isHost ? " (Host)" : "";
-        playerListText += "\n• " + player.baseName + hostStatus + readyStatus;
+        playerListText += "\n" + player.baseName + hostStatus + readyStatus;
     }
     game->GetHUD().updateText("playerList", playerListText);
 }
@@ -216,10 +233,19 @@ void LobbyState::Render() {
     game->GetWindow().setView(game->GetUIView());
     game->GetHUD().render(game->GetWindow(), game->GetUIView(), GameState::Lobby);
     
+    // Render settings UI on top of everything else using UI view
+    if (settingsUI && showSettings) {
+        settingsUI->Render(game->GetWindow());
+    }
+    
     game->GetWindow().display();
 }
 
 void LobbyState::ProcessEvents(const sf::Event& event) {
+    if (settingsUI && settingsUI->IsVisible()) {
+        settingsUI->ProcessEvent(event);
+        return; // Don't process any other inputs when settings UI is open
+    }
     InputManager& inputManager = game->GetInputManager();
     
     if (event.type == sf::Event::KeyPressed) {
@@ -314,6 +340,15 @@ void LobbyState::ProcessEvents(const sf::Event& event) {
                             // Return to main menu
                             game->SetCurrentState(GameState::MainMenu);
                         }
+                        else if (id == "settingsButton") {
+                            // Toggle settings panel
+                            showSettings = !showSettings;
+                            if (showSettings) {
+                                settingsUI->Show();
+                            } else {
+                                settingsUI->Hide();
+                            }
+                        }
                         
                         // We found a UI element that was clicked, so don't process as a game click
                         return;
@@ -360,6 +395,15 @@ void LobbyState::ProcessEvents(const sf::Event& event) {
              event.key.code != sf::Keyboard::Unknown) {
         mouseHeld = false;
     }
+    else if (event.key.code == sf::Keyboard::S) {
+        // Toggle settings panel
+        showSettings = !showSettings;
+        if (showSettings) {
+            settingsUI->Show();
+        } else {
+            settingsUI->Hide();
+        }
+    }
 }
 LobbyState::~LobbyState() {
     // Make sure to destroy in the correct order to avoid crashes
@@ -394,7 +438,9 @@ void LobbyState::Update(float dt) {
         // Update PlayerManager (includes local player movement)
         // Ensure we're passing the Game pointer for InputManager access
         playerManager->Update(game);
-        
+        if (settingsUI) {
+            settingsUI->Update(dt);
+        }
         if (clientNetwork) clientNetwork->Update();
         if (hostNetwork) hostNetwork->Update();
         
@@ -424,6 +470,7 @@ void LobbyState::Update(float dt) {
         game->GetHUD().updateBaseColor("readyButton", sf::Color::Black);
     }
     
+    
     // Update start game button for host
     if (SteamUser()->GetSteamID() == SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID())) {
         // Check if all players are ready
@@ -446,7 +493,11 @@ void LobbyState::Update(float dt) {
     } else {
         game->GetHUD().updateBaseColor("gridToggle", sf::Color(150, 150, 150)); // Gray when grid is off
     }
-    
+    if (showSettings) {
+        game->GetHUD().updateBaseColor("settingsButton", sf::Color(0, 150, 255)); // Blue when active
+    } else {
+        game->GetHUD().updateBaseColor("settingsButton", sf::Color::Black);
+    }
     // Center camera on local player
     sf::Vector2f localPlayerPos = playerManager->GetLocalPlayer().player.GetPosition();
     game->GetCamera().setCenter(localPlayerPos);
@@ -557,5 +608,11 @@ void LobbyState::AttemptShoot(int mouseX, int mouseY) {
             CSteamID hostID = clientNetwork->GetHostID();
             game->GetNetworkManager().SendMessage(hostID, msg);
         }
+    }
+}
+
+void LobbyState::RefreshSettingsUI() {
+    if (settingsUI) {
+        settingsUI->RefreshUI();
     }
 }

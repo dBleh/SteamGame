@@ -14,6 +14,7 @@
 struct ParsedMessage;
 enum class MessageType;
 class PlayingState;
+class GameSettingsManager;
 class Game;
 class ClientNetwork;
 class HostNetwork;
@@ -44,7 +45,10 @@ enum class MessageType {
     ChunkEnd,
     Kill,
     ForceFieldZap,
-    ForceFieldUpdate
+    ForceFieldUpdate,
+    SettingsUpdate,
+    SettingsRequest,
+    ReturnToLobby,
 };
 
 struct ParsedMessage {
@@ -70,6 +74,7 @@ struct ParsedMessage {
     std::vector<float> enemyHealths;
     int health;
     std::vector<int> enemyTypes;
+    uint32_t killSequence;
     
     // Force field update parameters
     float ffRadius;
