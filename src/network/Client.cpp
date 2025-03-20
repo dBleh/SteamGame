@@ -273,6 +273,8 @@ void ClientNetwork::SendReadyStatus(bool isReady) {
 void ClientNetwork::Update() {
     auto now = std::chrono::steady_clock::now();
     float elapsed = std::chrono::duration<float>(now - lastSendTime).count();
+    
+    // Update movement sending
     if (elapsed >= SEND_INTERVAL) {
         auto& localPlayer = playerManager->GetLocalPlayer().player;
         SendMovementUpdate(localPlayer.GetPosition());
@@ -446,5 +448,12 @@ void ClientNetwork::ProcessForceFieldZapMessage(Game& game, ClientNetwork& clien
                 rp.player.GetForceField()->SetZapEffectTimer(FIELD_ZAP_EFFECT_DURATION);
             }
         }
+    }
+}
+
+void ClientNetwork::RequestEnemyState() {
+    std::string requestMsg = EnemyMessageHandler::FormatEnemyStateRequestMessage();
+    if (game->GetNetworkManager().SendMessage(hostID, requestMsg)) {
+        std::cout << "[CLIENT] Sent enemy state request to host\n";
     }
 }

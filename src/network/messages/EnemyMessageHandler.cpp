@@ -134,18 +134,43 @@ void EnemyMessageHandler::Initialize() {
                 // Host doesn't usually receive EP messages, but could process them if needed
                 std::cout << "[HOST] Received enemy position update from client, ignoring\n";
             });
-    MessageHandler::RegisterMessageType("ESR", 
-        ParseEnemyStateRequestMessage,
-        [](Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
-            // Client requesting enemy state
-        },
-        [](Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender) {
-            // Host handling state request - should send current enemy states
-            PlayingState* state = GetPlayingState(&game);
-            if (state && state->GetEnemyManager()) {
-                // Implementation would send current enemy state to the requesting client
-            }
-        });
+            MessageHandler::RegisterMessageType("ESR", 
+                ParseEnemyStateRequestMessage,
+                [](Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
+                    // Client requesting enemy state (nothing to do here)
+                },
+                [](Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender) {
+                    // Host handling state request - should send current enemy states
+                    PlayingState* state = GetPlayingState(&game);
+                    if (state && state->GetEnemyManager()) {
+                        // Send a complete enemy state directly to the requesting client
+                        EnemyManager* enemyManager = state->GetEnemyManager();
+                        
+                        // Create vectors for the state message
+                        std::vector<int> enemyIds;
+                        std::vector<EnemyType> types;
+                        std::vector<sf::Vector2f> positions;
+                        std::vector<float> healths;
+                        
+                        // Get all current enemies
+                        for (const auto& pair : enemyManager->GetEnemies()) {
+                            enemyIds.push_back(pair.first);
+                            types.push_back(pair.second->GetType());
+                            positions.push_back(pair.second->GetPosition());
+                            healths.push_back(pair.second->GetHealth());
+                        }
+                        
+                        // Create and send the message
+                        std::string stateMsg = EnemyMessageHandler::FormatCompleteEnemyStateMessage(
+                            enemyIds, types, positions, healths);
+                            
+                        // Send directly to the requesting client
+                        game.GetNetworkManager().SendMessage(sender, stateMsg);
+                        
+                        std::cout << "[HOST] Sent requested enemy state to client with " 
+                                  << enemyIds.size() << " enemies\n";
+                    }
+                });
 
     MessageHandler::RegisterMessageType("EC", 
         ParseEnemyClearMessage,
@@ -159,6 +184,54 @@ void EnemyMessageHandler::Initialize() {
             // Host initiates clear, not receives it
             std::cout << "[HOST] Received enemy clear from client, ignoring\n";
         });
+        MessageHandler::RegisterMessageType("ECS", 
+            ParseEnemyStateMessage, // Reuse the same parser as ES 
+            [](Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
+                // Handle enemy complete state
+                PlayingState* state = GetPlayingState(&game);
+                if (state && state->GetEnemyManager()) {
+                    // Create a vector of valid enemy IDs from this message
+                    std::vector<int> validIds = parsed.enemyIds;
+                    
+                    auto enemyManager = state->GetEnemyManager();
+                    
+                    // First pass: Update or create enemies
+                    for (size_t i = 0; i < parsed.enemyIds.size(); ++i) {
+                        int id = parsed.enemyIds[i];
+                        auto enemy = enemyManager->FindEnemy(id);
+                        
+                        if (enemy) {
+                            // Update existing enemy
+                            enemy->SetPosition(parsed.enemyPositions[i]);
+                            
+                            // Update health if available
+                            if (i < parsed.enemyHealths.size()) {
+                                enemy->SetHealth(parsed.enemyHealths[i]);
+                            }
+                            
+                            // Update velocity if available
+                            if (i < parsed.enemyVelocities.size()) {
+                                enemy->SetVelocity(parsed.enemyVelocities[i]);
+                            }
+                        } else if (i < parsed.enemyTypes.size() && i < parsed.enemyHealths.size()) {
+                            // Create new enemy
+                            EnemyType type = static_cast<EnemyType>(parsed.enemyTypes[i]);
+                            enemyManager->RemoteAddEnemy(id, type, parsed.enemyPositions[i], 
+                                                       parsed.enemyHealths[i]);
+                        }
+                    }
+                    
+                    // IMPORTANT: For complete state messages, remove enemies not in the list
+                    // This is what keeps the client and host fully synchronized
+                    enemyManager->RemoveEnemiesNotInList(validIds);
+                    
+                    std::cout << "[CLIENT] Processed complete enemy state with " 
+                              << validIds.size() << " enemies\n";
+                }
+            },
+            [](Game& game, HostNetwork& host, const ParsedMessage& parsed, CSteamID sender) {
+                // Host typically sends complete state, not receives it
+            });
 }
 
 // Enemy message parsing functions
@@ -393,4 +466,22 @@ std::string EnemyMessageHandler::FormatEnemyStateMessage(const std::vector<int>&
 
 std::string EnemyMessageHandler::FormatEnemyClearMessage() {
     return "EC";
+}
+
+std::string EnemyMessageHandler::FormatCompleteEnemyStateMessage(const std::vector<int>& enemyIds, const std::vector<EnemyType>& types, 
+    const std::vector<sf::Vector2f>& positions, const std::vector<float>& healths) {
+std::ostringstream oss;
+oss << "ECS"; // Note the different prefix for Complete State
+
+size_t count = std::min(enemyIds.size(), std::min(positions.size(), healths.size()));
+for (size_t i = 0; i < count; ++i) {
+oss << "|" << enemyIds[i] << "," << static_cast<int>(types[i]) << "," 
+<< positions[i].x << "," << positions[i].y << "," << healths[i];
+}
+
+return oss.str();
+}
+
+std::string EnemyMessageHandler::FormatEnemyStateRequestMessage() {
+    return "ESR";
 }

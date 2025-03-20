@@ -62,7 +62,9 @@ public:
 
     Enemy* FindEnemy(int id);
     void RemoveEnemiesNotInList(const std::vector<int>& validIds);
-    
+    const std::unordered_map<int, std::unique_ptr<Enemy>>& GetEnemies() const { return enemies; }
+
+
 private:
     // Helper methods
     void InitializeEnemyCallbacks(Enemy* enemy);
@@ -87,6 +89,7 @@ private:
     
     // Network sync helpers
     std::vector<int> GetEnemyUpdatePriorities();
+    
 };
 
 #endif // ENEMY_MANAGER_H

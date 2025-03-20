@@ -325,17 +325,20 @@ void EnemyManager::SyncFullState() {
         healths.push_back(pair.second->GetHealth());
     }
     
-    // Use chunking for large updates
-    std::string fullStateMsg = EnemyMessageHandler::FormatEnemyStateMessage(enemyIds, types, positions, healths);
+    // Use the new Complete Enemy State message format
+    std::string fullStateMsg = EnemyMessageHandler::FormatCompleteEnemyStateMessage(enemyIds, types, positions, healths);
     
     if (fullStateMsg.length() > MAX_PACKET_SIZE) {
-        std::vector<std::string> chunks = SystemMessageHandler::ChunkMessage(fullStateMsg, "ES");
+        // For large updates, we need to chunk the message
+        std::vector<std::string> chunks = SystemMessageHandler::ChunkMessage(fullStateMsg, "ECS");
         for (const auto& chunk : chunks) {
             game->GetNetworkManager().BroadcastMessage(chunk);
         }
     } else {
         game->GetNetworkManager().BroadcastMessage(fullStateMsg);
     }
+    
+    std::cout << "[HOST] Sent complete enemy state with " << enemyIds.size() << " enemies\n";
 }
 
 void EnemyManager::ApplyNetworkUpdate(int enemyId, const sf::Vector2f& position, float health) {
