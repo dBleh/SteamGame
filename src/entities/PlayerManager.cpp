@@ -703,18 +703,23 @@ void PlayerManager::InitializeForceFields() {
     }
 }
 void PlayerManager::HandleForceFieldZap(const std::string& playerID, int enemyId, float damage, bool killed) {
-    // Validate inputs to prevent crashes
+    // Validate inputs
     if (playerID.empty() || enemyId < 0) {
-        std::cerr << "[PM] Invalid parameters in HandleForceFieldZap" << std::endl;
+        std::cerr << "[PM] Invalid parameters in HandleForceFieldZap: playerID=" 
+                  << playerID << ", enemyId=" << enemyId << std::endl;
         return;
     }
     
     // Only update rewards for hits, not kills (as those are handled by HandleKill)
     if (!killed) {
-        // Reward for hits (not kills) - with safe lookup
-        auto it = players.find(playerID);
-        if (it != players.end()) {
-            it->second.money += 10; // 10 money for hitting an enemy with force field
+        try {
+            // Reward for hits (not kills) - with safe lookup
+            auto it = players.find(playerID);
+            if (it != players.end()) {
+                it->second.money += 10; // 10 money for hitting an enemy with force field
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "[PM] Exception updating player money: " << e.what() << std::endl;
         }
     } else {
         // If the enemy was killed, use the centralized kill handling
@@ -744,7 +749,7 @@ void PlayerManager::HandleForceFieldZap(const std::string& playerID, int enemyId
                 game->GetNetworkManager().SendMessage(hostID, zapMsg);
             }
         } catch (const std::exception& e) {
-            std::cerr << "[PM] Exception in network message: " << e.what() << std::endl;
+            std::cerr << "[PM] Exception sending network message: " << e.what() << std::endl;
         }
     }
 }

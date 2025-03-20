@@ -488,7 +488,12 @@ void HostNetwork::ProcessForceFieldZapMessage(Game& game, HostNetwork& host, con
     
     // Get the playing state to access the enemy manager
     PlayingState* playingState = GetPlayingState(&game);
-    if (playingState && playingState->GetEnemyManager()) {
+    if (!playingState || !playingState->GetEnemyManager()) {
+        std::cout << "[HOST] No playing state or enemy manager available for zap message\n";
+        return;
+    }
+    
+    try {
         EnemyManager* enemyManager = playingState->GetEnemyManager();
         
         // Apply damage to the enemy
@@ -519,16 +524,24 @@ void HostNetwork::ProcessForceFieldZapMessage(Game& game, HostNetwork& host, con
                     sf::Vector2f playerPos = rp.player.GetPosition() + sf::Vector2f(25.0f, 25.0f); // Assuming 50x50 player
                     sf::Vector2f enemyPos = enemy->GetPosition();
                     
-                    // Create the zap effect
-                    rp.player.GetForceField()->CreateZapEffect(playerPos, enemyPos);
-                    rp.player.GetForceField()->SetIsZapping(true);
-                    rp.player.GetForceField()->SetZapEffectTimer(0.3f); // Show effect for 0.3 seconds
+                    try {
+                        // Create the zap effect
+                        rp.player.GetForceField()->CreateZapEffect(playerPos, enemyPos);
+                        rp.player.GetForceField()->SetIsZapping(true);
+                        rp.player.GetForceField()->SetZapEffectTimer(0.3f); // Show effect for 0.3 seconds
+                    } catch (const std::exception& e) {
+                        std::cerr << "[HOST] Error creating zap effect: " << e.what() << std::endl;
+                    }
                 }
             }
+        } else {
+            std::cout << "[HOST] Enemy ID " << enemyId << " not found for zap message\n";
         }
         
         // Broadcast this zap to all clients (even if we don't find the enemy)
         std::string zapMsg = PlayerMessageHandler::FormatForceFieldZapMessage(normalizedZapperID, enemyId, damage);
         game.GetNetworkManager().BroadcastMessage(zapMsg);
+    } catch (const std::exception& e) {
+        std::cerr << "[HOST] Exception processing force field zap: " << e.what() << std::endl;
     }
 }

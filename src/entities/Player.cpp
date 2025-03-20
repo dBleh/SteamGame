@@ -222,6 +222,13 @@ sf::Vector2f Player::GetRespawnPosition() const {
 
 void Player::InitializeForceField() {
     try {
+        // If we already have a force field, don't recreate it
+        if (forceField) {
+            std::cout << "[PLAYER] Force field already exists, not reinitializing" << std::endl;
+            forceFieldEnabled = true;
+            return;
+        }
+        
         // Start with a smaller radius to make upgrades meaningful
         float startingRadius = 100.0f;  // Smaller than the default 150.0f
         
@@ -247,6 +254,7 @@ void Player::InitializeForceField() {
             forceField->SetFieldType(FieldType::STANDARD);
         } else {
             std::cerr << "[PLAYER] Failed to create ForceField - null after initialization" << std::endl;
+            return;
         }
         
         forceFieldEnabled = true;
@@ -254,6 +262,7 @@ void Player::InitializeForceField() {
     } catch (const std::exception& e) {
         std::cerr << "[PLAYER] Exception in InitializeForceField: " << e.what() << std::endl;
         forceFieldEnabled = false;
+        forceField.reset(); // Clean up any partially initialized field
     }
 }
 
