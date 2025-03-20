@@ -232,12 +232,12 @@ void SquareEnemy::Render(sf::RenderWindow& window) {
         window.draw(shape);
         
         // Draw the last intersection point if we're not currently intersecting
-        if (!playerIntersectsLine) {
+        /*if (!playerIntersectsLine) {
             sf::CircleShape intersectionPoint(5.0f);
             intersectionPoint.setFillColor(sf::Color::Red);
             intersectionPoint.setOrigin(5.0f, 5.0f);
             intersectionPoint.setPosition(lastIntersectionPoint);
             window.draw(intersectionPoint);
-        }
+        }*/
     }
 }
