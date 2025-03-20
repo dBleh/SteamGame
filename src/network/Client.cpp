@@ -11,12 +11,18 @@
 #include <iostream>
 
 ClientNetwork::ClientNetwork(Game* game, PlayerManager* manager)
-    : game(game), playerManager(manager), lastSendTime(std::chrono::steady_clock::now()) {
+    : game(game), 
+      playerManager(manager), 
+      lastSendTime(std::chrono::steady_clock::now()) {
+    
     hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
     m_lastValidationTime = std::chrono::steady_clock::now();
+    m_lastStateRequestTime = std::chrono::steady_clock::now();
     m_validationRequestTimer = 0.5f;
-    m_periodicValidationTimer = 30.0f;
-    PlayingState* playingState = GetPlayingState(game);\
+    m_periodicValidationTimer = 10.0f; // Request state every 10 seconds initially
+    m_stateRequestCooldown = MIN_STATE_REQUEST_COOLDOWN;
+    
+    std::cout << "[CLIENT] Initialized, host ID: " << hostID.ConvertToUint64() << "\n";
 }
 
 ClientNetwork::~ClientNetwork() {}
@@ -37,6 +43,14 @@ void ClientNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
             const auto* descriptor = MessageHandler::GetDescriptorByType(parsed.type);
             if (descriptor && descriptor->clientHandler) {
                 descriptor->clientHandler(*game, *this, parsed);
+                
+                // Reset state request counter if we received a complete state message
+                if (parsed.type == MessageType::EnemyState) {
+                    m_stateRequestPending = false;
+                    m_consecutiveStateRequests = 0;
+                    m_stateRequestCooldown = MIN_STATE_REQUEST_COOLDOWN;
+                    std::cout << "[CLIENT] Received chunked state update, request satisfied\n";
+                }
             } else {
                 std::cout << "[CLIENT] Unhandled message type in reconstructed message: " 
                           << static_cast<int>(parsed.type) << "\n";
@@ -49,13 +63,23 @@ void ClientNetwork::ProcessMessage(const std::string& msg, CSteamID sender) {
     // Standard message processing
     ParsedMessage parsed = MessageHandler::ParseMessage(msg);
     const auto* descriptor = MessageHandler::GetDescriptorByType(parsed.type);
+    
     if (descriptor && descriptor->clientHandler) {
         descriptor->clientHandler(*game, *this, parsed);
+        
+        // Check if we just received a state update message
+        if (parsed.type == MessageType::EnemyState || msg.compare(0, 3, "ECS") == 0) {
+            m_stateRequestPending = false;
+            m_consecutiveStateRequests = 0;
+            m_stateRequestCooldown = MIN_STATE_REQUEST_COOLDOWN;
+            std::cout << "[CLIENT] Received state update, request satisfied\n";
+        }
     } else {
         std::cout << "[CLIENT] Unhandled message type received: " << msg << "\n";
         ProcessUnknownMessage(*game, *this, parsed);
     }
 }
+
 void ClientNetwork::ProcessForceFieldUpdateMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
     // Get the player ID from the message
     std::string playerID = parsed.steamID;
@@ -112,9 +136,11 @@ void ClientNetwork::ProcessForceFieldUpdateMessage(Game& game, ClientNetwork& cl
         }
     }
 }
+
 void ClientNetwork::ProcessChatMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
     std::cout << "[CLIENT] Received chat message from " << parsed.steamID << ": " << parsed.chatMessage << "\n";
 }
+
 void ClientNetwork::ProcessKillMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
     std::string killerID = parsed.steamID;
     int enemyId = parsed.enemyId;
@@ -161,6 +187,7 @@ void ClientNetwork::ProcessKillMessage(Game& game, ClientNetwork& client, const 
         }
     }
 }
+
 void ClientNetwork::ProcessConnectionMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
     // Create a new RemotePlayer directly with its fields set, don't copy
     RemotePlayer rp;
@@ -179,6 +206,7 @@ void ClientNetwork::ProcessConnectionMessage(Game& game, ClientNetwork& client, 
     playerManager->AddOrUpdatePlayer(parsed.steamID, std::move(rp));
     playerManager->SetReadyStatus(parsed.steamID, parsed.isReady);
 }
+
 void ClientNetwork::ProcessReadyStatusMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
     playerManager->SetReadyStatus(parsed.steamID, parsed.isReady);
 }
@@ -211,6 +239,7 @@ void ClientNetwork::ProcessMovementMessage(Game& game, ClientNetwork& client, co
         }
     }
 }
+
 void ClientNetwork::ProcessBulletMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
     std::string localSteamIDStr = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
     std::string normalizedShooterID, normalizedLocalID;
@@ -224,17 +253,14 @@ void ClientNetwork::ProcessBulletMessage(Game& game, ClientNetwork& client, cons
         normalizedShooterID = parsed.steamID;
         normalizedLocalID = localSteamIDStr;
     }
-    std::cout << "[CLIENT] Bullet ownership check - Message ID: '" << normalizedShooterID 
-              << "', Local ID: '" << normalizedLocalID 
-              << "', Same? " << (normalizedShooterID == normalizedLocalID ? "YES" : "NO") << "\n";
+    
     if (normalizedShooterID == normalizedLocalID) {
         std::cout << "[CLIENT] Ignoring own bullet that was bounced back from server\n";
         return;
     }
+    
     if (parsed.direction.x != 0.f || parsed.direction.y != 0.f) {
         playerManager->AddBullet(normalizedShooterID, parsed.position, parsed.direction, parsed.velocity);
-        std::cout << "[CLIENT] Added bullet from " << normalizedShooterID 
-                  << " at pos (" << parsed.position.x << "," << parsed.position.y << ")\n";
     } else {
         std::cout << "[CLIENT] Received bullet with invalid direction\n";
     }
@@ -256,17 +282,55 @@ void ClientNetwork::SendConnectionMessage() {
     std::string steamName = SteamFriends()->GetPersonaName();
     sf::Color color = PLAYER_DEFAULT_COLOR;
     std::string connectMsg = PlayerMessageHandler::FormatConnectionMessage(steamIDStr, steamName, color, false, false);
-    game->GetNetworkManager().SendMessage(hostID, connectMsg);
+    
+    if (game->GetNetworkManager().SendMessage(hostID, connectMsg)) {
+        std::cout << "[CLIENT] Sent connection message\n";
+    } else {
+        std::cout << "[CLIENT] Failed to send connection message, will retry\n";
+        pendingConnectionMessage = true;
+        pendingMessage = connectMsg;
+    }
 }
 
 void ClientNetwork::SendReadyStatus(bool isReady) {
     std::string steamIDStr = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
     std::string msg = StateMessageHandler::FormatReadyStatusMessage(steamIDStr, isReady);
+    
     if (game->GetNetworkManager().SendMessage(hostID, msg)) {
-        std::cout << "[CLIENT] Sent ready status: " << (isReady ? "true" : "false") << " (" << msg << ")\n";
+        std::cout << "[CLIENT] Sent ready status: " << (isReady ? "true" : "false") << "\n";
     } else {
-        std::cout << "[CLIENT] Failed to send ready status: " << msg << " - will retry\n";
+        std::cout << "[CLIENT] Failed to send ready status - will retry\n";
         pendingReadyMessage = msg;
+    }
+}
+
+void ClientNetwork::RequestEnemyState() {
+    auto now = std::chrono::steady_clock::now();
+    float secondsSinceLastRequest = std::chrono::duration<float>(now - m_lastStateRequestTime).count();
+    
+    // Only send a request if we're not in cooldown and don't have a pending request
+    if (secondsSinceLastRequest >= m_stateRequestCooldown && !m_stateRequestPending) {
+        m_lastStateRequestTime = now;
+        m_stateRequestPending = true;
+        m_consecutiveStateRequests++;
+        
+        // Increase cooldown with each consecutive request to prevent spam
+        if (m_consecutiveStateRequests > 1) {
+            m_stateRequestCooldown = std::min(
+                MAX_STATE_REQUEST_COOLDOWN,
+                m_stateRequestCooldown * 1.5f
+            );
+        }
+        
+        std::string requestMsg = EnemyMessageHandler::FormatEnemyStateRequestMessage();
+        if (game->GetNetworkManager().SendMessage(hostID, requestMsg)) {
+            std::cout << "[CLIENT] Sent enemy state request to host (request #" 
+                      << m_consecutiveStateRequests << ", next cooldown: " 
+                      << m_stateRequestCooldown << "s)\n";
+        } else {
+            std::cout << "[CLIENT] Failed to send enemy state request\n";
+            m_stateRequestPending = false;  // Allow retry on next update
+        }
     }
 }
 
@@ -280,17 +344,57 @@ void ClientNetwork::Update() {
         SendMovementUpdate(localPlayer.GetPosition());
         lastSendTime = now;
     }
+    
+    // Handle pending connection message
     if (pendingConnectionMessage) {
         if (game->GetNetworkManager().SendMessage(hostID, pendingMessage)) {
-            std::cout << "[CLIENT] Pending connection message sent successfully.\n";
+            std::cout << "[CLIENT] Pending connection message sent successfully\n";
             pendingConnectionMessage = false;
         }
     }
+    
+    // Handle pending ready status message
     if (!pendingReadyMessage.empty()) {
         if (game->GetNetworkManager().SendMessage(hostID, pendingReadyMessage)) {
-            std::cout << "[CLIENT] Pending ready status sent: " << pendingReadyMessage << "\n";
+            std::cout << "[CLIENT] Pending ready status sent\n";
             pendingReadyMessage.clear();
         }
+    }
+    
+    // Periodic enemy state validation
+    float timeSinceValidation = std::chrono::duration<float>(now - m_lastValidationTime).count();
+    if (timeSinceValidation >= m_periodicValidationTimer) {
+        m_lastValidationTime = now;
+        
+        // Request enemy state periodically
+        PlayingState* playingState = GetPlayingState(game);
+        if (playingState && playingState->GetEnemyManager()) {
+            size_t enemyCount = playingState->GetEnemyManager()->GetEnemyCount();
+            
+            // Only request if we have fewer than expected enemies
+            // This helps reduce unnecessary network traffic
+            bool isWave = playingState->GetEnemyManager()->GetCurrentWave() > 0;
+            
+            if (isWave && enemyCount == 0) {
+                std::cout << "[CLIENT] No enemies found but wave is active, requesting state update\n";
+                RequestEnemyState();
+            } else {
+                std::cout << "[CLIENT] Periodic validation - enemies: " << enemyCount << "\n";
+                
+                // Even if we have enemies, occasionally request an update just to be sure
+                if (m_consecutiveStateRequests < MAX_CONSECUTIVE_REQUESTS) {
+                    RequestEnemyState();
+                }
+            }
+        }
+    }
+    
+    // Reset consecutive request counter over time to allow new requests
+    float timeSinceLastRequest = std::chrono::duration<float>(now - m_lastStateRequestTime).count();
+    if (timeSinceLastRequest > MAX_STATE_REQUEST_COOLDOWN && m_consecutiveStateRequests > 0) {
+        m_consecutiveStateRequests = 0;
+        m_stateRequestCooldown = MIN_STATE_REQUEST_COOLDOWN;
+        std::cout << "[CLIENT] Reset state request counters after long period of inactivity\n";
     }
 }
 
@@ -303,6 +407,7 @@ void ClientNetwork::ProcessPlayerDeathMessage(Game& game, ClientNetwork& client,
         std::cout << "[CLIENT] Error normalizing player ID in ProcessPlayerDeathMessage: " << e.what() << "\n";
         normalizedID = parsed.steamID;
     }
+    
     auto& players = playerManager->GetPlayers();
     auto it = players.find(normalizedID);
     if (it != players.end()) {
@@ -311,10 +416,9 @@ void ClientNetwork::ProcessPlayerDeathMessage(Game& game, ClientNetwork& client,
         player.player.SetRespawnPosition(currentPos);
         player.player.TakeDamage(player.player.GetHealth()); // Take full damage to ensure death
         player.respawnTimer = RESPAWN_TIME;
-        std::cout << "[CLIENT] Player " << normalizedID 
-                  << " died at position (" << currentPos.x << "," << currentPos.y 
-                  << "), respawn position set to same location\n";
+        std::cout << "[CLIENT] Player " << normalizedID << " died\n";
     }
+    
     if (!parsed.killerID.empty()) {
         std::string normalizedKillerID = parsed.killerID;
         try {
@@ -323,11 +427,13 @@ void ClientNetwork::ProcessPlayerDeathMessage(Game& game, ClientNetwork& client,
         } catch (const std::exception& e) {
             normalizedKillerID = parsed.killerID;
         }
+        
         auto killerIt = players.find(normalizedKillerID);
         if (killerIt != players.end()) {
             playerManager->IncrementPlayerKills(normalizedKillerID);
         }
     }
+    
     std::string localPlayerID = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
     if (normalizedID == localPlayerID) {
         std::cout << "[CLIENT] Local player died, will request validation after 1 second\n";
@@ -345,15 +451,19 @@ void ClientNetwork::ProcessPlayerRespawnMessage(Game& game, ClientNetwork& clien
     } catch (const std::exception& e) {
         std::cout << "[CLIENT] Error normalizing player ID in ProcessPlayerRespawnMessage: " << e.what() << "\n";
     }
+    
     std::string localSteamIDStr = std::to_string(SteamUser()->GetSteamID().ConvertToUint64());
     auto& players = playerManager->GetPlayers();
     auto it = players.find(normalizedID);
+    
     if (it != players.end()) {
         RemotePlayer& player = it->second;
         int oldHealth = player.player.GetHealth();
         bool wasDead = player.player.IsDead();
+        
         player.player.SetRespawnPosition(parsed.position);
         player.player.Respawn();
+        
         if (player.player.GetHealth() < PLAYER_HEALTH) {
             std::cout << "[CLIENT] WARNING: Player health not fully restored after respawn, forcing to full health\n";
             player.player.TakeDamage(-PLAYER_HEALTH); // Heal to full health
@@ -447,13 +557,13 @@ void ClientNetwork::ProcessForceFieldZapMessage(Game& game, ClientNetwork& clien
                 rp.player.GetForceField()->SetIsZapping(true);
                 rp.player.GetForceField()->SetZapEffectTimer(FIELD_ZAP_EFFECT_DURATION);
             }
+        } else {
+            // We don't have this enemy locally - request a state update
+            if (!m_stateRequestPending) {
+                std::cout << "[CLIENT] Force field zap references unknown enemy " << enemyId 
+                          << ", requesting state update\n";
+                RequestEnemyState();
+            }
         }
-    }
-}
-
-void ClientNetwork::RequestEnemyState() {
-    std::string requestMsg = EnemyMessageHandler::FormatEnemyStateRequestMessage();
-    if (game->GetNetworkManager().SendMessage(hostID, requestMsg)) {
-        std::cout << "[CLIENT] Sent enemy state request to host\n";
     }
 }

@@ -22,6 +22,7 @@ EnemyManager::EnemyManager(Game* game, PlayerManager* playerManager)
       nextEnemyId(1),
       syncTimer(0.0f),
       fullSyncTimer(0.0f),
+      lastFullSyncTime(std::chrono::steady_clock::now()),
       currentWave(0) {
     // Initialize random seed
     std::srand(static_cast<unsigned int>(std::time(nullptr)));
@@ -54,17 +55,17 @@ void EnemyManager::Update(float dt) {
     CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
     
     if (myID == hostID) {
-        // Sync enemy positions more frequently
+        // Sync enemy positions frequently
         syncTimer += dt;
-        if (syncTimer >= ENEMY_SYNC_INTERVAL) { // Reduced from ENEMY_SYNC_INTERVAL to 50ms
+        if (syncTimer >= POSITION_SYNC_INTERVAL) {
             SyncEnemyPositions();
             syncTimer = 0.0f;
         }
         
-        // Send full state more frequently as well
+        // Send full state less frequently
         fullSyncTimer += dt;
-        if (fullSyncTimer >= FULL_SYNC_INTERVAL) { // Reduced from FULL_SYNC_INTERVAL to 500ms
-            SyncFullState();
+        if (fullSyncTimer >= FULL_SYNC_INTERVAL) {
+            HandleSyncFullState();
             fullSyncTimer = 0.0f;
         }
     }
@@ -95,6 +96,7 @@ void EnemyManager::InitializeEnemyCallbacks(Enemy* enemy) {
     });
 }
 
+
 int EnemyManager::AddEnemy(EnemyType type, const sf::Vector2f& position, float health) {
     int id = nextEnemyId++;
     auto enemy = CreateEnemy(type, id, position);
@@ -105,16 +107,18 @@ int EnemyManager::AddEnemy(EnemyType type, const sf::Vector2f& position, float h
     
     enemies[id] = std::move(enemy);
     
+    // Keep track of recently added enemies for sync purposes
+    recentlyAddedIds.insert(id);
+    
     // If we're the host, broadcast this new enemy to all clients
     CSteamID myID = SteamUser()->GetSteamID();
     CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
     
     if (myID == hostID) {
-        std::ostringstream oss;
-        oss << "EA|" << id << "|" << static_cast<int>(type) << "|" 
-            << position.x << "," << position.y << "|" << health;
+        std::string addMsg = EnemyMessageHandler::FormatEnemyAddMessage(
+            id, type, position, health);
         
-        game->GetNetworkManager().BroadcastMessage(oss.str());
+        game->GetNetworkManager().BroadcastMessage(addMsg);
     }
     
     return id;
@@ -128,17 +132,27 @@ void EnemyManager::RemoveEnemy(int id) {
         CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
         
         if (myID == hostID) {
-            std::ostringstream oss;
-            oss << "ER|" << id;
-            game->GetNetworkManager().BroadcastMessage(oss.str());
+            std::string removeMsg = EnemyMessageHandler::FormatEnemyRemoveMessage(id);
+            game->GetNetworkManager().BroadcastMessage(removeMsg);
         }
         
+        // Track recently removed enemies for sync purposes
+        recentlyRemovedIds.insert(id);
+        
+        // Remove from other tracking sets
+        recentlyAddedIds.erase(id);
+        syncedEnemyIds.erase(id);
+        
+        // Actually remove the enemy
         enemies.erase(it);
     }
 }
 
 void EnemyManager::ClearEnemies() {
     enemies.clear();
+    recentlyAddedIds.clear();
+    recentlyRemovedIds.clear();
+    syncedEnemyIds.clear();
     
     // If we're the host, broadcast a clear command
     CSteamID myID = SteamUser()->GetSteamID();
@@ -191,9 +205,8 @@ void EnemyManager::HandleEnemyDeath(int enemyId, const sf::Vector2f& position, c
         
         if (myID == hostID) {
             // Create kill message
-            std::ostringstream oss;
-            oss << "EK|" << enemyId << "|" << killerID;
-            game->GetNetworkManager().BroadcastMessage(oss.str());
+            std::string killMsg = PlayerMessageHandler::FormatKillMessage(killerID, enemyId);
+            game->GetNetworkManager().BroadcastMessage(killMsg);
         }
     }
     
@@ -221,9 +234,9 @@ void EnemyManager::HandlePlayerCollision(int enemyId, const std::string& playerI
         
         if (myID == hostID) {
             // Create player damage message
-            std::ostringstream oss;
-            oss << "PD|" << playerID << "|" << TRIANGLE_DAMAGE << "|" << enemyId;
-            game->GetNetworkManager().BroadcastMessage(oss.str());
+            std::string damageMsg = PlayerMessageHandler::FormatPlayerDamageMessage(
+                playerID, TRIANGLE_DAMAGE, enemyId);
+            game->GetNetworkManager().BroadcastMessage(damageMsg);
         }
         
         // Remove the enemy after collision
@@ -285,13 +298,16 @@ void EnemyManager::SyncEnemyPositions() {
     // Get priority list of enemies to sync
     std::vector<int> priorities = GetEnemyUpdatePriorities();
     
-    // Increase limit to MAX_ENEMIES_PER_UPDATE enemies per update for better coverage
+    // Limit to MAX_ENEMIES_PER_UPDATE enemies per update
     size_t updateCount = std::min(priorities.size(), static_cast<size_t>(MAX_ENEMIES_PER_UPDATE));
     
     // Create vectors for batch update
     std::vector<int> enemyIds;
     std::vector<sf::Vector2f> positions;
     std::vector<sf::Vector2f> velocities;
+    
+    // Update the synced enemies set
+    syncedEnemyIds.clear();
     
     for (size_t i = 0; i < updateCount; ++i) {
         int enemyId = priorities[i];
@@ -300,16 +316,43 @@ void EnemyManager::SyncEnemyPositions() {
             enemyIds.push_back(enemyId);
             positions.push_back(it->second->GetPosition());
             velocities.push_back(it->second->GetVelocity());
+            
+            // Track which enemies were included in this sync
+            syncedEnemyIds.insert(enemyId);
         }
     }
     
     // Send the message with updated format including velocities
-    std::string epMessage = EnemyMessageHandler::FormatEnemyPositionUpdateMessage(enemyIds, positions, velocities);
-    game->GetNetworkManager().BroadcastMessage(epMessage);
+    if (!enemyIds.empty()) {
+        std::string epMessage = EnemyMessageHandler::FormatEnemyPositionUpdateMessage(
+            enemyIds, positions, velocities);
+        game->GetNetworkManager().BroadcastMessage(epMessage);
+    }
+}
+
+void EnemyManager::HandleSyncFullState(bool forceSend) {
+    auto now = std::chrono::steady_clock::now();
+    float timeSinceLastSync = std::chrono::duration<float>(now - lastFullSyncTime).count();
+    
+    // Don't send too many full syncs in a short time, unless forced
+    if (!forceSend && timeSinceLastSync < URGENT_SYNC_THRESHOLD) {
+        return;
+    }
+    
+    lastFullSyncTime = now;
+    
+    // Check if we need to send a full sync
+    if (forceSend || !recentlyAddedIds.empty() || !recentlyRemovedIds.empty()) {
+        SyncFullState();
+        
+        // Clear the tracking sets after sync
+        recentlyAddedIds.clear();
+        recentlyRemovedIds.clear();
+    }
 }
 
 void EnemyManager::SyncFullState() {
-    if (enemies.empty()) return;
+    if (enemies.empty() && recentlyRemovedIds.empty()) return;
     
     // Create vectors for batch update
     std::vector<int> enemyIds;
@@ -325,11 +368,12 @@ void EnemyManager::SyncFullState() {
         healths.push_back(pair.second->GetHealth());
     }
     
-    // Use the new Complete Enemy State message format
-    std::string fullStateMsg = EnemyMessageHandler::FormatCompleteEnemyStateMessage(enemyIds, types, positions, healths);
+    // Use the Complete Enemy State message format for clear differentiation
+    std::string fullStateMsg = EnemyMessageHandler::FormatCompleteEnemyStateMessage(
+        enemyIds, types, positions, healths);
     
+    // Handle large messages with chunking
     if (fullStateMsg.length() > MAX_PACKET_SIZE) {
-        // For large updates, we need to chunk the message
         std::vector<std::string> chunks = SystemMessageHandler::ChunkMessage(fullStateMsg, "ECS");
         for (const auto& chunk : chunks) {
             game->GetNetworkManager().BroadcastMessage(chunk);
@@ -338,7 +382,8 @@ void EnemyManager::SyncFullState() {
         game->GetNetworkManager().BroadcastMessage(fullStateMsg);
     }
     
-    std::cout << "[HOST] Sent complete enemy state with " << enemyIds.size() << " enemies\n";
+    std::cout << "[HOST] Sent complete enemy state with " << enemyIds.size() 
+              << " enemies" << std::endl;
 }
 
 void EnemyManager::ApplyNetworkUpdate(int enemyId, const sf::Vector2f& position, float health) {
@@ -353,6 +398,11 @@ void EnemyManager::ApplyNetworkUpdate(int enemyId, const sf::Vector2f& position,
 }
 
 void EnemyManager::RemoteAddEnemy(int enemyId, EnemyType type, const sf::Vector2f& position, float health) {
+    // Skip if enemy already exists
+    if (enemies.find(enemyId) != enemies.end()) {
+        return;
+    }
+    
     // Create the enemy with the given ID
     auto enemy = CreateEnemy(type, enemyId, position);
     enemy->SetHealth(health);
@@ -367,10 +417,17 @@ void EnemyManager::RemoteAddEnemy(int enemyId, EnemyType type, const sf::Vector2
     if (enemyId >= nextEnemyId) {
         nextEnemyId = enemyId + 1;
     }
+    
+    std::cout << "[CLIENT] Added enemy " << enemyId << " at position ("
+              << position.x << "," << position.y << ")" << std::endl;
 }
 
 void EnemyManager::RemoteRemoveEnemy(int enemyId) {
-    enemies.erase(enemyId);
+    auto it = enemies.find(enemyId);
+    if (it != enemies.end()) {
+        enemies.erase(it);
+        std::cout << "[CLIENT] Removed enemy " << enemyId << std::endl;
+    }
 }
 
 void EnemyManager::StartNewWave(int enemyCount, EnemyType type) {
@@ -408,10 +465,15 @@ void EnemyManager::StartNewWave(int enemyCount, EnemyType type) {
     CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
     
     if (myID == hostID) {
-        std::ostringstream oss;
-        oss << "WS|" << currentWave << "|" << enemyCount;
-        game->GetNetworkManager().BroadcastMessage(oss.str());
+        std::string waveMsg = StateMessageHandler::FormatWaveStartMessage(currentWave, enemyCount);
+        game->GetNetworkManager().BroadcastMessage(waveMsg);
+        
+        // Also send a full state sync to ensure all clients are in sync
+        HandleSyncFullState(true);
     }
+    
+    std::cout << "[WAVE] Starting wave " << currentWave << " with " 
+              << enemyCount << " enemies" << std::endl;
 }
 
 void EnemyManager::OptimizeEnemyList() {
@@ -433,7 +495,7 @@ void EnemyManager::OptimizeEnemyList() {
             float distSquared = std::pow(enemyPos.x - playerPos.x, 2) + 
                                 std::pow(enemyPos.y - playerPos.y, 2);
             
-            // Keep enemies within 2000 units of any player
+            // Keep enemies within culling distance of any player
             if (distSquared < ENEMY_CULLING_DISTANCE * ENEMY_CULLING_DISTANCE) {
                 tooFar = false;
                 break;
@@ -448,6 +510,11 @@ void EnemyManager::OptimizeEnemyList() {
     // Remove the enemies that are too far
     for (int id : enemiesToRemove) {
         RemoveEnemy(id);
+    }
+    
+    if (!enemiesToRemove.empty()) {
+        std::cout << "[OPTIMIZATION] Removed " << enemiesToRemove.size() 
+                  << " enemies that were too far from players" << std::endl;
     }
 }
 
@@ -502,6 +569,17 @@ std::vector<int> EnemyManager::GetEnemyUpdatePriorities() {
         
         // Priority is inverse of distance (closer = higher priority)
         float priority = 1.0f / (1.0f + std::sqrt(minDistSquared));
+        
+        // Newly added enemies get a priority boost
+        if (recentlyAddedIds.find(pair.first) != recentlyAddedIds.end()) {
+            priority *= 1.5f;
+        }
+        
+        // Enemies that weren't synced recently get a boost too
+        if (syncedEnemyIds.find(pair.first) == syncedEnemyIds.end()) {
+            priority *= 1.2f;
+        }
+        
         enemyPriorities.push_back({pair.first, priority});
     }
     
@@ -535,84 +613,6 @@ sf::Vector2f EnemyManager::GetRandomSpawnPosition(const sf::Vector2f& targetPosi
     
     // Return the spawn position
     return sf::Vector2f(x, y);
-}
-
-void EnemyManager::RemoveEnemiesNotInList(const std::vector<int>& validIds) {
-    std::vector<int> enemyIdsToRemove;
-    
-    // First identify all enemies that aren't in the valid list
-    for (const auto& pair : enemies) {
-        int currentId = pair.first;
-        bool found = false;
-        for (int id : validIds) {
-            if (currentId == id) {
-                found = true;
-                break;
-            }
-        }
-        
-        if (!found) {
-            enemyIdsToRemove.push_back(currentId);
-        }
-    }
-    
-    // Then remove them
-    for (int id : enemyIdsToRemove) {
-        std::cout << "[CLIENT] Removing enemy " << id << " not present in sync message\n";
-        RemoteRemoveEnemy(id);
-    }
-    
-    if (!enemyIdsToRemove.empty()) {
-        std::cout << "[CLIENT] Removed " << enemyIdsToRemove.size() 
-                 << " enemies to stay in sync with host\n";
-    }
-}
-
-Enemy* EnemyManager::FindEnemy(int id) {
-    auto it = enemies.find(id);
-    return (it != enemies.end()) ? it->second.get() : nullptr;
-}
-
-void EnemyManager::ProcessBatchSpawning(float dt) {
-    // Update batch timer
-    batchSpawnTimer += dt;
-    
-    // Check if it's time to spawn a batch
-    if (batchSpawnTimer >= ENEMY_SPAWN_BATCH_INTERVAL) {
-        // Reset timer
-        batchSpawnTimer = 0.0f;
-        
-        // Calculate how many enemies to spawn in this batch
-        int spawnCount = std::min(ENEMY_SPAWN_BATCH_SIZE, enemiesRemainingToSpawn);
-        if (spawnCount > 0) {
-            // Debug log
-            std::cout << "[WAVE] Spawning batch of " << spawnCount 
-                      << " enemies. Remaining after batch: " 
-                      << (enemiesRemainingToSpawn - spawnCount) << std::endl;
-            
-            // Spawn the batch
-            for (int i = 0; i < spawnCount; ++i) {
-                // Randomly select a player position to spawn relative to
-                sf::Vector2f targetPos = playerPositionsCache[rand() % playerPositionsCache.size()];
-                
-                // Get a spawn position away from the player
-                sf::Vector2f spawnPos = GetRandomSpawnPosition(targetPos, 
-                                                             TRIANGLE_MIN_SPAWN_DISTANCE, 
-                                                             TRIANGLE_MAX_SPAWN_DISTANCE);
-                
-                // Add the enemy
-                AddEnemy(currentWaveEnemyType, spawnPos);
-            }
-            
-            // Update remaining count
-            enemiesRemainingToSpawn -= spawnCount;
-        }
-    }
-}
-
-bool EnemyManager::IsWaveComplete() const {
-    // A wave is complete when all enemies have been spawned and eliminated
-    return enemies.empty() && remainingEnemiesInWave == 0;
 }
 
 void EnemyManager::UpdateSpawning(float dt) {
@@ -649,6 +649,87 @@ void EnemyManager::UpdateSpawning(float dt) {
             
             // Update remaining count
             remainingEnemiesInWave -= spawnCount;
+            
+            // If we're the host, sync the full state after creating new enemies
+            CSteamID myID = SteamUser()->GetSteamID();
+            CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+            
+            if (myID == hostID && !recentlyAddedIds.empty()) {
+                // Force a sync if this was the first batch of a new wave
+                bool forceSync = (remainingEnemiesInWave == enemyCount - spawnCount);
+                HandleSyncFullState(forceSync);
+            }
         }
     }
+}
+
+bool EnemyManager::IsWaveComplete() const {
+    // A wave is complete when all enemies have been spawned and eliminated
+    return enemies.empty() && remainingEnemiesInWave == 0;
+}
+
+Enemy* EnemyManager::FindEnemy(int id) {
+    auto it = enemies.find(id);
+    return (it != enemies.end()) ? it->second.get() : nullptr;
+}
+
+void EnemyManager::RemoveEnemiesNotInList(const std::vector<int>& validIds) {
+    // Create a set for more efficient lookups
+    std::unordered_set<int> validIdSet(validIds.begin(), validIds.end());
+    std::vector<int> enemyIdsToRemove;
+    
+    // Identify all enemies that aren't in the valid list
+    for (const auto& pair : enemies) {
+        int currentId = pair.first;
+        if (validIdSet.find(currentId) == validIdSet.end()) {
+            enemyIdsToRemove.push_back(currentId);
+        }
+    }
+    
+    // Then remove them one by one
+    for (int id : enemyIdsToRemove) {
+        std::cout << "[CLIENT] Removing enemy " << id << " not present in sync message" << std::endl;
+        RemoteRemoveEnemy(id);
+    }
+    
+    if (!enemyIdsToRemove.empty()) {
+        std::cout << "[CLIENT] Removed " << enemyIdsToRemove.size() 
+                  << " enemies to stay in sync with host" << std::endl;
+    }
+}
+
+void EnemyManager::PrintEnemyStats() const {
+    std::cout << "======== ENEMY STATS ========" << std::endl;
+    std::cout << "Total enemies: " << enemies.size() << std::endl;
+    std::cout << "Current wave: " << currentWave << std::endl;
+    std::cout << "Remaining enemies to spawn: " << remainingEnemiesInWave << std::endl;
+    std::cout << "Recently added enemies: " << recentlyAddedIds.size() << std::endl;
+    std::cout << "Recently removed enemies: " << recentlyRemovedIds.size() << std::endl;
+    
+    // Print health stats
+    if (!enemies.empty()) {
+        float totalHealth = 0.0f;
+        float minHealth = std::numeric_limits<float>::max();
+        float maxHealth = 0.0f;
+        
+        for (const auto& pair : enemies) {
+            float health = pair.second->GetHealth();
+            totalHealth += health;
+            minHealth = std::min(minHealth, health);
+            maxHealth = std::max(maxHealth, health);
+        }
+        
+        std::cout << "Average enemy health: " << (totalHealth / enemies.size()) << std::endl;
+        std::cout << "Min health: " << minHealth << ", Max health: " << maxHealth << std::endl;
+    }
+    
+    // Print a few enemy IDs for debugging
+    std::cout << "Enemy IDs (first 10): ";
+    int count = 0;
+    for (const auto& pair : enemies) {
+        if (count++ >= 10) break;
+        std::cout << pair.first << " ";
+    }
+    std::cout << std::endl;
+    std::cout << "============================" << std::endl;
 }

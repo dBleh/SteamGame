@@ -4,6 +4,8 @@
 #include <memory>
 #include <vector>
 #include <unordered_map>
+#include <unordered_set>
+#include <chrono>
 #include <SFML/Graphics.hpp>
 #include "Enemy.h"
 #include "../../utils/config/EnemyConfig.h"
@@ -47,6 +49,7 @@ public:
     void ApplyNetworkUpdate(int enemyId, const sf::Vector2f& position, float health);
     void RemoteAddEnemy(int enemyId, EnemyType type, const sf::Vector2f& position, float health);
     void RemoteRemoveEnemy(int enemyId);
+    void HandleSyncFullState(bool forceSend = false);
     
     // Wave management
     void StartNewWave(int enemyCount, EnemyType type = EnemyType::Triangle);
@@ -55,16 +58,18 @@ public:
     void SetCurrentWave(int wave) { currentWave = wave; }
     bool IsWaveComplete() const;
     bool IsWaveSpawning() const { return remainingEnemiesInWave > 0; }
-    void ProcessBatchSpawning(float dt);
     
     // Performance optimization
     void OptimizeEnemyList();
 
+    // Enemy access
     Enemy* FindEnemy(int id);
     void RemoveEnemiesNotInList(const std::vector<int>& validIds);
     const std::unordered_map<int, std::unique_ptr<Enemy>>& GetEnemies() const { return enemies; }
-
-
+    
+    // Debugging
+    void PrintEnemyStats() const;
+    
 private:
     // Helper methods
     void InitializeEnemyCallbacks(Enemy* enemy);
@@ -74,14 +79,19 @@ private:
     PlayerManager* playerManager;
     std::unordered_map<int, std::unique_ptr<Enemy>> enemies;
     int nextEnemyId;
+    
+    // Sync timers
     float syncTimer;
     float fullSyncTimer;
+    std::chrono::steady_clock::time_point lastFullSyncTime;
+    
+    // Wave management
     int currentWave;
+    int enemyCount;
     int remainingEnemiesInWave = 0;
     float batchSpawnTimer = 0.0f;
     EnemyType currentWaveEnemyType = EnemyType::Triangle;
     std::vector<sf::Vector2f> playerPositionsCache;
-    int enemiesRemainingToSpawn = 0;
     
     // Spawn and position helpers
     sf::Vector2f GetRandomSpawnPosition(const sf::Vector2f& targetPosition, float minDistance, float maxDistance);
@@ -89,7 +99,13 @@ private:
     
     // Network sync helpers
     std::vector<int> GetEnemyUpdatePriorities();
+    std::unordered_set<int> syncedEnemyIds;      // Tracks which enemies were recently synced
+    std::unordered_set<int> recentlyAddedIds;    // Tracks enemies added since last full sync
+    std::unordered_set<int> recentlyRemovedIds;  // Tracks enemies removed since last full sync
     
+    // Sync constants - these affect network performance and sync quality
+    static constexpr float POSITION_SYNC_INTERVAL = 0.05f;  // 50ms for position updates
+    static constexpr float URGENT_SYNC_THRESHOLD = 0.25f;   // 250ms min between urgent syncs
 };
 
 #endif // ENEMY_MANAGER_H
