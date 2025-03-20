@@ -2,7 +2,7 @@
 #define BULLET_H
 
 #include <SFML/Graphics.hpp>
-#include "../utils/config/Config.h"
+#include "../../utils/config/Config.h"
 #include <iostream>
 
 class Bullet {

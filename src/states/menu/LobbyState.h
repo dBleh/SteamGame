@@ -3,7 +3,7 @@
 
 #include "./base/State.h"
 #include "../../core/Game.h"
-#include "../../entities/Player.h"
+#include "../../entities/player/Player.h"
 #include "../../network/messages/MessageHandler.h"
 #include "../../network/Host.h"
 #include "../../network/Client.h"

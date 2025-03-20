@@ -9,7 +9,7 @@
 #include "../core/GameState.h"
 #include "../utils/SteamHelpers.h"
 #include "../utils/config/Config.h"
-#include "../entities/Player.h"
+#include "../entities/player/Player.h"
 
 /**
  * @brief Class for managing Heads-Up Display (HUD) elements.

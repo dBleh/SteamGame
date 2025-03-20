@@ -1,7 +1,7 @@
 #include "PlayingStateUI.h"
 #include "../core/Game.h"
 #include "../utils/config/Config.h"
-#include "../entities/PlayerManager.h"
+#include "../entities/player/PlayerManager.h"
 #include "../entities/enemies/EnemyManager.h"
 #include "../network/messages/MessageHandler.h"
 #include "../network/messages/PlayerMessageHandler.h"

@@ -1,5 +1,5 @@
 #include "Enemy.h"
-#include "../PlayerManager.h"
+#include "../player/PlayerManager.h"
 #include <cmath>
 #include <sstream>
 #include <iostream>
@@ -12,7 +12,8 @@ Enemy::Enemy(int id, const sf::Vector2f& position, float health, float speed)
       speed(speed),
       radius(ENEMY_SIZE / 2.0f),
       hasTarget(false),
-      targetPosition(0.0f, 0.0f) {
+      targetPosition(0.0f, 0.0f),
+      lastAttackerID("") {
 }
 
 void Enemy::Update(float dt, PlayerManager& playerManager) {
@@ -107,8 +108,41 @@ bool Enemy::CheckPlayerCollision(const sf::RectangleShape& playerShape) {
 }
 
 bool Enemy::TakeDamage(float amount) {
+    // Call the overloaded version with empty attacker ID
+    return TakeDamage(amount, "");
+}
+
+bool Enemy::TakeDamage(float amount, const std::string& attackerID) {
+    // Store the attacker ID
+    if (!attackerID.empty()) {
+        lastAttackerID = attackerID;
+    }
+    
+    float oldHealth = health;
     health -= amount;
-    return IsDead();
+    
+    // Call damage callback if set
+    if (onDamage) {
+        onDamage(id, amount, oldHealth - health);
+    }
+    
+    // Check if enemy died from this damage
+    if (health <= 0 && oldHealth > 0) {
+        Die(attackerID);
+        return true;
+    }
+    
+    return false;
+}
+
+void Enemy::Die(const std::string& killerID) {
+    // Set health to zero
+    health = 0;
+    
+    // Call death callback if set
+    if (onDeath) {
+        onDeath(id, position, killerID.empty() ? lastAttackerID : killerID);
+    }
 }
 
 std::string Enemy::Serialize() const {

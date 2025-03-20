@@ -16,6 +16,11 @@ class EnemyManager;
 
 class Enemy {
 public:
+    // Callback type definitions
+    using DeathCallback = std::function<void(int, const sf::Vector2f&, const std::string&)>;
+    using DamageCallback = std::function<void(int, float, float)>;
+    using PlayerCollisionCallback = std::function<void(int, const std::string&)>;
+    
     Enemy(int id, const sf::Vector2f& position, float health = ENEMY_HEALTH, float speed = ENEMY_SPEED);
     virtual ~Enemy() = default;
 
@@ -42,8 +47,18 @@ public:
     
     // Damage handling
     bool TakeDamage(float amount);
+    bool TakeDamage(float amount, const std::string& attackerID);
+    void Die(const std::string& killerID = "");
+    
+    // Movement
     sf::Vector2f GetVelocity() const { return velocity; }
-void SetVelocity(const sf::Vector2f& vel) { velocity = vel; }
+    void SetVelocity(const sf::Vector2f& vel) { velocity = vel; }
+    
+    // Callback setters
+    void SetDeathCallback(const DeathCallback& callback) { onDeath = callback; }
+    void SetDamageCallback(const DamageCallback& callback) { onDamage = callback; }
+    void SetPlayerCollisionCallback(const PlayerCollisionCallback& callback) { onPlayerCollision = callback; }
+    
 protected:
     // Core properties
     int id;
@@ -54,6 +69,7 @@ protected:
     float radius;
     bool hasTarget;
     sf::Vector2f targetPosition;
+    std::string lastAttackerID;
     
     // Visualization data
     virtual void UpdateVisualRepresentation();
@@ -61,6 +77,11 @@ protected:
     // Movement behavior 
     virtual void UpdateMovement(float dt, PlayerManager& playerManager);
     virtual void FindTarget(PlayerManager& playerManager);
+    
+    // Callbacks
+    DeathCallback onDeath;
+    DamageCallback onDamage;
+    PlayerCollisionCallback onPlayerCollision;
 };
 
 // Factory function to create enemies by type

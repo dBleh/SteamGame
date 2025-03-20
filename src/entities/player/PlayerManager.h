@@ -8,10 +8,10 @@
 #include <chrono>
 #include <thread>
 #include <SFML/Graphics.hpp>
-#include "../network/messages/MessageHandler.h"
+#include "../../network/messages/MessageHandler.h"
 #include "Player.h"
 #include "Bullet.h"
-#include "../utils/SteamHelpers.h"
+#include "../../utils/SteamHelpers.h"
 
 class Game;
 class EnemyManager;

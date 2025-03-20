@@ -1,12 +1,12 @@
 #include "PlayerManager.h"
-#include "../core/Game.h"
-#include "../network/messages/MessageHandler.h"
-#include "../network/messages/PlayerMessageHandler.h"
-#include "../network/messages/EnemyMessageHandler.h"
-#include "../network/messages/StateMessageHandler.h"
-#include "../network/messages/SystemMessageHandler.h"
+#include "../../core/Game.h"
+#include "../../network/messages/MessageHandler.h"
+#include "../../network/messages/PlayerMessageHandler.h"
+#include "../../network/messages/EnemyMessageHandler.h"
+#include "../../network/messages/StateMessageHandler.h"
+#include "../../network/messages/SystemMessageHandler.h"
 #include "ForceField.h"
-#include "../network/NetworkManager.h"
+#include "../../network/NetworkManager.h"
 
 #include <iostream>
 #include <algorithm>
@@ -50,6 +50,8 @@ void PlayerManager::UpdatePlayers(float dt, Game* game) {
         if (playerID == localPlayerID) {
             // For local player, use the InputManager for movement
             rp.player.Update(dt, game->GetInputManager());
+            sf::Vector2f playerPos = rp.player.GetPosition();
+            rp.nameText.setPosition(playerPos.x, playerPos.y - 20.f);
         } else {
             // For remote players, use interpolation
             UpdateRemotePlayerPosition(dt, playerID, rp);

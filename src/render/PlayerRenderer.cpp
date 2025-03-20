@@ -1,5 +1,5 @@
 #include "PlayerRenderer.h"
-#include "../entities/PlayerManager.h"
+#include "../entities/player/PlayerManager.h"
 
 PlayerRenderer::PlayerRenderer(PlayerManager* manager)
     : playerManager(manager)

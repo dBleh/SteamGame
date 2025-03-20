@@ -6,9 +6,9 @@
 #include <string>
 #include <unordered_map>
 #include "messages/MessageHandler.h"
-#include "../entities/Player.h"
+#include "../entities/player/Player.h"
 #include "../utils/SteamHelpers.h"
-#include "../entities/PlayerManager.h"
+#include "../entities/player/PlayerManager.h"
 
 class Game;
 class PlayingState;

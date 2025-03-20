@@ -1,8 +1,8 @@
 #ifndef STEAM_HELPERS_H
 #define STEAM_HELPERS_H
 
-#include "../entities/Player.h"
-#include "../entities/Bullet.h"
+#include "../entities/player/Player.h"
+#include "../entities/player/Bullet.h"
 #include <SFML/Graphics.hpp>
 #include <steam/steam_api.h>
 #include <cstdint>

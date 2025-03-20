@@ -4,10 +4,10 @@
 #include <SFML/Graphics.hpp>
 #include <iostream>
 #include <functional>
-#include "../utils/input/InputHandler.h"
-#include "../utils/input/InputManager.h" 
+#include "../../utils/input/InputHandler.h"
+#include "../../utils/input/InputManager.h" 
 #include "ForceField.h"
-#include "../utils/config/Config.h"
+#include "../../utils/config/Config.h"
 
 class ForceField;
 class Player {

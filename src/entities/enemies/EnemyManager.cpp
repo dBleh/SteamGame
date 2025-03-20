@@ -1,6 +1,6 @@
 #include "EnemyManager.h"
 #include "../../core/Game.h"
-#include "../PlayerManager.h"
+#include "../player/PlayerManager.h"
 #include "../../network/Host.h"
 #include "../../network/Client.h"
 #include "../../network/NetworkManager.h"
@@ -76,10 +76,33 @@ void EnemyManager::Render(sf::RenderWindow& window) {
     }
 }
 
+void EnemyManager::InitializeEnemyCallbacks(Enemy* enemy) {
+    if (!enemy) return;
+    
+    // Setup death callback
+    enemy->SetDeathCallback([this](int enemyId, const sf::Vector2f& position, const std::string& killerID) {
+        HandleEnemyDeath(enemyId, position, killerID);
+    });
+    
+    // Setup damage callback
+    enemy->SetDamageCallback([this](int enemyId, float amount, float actualDamage) {
+        HandleEnemyDamage(enemyId, amount, actualDamage);
+    });
+    
+    // Setup player collision callback
+    enemy->SetPlayerCollisionCallback([this](int enemyId, const std::string& playerID) {
+        HandlePlayerCollision(enemyId, playerID);
+    });
+}
+
 int EnemyManager::AddEnemy(EnemyType type, const sf::Vector2f& position, float health) {
     int id = nextEnemyId++;
     auto enemy = CreateEnemy(type, id, position);
     enemy->SetHealth(health);
+    
+    // Initialize callbacks for this enemy
+    InitializeEnemyCallbacks(enemy.get());
+    
     enemies[id] = std::move(enemy);
     
     // If we're the host, broadcast this new enemy to all clients
@@ -127,12 +150,18 @@ void EnemyManager::ClearEnemies() {
 }
 
 bool EnemyManager::InflictDamage(int enemyId, float damage) {
+    // Use the overloaded version with empty attacker ID
+    return InflictDamage(enemyId, damage, "");
+}
+
+bool EnemyManager::InflictDamage(int enemyId, float damage, const std::string& attackerID) {
     auto it = enemies.find(enemyId);
     if (it == enemies.end()) {
         return false;
     }
     
-    bool killed = it->second->TakeDamage(damage);
+    // Use the TakeDamage method that supports attacker tracking
+    bool killed = it->second->TakeDamage(damage, attackerID);
     
     // If we're the host, broadcast this damage to all clients
     CSteamID myID = SteamUser()->GetSteamID();
@@ -142,21 +171,64 @@ bool EnemyManager::InflictDamage(int enemyId, float damage) {
         std::string damageMsg = EnemyMessageHandler::FormatEnemyDamageMessage(
             enemyId, damage, it->second->GetHealth());
         game->GetNetworkManager().BroadcastMessage(damageMsg);
-        
-        if (killed) {
-            // Host removes the enemy
-            std::cout << "[HOST] Enemy " << enemyId << " killed by damage " << damage << "\n";
-            RemoveEnemy(enemyId);
-        }
-    } else {
-        // Client behavior - don't remove enemies on kill, let the host decide
-        if (killed) {
-            std::cout << "[CLIENT] Enemy " << enemyId << " appears to be killed by damage " 
-                      << damage << " - Waiting for host confirmation\n";
-        }
     }
     
     return killed;
+}
+
+void EnemyManager::HandleEnemyDeath(int enemyId, const sf::Vector2f& position, const std::string& killerID) {
+    std::cout << "[EnemyManager] Enemy " << enemyId << " died at position (" 
+              << position.x << "," << position.y << "), killed by " << killerID << std::endl;
+    
+    // If the enemy is killed by a player, give the player credit
+    if (!killerID.empty()) {
+        // Give credit to the killer
+        playerManager->IncrementPlayerKills(killerID);
+        
+        // If we're the host, broadcast this kill
+        CSteamID myID = SteamUser()->GetSteamID();
+        CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+        
+        if (myID == hostID) {
+            // Create kill message
+            std::ostringstream oss;
+            oss << "EK|" << enemyId << "|" << killerID;
+            game->GetNetworkManager().BroadcastMessage(oss.str());
+        }
+    }
+    
+    // Remove the enemy
+    RemoveEnemy(enemyId);
+}
+
+void EnemyManager::HandleEnemyDamage(int enemyId, float amount, float actualDamage) {
+    // Optional: Do something when an enemy takes damage
+    // This could include sound effects, visual effects, etc.
+}
+
+void EnemyManager::HandlePlayerCollision(int enemyId, const std::string& playerID) {
+    // Find the player
+    auto& players = playerManager->GetPlayers();
+    auto playerIt = players.find(playerID);
+    
+    if (playerIt != players.end() && !playerIt->second.player.IsDead()) {
+        // Apply damage to the player
+        playerIt->second.player.TakeDamage(TRIANGLE_DAMAGE);
+        
+        // If we're the host, broadcast this collision
+        CSteamID myID = SteamUser()->GetSteamID();
+        CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+        
+        if (myID == hostID) {
+            // Create player damage message
+            std::ostringstream oss;
+            oss << "PD|" << playerID << "|" << TRIANGLE_DAMAGE << "|" << enemyId;
+            game->GetNetworkManager().BroadcastMessage(oss.str());
+        }
+        
+        // Remove the enemy after collision
+        RemoveEnemy(enemyId);
+    }
 }
 
 void EnemyManager::CheckPlayerCollisions() {
@@ -169,40 +241,28 @@ void EnemyManager::CheckPlayerCollisions() {
             if (playerPair.second.player.IsDead()) continue;
             
             if (enemyIt->second->CheckPlayerCollision(playerPair.second.player.GetShape())) {
-                // Apply damage to player
-                playerPair.second.player.TakeDamage(TRIANGLE_DAMAGE);
-                
-                if (!playerPair.second.player.IsDead()) {
-                    // Directly call Die on the player - the player will handle death notifications
-                    playerPair.second.player.Die(playerPair.second.player.GetPosition());
-                }
-                
-                // Remove enemy after collision
+                // Trigger the player collision callback
                 int enemyId = enemyIt->first;
-                enemyIt = enemies.erase(enemyIt);
+                
+                // Call the collision handler directly
+                HandlePlayerCollision(enemyId, playerPair.first);
+                
+                // Enemy has been removed in the handler
                 enemyRemoved = true;
-                
-                // If we're the host, broadcast this removal
-                CSteamID myID = SteamUser()->GetSteamID();
-                CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
-                
-                if (myID == hostID) {
-                    std::ostringstream oss;
-                    oss << "ER|" << enemyId;
-                    game->GetNetworkManager().BroadcastMessage(oss.str());
-                    
-                    // Also inform about player damage
-                    oss.str("");
-                    oss << "PD|" << playerPair.first << "|" << TRIANGLE_DAMAGE << "|" << enemyId;
-                    game->GetNetworkManager().BroadcastMessage(oss.str());
-                }
-                
                 break;
             }
         }
         
         if (!enemyRemoved) {
             ++enemyIt;
+        } else {
+            // Enemy was removed, get a fresh iterator
+            enemyIt = enemies.begin();
+            
+            // If no more enemies, break out
+            if (enemies.empty()) {
+                break;
+            }
         }
     }
 }
@@ -293,6 +353,11 @@ void EnemyManager::RemoteAddEnemy(int enemyId, EnemyType type, const sf::Vector2
     // Create the enemy with the given ID
     auto enemy = CreateEnemy(type, enemyId, position);
     enemy->SetHealth(health);
+    
+    // Initialize callbacks for this enemy
+    InitializeEnemyCallbacks(enemy.get());
+    
+    // Store the enemy
     enemies[enemyId] = std::move(enemy);
     
     // Update nextEnemyId if necessary
@@ -327,19 +392,13 @@ void EnemyManager::StartNewWave(int enemyCount, EnemyType type) {
         playerPositions.push_back(sf::Vector2f(0.0f, 0.0f));
     }
     
-    // Spawn enemies
-    for (int i = 0; i < enemyCount; ++i) {
-        // Randomly select a player position to spawn relative to
-        sf::Vector2f targetPos = playerPositions[rand() % playerPositions.size()];
-        
-        // Get a spawn position away from the player
-        sf::Vector2f spawnPos = GetRandomSpawnPosition(targetPos, 
-                                                       TRIANGLE_MIN_SPAWN_DISTANCE, 
-                                                       TRIANGLE_MAX_SPAWN_DISTANCE);
-        
-        // Add the enemy
-        AddEnemy(type, spawnPos);
-    }
+    // Cache player positions for batch spawning
+    playerPositionsCache = playerPositions;
+    
+    // Set up wave parameters
+    remainingEnemiesInWave = enemyCount;
+    currentWaveEnemyType = type;
+    batchSpawnTimer = 0.0f;
     
     // Broadcast wave start if we're the host
     CSteamID myID = SteamUser()->GetSteamID();
@@ -541,7 +600,7 @@ void EnemyManager::ProcessBatchSpawning(float dt) {
 
 bool EnemyManager::IsWaveComplete() const {
     // A wave is complete when all enemies have been spawned and eliminated
-    return enemies.empty() && enemiesRemainingToSpawn == 0;
+    return enemies.empty() && remainingEnemiesInWave == 0;
 }
 
 void EnemyManager::UpdateSpawning(float dt) {

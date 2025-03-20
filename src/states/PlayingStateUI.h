@@ -6,7 +6,7 @@
 #include <unordered_map>
 #include "../core/GameState.h"
 #include "../core/Game.h"
-#include "../entities/PlayerManager.h"
+#include "../entities/player/PlayerManager.h"
 
 class HUD;
 class EnemyManager;

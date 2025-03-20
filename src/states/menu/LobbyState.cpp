@@ -5,7 +5,7 @@
 #include "../../network/Client.h"
 #include "../../network/Host.h"
 #include "../../render/PlayerRenderer.h"
-#include "../../entities/PlayerManager.h"
+#include "../../entities/player/PlayerManager.h"
 #include "../../network/messages/MessageHandler.h"
 #include "../../network/messages/PlayerMessageHandler.h"
 #include "../../network/messages/EnemyMessageHandler.h"

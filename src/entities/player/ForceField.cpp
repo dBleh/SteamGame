@@ -1,9 +1,9 @@
 #include "ForceField.h"
 #include "Player.h"
 #include "PlayerManager.h"
-#include "enemies/EnemyManager.h"
-#include "enemies/Enemy.h"
-#include "../core/Game.h"
+#include "../enemies/EnemyManager.h"
+#include "../enemies/Enemy.h"
+#include "../../core/Game.h"
 #include <cmath>
 #include <iostream>
 #include <random>

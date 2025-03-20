@@ -1,7 +1,7 @@
 #include "PlayingState.h"
 #include "../core/Game.h"
 #include "../utils/config/Config.h"
-#include "../entities/PlayerManager.h"
+#include "../entities/player/PlayerManager.h"
 #include "../entities/enemies/EnemyManager.h"
 #include "../entities/enemies/Enemy.h"
 #include "../network/Host.h"
@@ -470,7 +470,7 @@ void PlayingState::ProcessGameplayEvents(const sf::Event& event) {
     if(!showShop){
     if (event.type == sf::Event::MouseWheelScrolled && event.mouseWheelScroll.wheel == sf::Mouse::VerticalWheel) {
         // Negative delta means scroll down (zoom out), positive means scroll up (zoom in)
-        HandleZoom(-event.mouseWheelScroll.delta * ZOOM_SPEED);
+        HandleZoom(event.mouseWheelScroll.delta * ZOOM_SPEED);
         return;
     }
 }

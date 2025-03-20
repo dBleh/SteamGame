@@ -26,8 +26,14 @@ public:
     void RemoveEnemy(int id);
     void ClearEnemies();
     bool InflictDamage(int enemyId, float damage);
+    bool InflictDamage(int enemyId, float damage, const std::string& attackerID);
     bool HasEnemies() const { return !enemies.empty(); }
     size_t GetEnemyCount() const { return enemies.size(); }
+    
+    // Callback handlers
+    void HandleEnemyDeath(int enemyId, const sf::Vector2f& position, const std::string& killerID);
+    void HandleEnemyDamage(int enemyId, float amount, float actualDamage);
+    void HandlePlayerCollision(int enemyId, const std::string& playerID);
     
     // Collision detection
     void CheckPlayerCollisions();
@@ -48,12 +54,18 @@ public:
     bool IsWaveComplete() const;
     bool IsWaveSpawning() const { return remainingEnemiesInWave > 0; }
     void ProcessBatchSpawning(float dt);
+    
     // Performance optimization
     void OptimizeEnemyList();
 
     Enemy* FindEnemy(int id);
     void RemoveEnemiesNotInList(const std::vector<int>& validIds);
+    
 private:
+    // Helper methods
+    void InitializeEnemyCallbacks(Enemy* enemy);
+    
+    // Private member variables
     Game* game;
     PlayerManager* playerManager;
     std::unordered_map<int, std::unique_ptr<Enemy>> enemies;
@@ -65,7 +77,8 @@ private:
     float batchSpawnTimer = 0.0f;
     EnemyType currentWaveEnemyType = EnemyType::Triangle;
     std::vector<sf::Vector2f> playerPositionsCache;
-    int enemiesRemainingToSpawn  = 0;
+    int enemiesRemainingToSpawn = 0;
+    
     // Spawn and position helpers
     sf::Vector2f GetRandomSpawnPosition(const sf::Vector2f& targetPosition, float minDistance, float maxDistance);
     bool IsValidSpawnPosition(const sf::Vector2f& position);

@@ -6,7 +6,7 @@
 #include <string>
 #include <memory>
 #include "../core/Game.h"
-#include "../entities/PlayerManager.h"
+#include "../entities/player/PlayerManager.h"
 
 // Expanded enum to include ForceField upgrades
 enum class ShopItemType {
