@@ -220,7 +220,7 @@ sf::Vector2f Player::GetRespawnPosition() const {
     return respawnPosition;
 }
 
-void Player::InitializeForceField() {
+void Player::InitializeForceField(GameSettingsManager* settingsManager) {
     try {
         // If we already have a force field, don't recreate it
         if (forceField) {
@@ -229,19 +229,29 @@ void Player::InitializeForceField() {
             return;
         }
         
-        // Start with a smaller radius to make upgrades meaningful
+        // Start with a smaller radius based on settings or default
         float startingRadius = 100.0f;  // Smaller than the default 150.0f
         
-        // Create the force field with reduced initial power
-        forceField = std::make_unique<ForceField>(this, startingRadius);
+        // Get radius from settings if available
+        if (settingsManager) {
+            GameSetting* radiusSetting = settingsManager->GetSetting("forcefield_radius");
+            if (radiusSetting) {
+                startingRadius = radiusSetting->GetFloatValue() * 0.7f; // 70% of default size
+            }
+        }
+        
+        // Create the force field with settings
+        forceField = std::make_unique<ForceField>(this, startingRadius, settingsManager);
         
         // Set initial properties to be weaker than default
         if (forceField) {
-            // Reduced damage
-            forceField->SetDamage(15.0f);  // Lower than DEFAULT_DAMAGE of 25.0f
+            // Reduced damage (either from settings or default)
+            float baseDamage = ForceField::GetDefaultDamage(settingsManager);
+            forceField->SetDamage(baseDamage * 0.6f);  // 60% of the base damage
             
             // Slower firing rate
-            forceField->SetCooldown(0.5f);  // Higher than DEFAULT_COOLDOWN of 0.3f
+            float baseCooldown = ForceField::GetDefaultCooldown(settingsManager);
+            forceField->SetCooldown(baseCooldown * 1.5f);  // 50% slower than default
             
             // Disable chain lightning initially (player will unlock with upgrades)
             forceField->SetChainLightningEnabled(false);
@@ -318,6 +328,7 @@ void Player::ApplySettings(GameSettingsManager* settingsManager) {
         }
     }
     
+    
     // Bullet settings
     GameSetting* bulletDamageSetting = settingsManager->GetSetting("bullet_damage");
     if (bulletDamageSetting) {
@@ -351,7 +362,6 @@ void Player::ApplySettings(GameSettingsManager* settingsManager) {
     
     // Apply force field settings if it exists
     if (forceField && forceFieldEnabled) {
-        // If you have specific force field settings in the GameSettingsManager,
-        // you could apply them here or call a method on the force field
+        forceField->ApplySettings(settingsManager);
     }
 }

@@ -10,12 +10,12 @@
 #include <array>
 
 // Enhanced constructor with more visual flair and gameplay options
-ForceField::ForceField(Player* player, float radius)
+ForceField::ForceField(Player* player, float radius, GameSettingsManager* settingsManager)
     : player(player),
-      radius(radius),
+      radius(radius > 0.0f ? radius : GetDefaultRadius(settingsManager)),
       zapTimer(0.0f),
-      zapCooldown(DEFAULT_COOLDOWN),
-      zapDamage(DEFAULT_DAMAGE),
+      zapCooldown(GetDefaultCooldown(settingsManager)),
+      zapDamage(GetDefaultDamage(settingsManager)),
       targetEnemyId(-1),
       isZapping(false),
       zapEffectDuration(0.3f),
@@ -33,6 +33,25 @@ ForceField::ForceField(Player* player, float radius)
       fieldType(FieldType::STANDARD), 
       zapCallback(nullptr) {
     
+    // Apply settings if available
+    if (settingsManager) {
+        GameSetting* effectDurationSetting = settingsManager->GetSetting("forcefield_effect_duration");
+        if (effectDurationSetting) {
+            zapEffectDuration = effectDurationSetting->GetFloatValue();
+        }
+        
+        GameSetting* chainTargetsSetting = settingsManager->GetSetting("forcefield_chain_targets");
+        if (chainTargetsSetting) {
+            chainLightningTargets = chainTargetsSetting->GetIntValue();
+        }
+        
+        GameSetting* chainEnabledSetting = settingsManager->GetSetting("forcefield_chain_enabled");
+        if (chainEnabledSetting) {
+            chainLightningEnabled = (chainEnabledSetting->GetIntValue() == 1);
+        }
+    }
+    
+    // Rest of constructor remains the same...
     try {
         // Add more field types that can be selected
         const int randomFieldType = rand() % 100;
@@ -1305,4 +1324,79 @@ void ForceField::updateFieldColor() {
     
     // Also update the field base color for future reference
     fieldColor = newBaseColor;
+}
+
+
+float ForceField::GetDefaultRadius(GameSettingsManager* settingsManager) {
+    if (settingsManager) {
+        GameSetting* setting = settingsManager->GetSetting("forcefield_radius");
+        if (setting) {
+            return setting->GetFloatValue();
+        }
+    }
+    return 150.0f; // Default if settings not available
+}
+
+float ForceField::GetDefaultCooldown(GameSettingsManager* settingsManager) {
+    if (settingsManager) {
+        GameSetting* setting = settingsManager->GetSetting("forcefield_cooldown");
+        if (setting) {
+            return setting->GetFloatValue();
+        }
+    }
+    return 0.3f; // Default if settings not available
+}
+
+float ForceField::GetDefaultDamage(GameSettingsManager* settingsManager) {
+    if (settingsManager) {
+        GameSetting* setting = settingsManager->GetSetting("forcefield_damage");
+        if (setting) {
+            return setting->GetFloatValue();
+        }
+    }
+    return 25.0f; // Default if settings not available
+}
+
+void ForceField::ApplySettings(GameSettingsManager* settingsManager) {
+    if (!settingsManager) return;
+    
+    // Apply radius setting
+    GameSetting* radiusSetting = settingsManager->GetSetting("forcefield_radius");
+    if (radiusSetting) {
+        float newRadius = radiusSetting->GetFloatValue();
+        SetRadius(newRadius);
+    }
+    
+    // Apply damage setting
+    GameSetting* damageSetting = settingsManager->GetSetting("forcefield_damage");
+    if (damageSetting) {
+        zapDamage = damageSetting->GetFloatValue();
+    }
+    
+    // Apply cooldown setting
+    GameSetting* cooldownSetting = settingsManager->GetSetting("forcefield_cooldown");
+    if (cooldownSetting) {
+        zapCooldown = cooldownSetting->GetFloatValue();
+    }
+    
+    // Apply effect duration setting
+    GameSetting* effectDurationSetting = settingsManager->GetSetting("forcefield_effect_duration");
+    if (effectDurationSetting) {
+        zapEffectDuration = effectDurationSetting->GetFloatValue();
+    }
+    
+    // Apply chain targets setting
+    GameSetting* chainTargetsSetting = settingsManager->GetSetting("forcefield_chain_targets");
+    if (chainTargetsSetting) {
+        chainLightningTargets = chainTargetsSetting->GetIntValue();
+    }
+    
+    // Apply chain enabled setting
+    GameSetting* chainEnabledSetting = settingsManager->GetSetting("forcefield_chain_enabled");
+    if (chainEnabledSetting) {
+        chainLightningEnabled = (chainEnabledSetting->GetIntValue() == 1);
+    }
+    
+    // Update field color based on type and intensity
+    updateFieldColor();
 }

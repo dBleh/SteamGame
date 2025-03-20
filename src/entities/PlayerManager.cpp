@@ -673,6 +673,7 @@ void PlayerManager::RemoveBullets(const std::vector<size_t>& indicesToRemove) {
 
 // Updated implementation for PlayerManager::InitializeForceFields()
 void PlayerManager::InitializeForceFields() {
+    GameSettingsManager* settingsManager = game->GetGameSettingsManager();
     
     for (auto& pair : players) {
         std::string playerID = pair.first;
@@ -680,7 +681,7 @@ void PlayerManager::InitializeForceFields() {
         
         // Initialize force field if not already done
         if (!rp.player.HasForceField()) {
-            rp.player.InitializeForceField();
+            rp.player.InitializeForceField(settingsManager);
             
             // Always make sure the force field is enabled after initialization
             rp.player.EnableForceField(true);
@@ -693,6 +694,10 @@ void PlayerManager::InitializeForceFields() {
             });
             
         } else {
+            // Apply settings to existing force field
+            if (settingsManager && rp.player.GetForceField()) {
+                rp.player.GetForceField()->ApplySettings(settingsManager);
+            }
             
             // Make sure callback is set even for existing force fields
             rp.player.GetForceField()->SetZapCallback([this, playerID](int enemyId, float damage, bool killed) {
@@ -777,6 +782,8 @@ void PlayerManager::ApplySettings() {
     // Apply settings to all players and bullets
     ApplySettingsToAllPlayers();
     ApplySettingsToAllBullets();
+
+    InitializeForceFields();
 }
 
 void PlayerManager::ApplySettingsToAllPlayers() {

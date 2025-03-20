@@ -2,6 +2,8 @@
 #define FORCE_FIELD_H
 
 #include <SFML/Graphics.hpp>
+#include "../utils/config/Config.h"
+#include "../states/GameSettingsManager.h"
 #include <iostream>
 #include <functional>
 #include <memory>
@@ -50,17 +52,17 @@ struct Particle {
 class ForceField {
 public:
     // Constants
-    static constexpr float DEFAULT_RADIUS = 150.0f;
-    static constexpr float DEFAULT_COOLDOWN = .3f; // seconds between zaps
-    static constexpr float DEFAULT_DAMAGE = 25.0f;  // damage per zap
+    static float GetDefaultRadius(GameSettingsManager* settingsManager);
+    static float GetDefaultCooldown(GameSettingsManager* settingsManager);
+    static float GetDefaultDamage(GameSettingsManager* settingsManager); // damage per zap
     static constexpr int MAX_PARTICLES = 1000;       // Maximum particles for effects
     static constexpr int NUM_FIELD_RINGS = 3;       // Number of decorative rings
     static constexpr int NUM_ENERGY_ORBS = 12;       // Number of orbiting energy orbs
-    
+    void ApplySettings(GameSettingsManager* settingsManager);
     // Callback type for zap events
     using ZapCallback = std::function<void(int enemyId, float damage, bool killed)>;
     
-    ForceField(Player* player, float radius = DEFAULT_RADIUS);
+    ForceField(Player* player, float radius = DEFAULT_RADIUS, GameSettingsManager* settingsManager = nullptr);
     ~ForceField() = default;
     
     // Core functionality

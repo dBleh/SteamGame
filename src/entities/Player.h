@@ -73,7 +73,7 @@ public:
     void SetMaxHealth(float newMaxHealth) { maxHealth = newMaxHealth; }
     
     // Force field methods
-    void InitializeForceField();
+    void InitializeForceField(GameSettingsManager* settingsManager = nullptr);
     void EnableForceField(bool enable);
     bool HasForceField() { return forceFieldEnabled; }
     ForceField* GetForceField() const { return forceField.get(); }

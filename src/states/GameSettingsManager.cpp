@@ -225,6 +225,35 @@ void GameSettingsManager::InitializeDefaultSettings() {
                      GameSetting("Default Zoom", 
                                 DEFAULT_ZOOM, 
                                 0.5f, 2.0f, DEFAULT_ZOOM, 0.1f));
+                                settings.emplace("forcefield_radius", 
+                                    GameSetting("Force Field Radius", 
+                                               150.0f, // DEFAULT_RADIUS from ForceField.h
+                                               50.0f, 500.0f, 150.0f, 10.0f));
+                                               
+                   settings.emplace("forcefield_damage", 
+                                    GameSetting("Force Field Damage", 
+                                               25.0f, // DEFAULT_DAMAGE from ForceField.h
+                                               5.0f, 100.0f, 25.0f, 5.0f));
+                                               
+                   settings.emplace("forcefield_cooldown", 
+                                    GameSetting("Force Field Cooldown", 
+                                               0.3f, // DEFAULT_COOLDOWN from ForceField.h
+                                               0.1f, 1.0f, 0.3f, 0.05f));
+                                               
+                   settings.emplace("forcefield_effect_duration", 
+                                    GameSetting("Force Field Effect Duration", 
+                                               0.3f, // zapEffectDuration from ForceField.cpp
+                                               0.1f, 1.0f, 0.3f, 0.05f));
+                                               
+                   settings.emplace("forcefield_chain_targets", 
+                                    GameSetting("Force Field Chain Targets", 
+                                               3, // chainLightningTargets from ForceField.cpp
+                                               1, 10, 3));
+                                               
+                   settings.emplace("forcefield_chain_enabled", 
+                                    GameSetting("Force Field Chain Lightning", 
+                                               1, // chainLightningEnabled from ForceField.cpp (1 = true, 0 = false)
+                                               0, 1, 1));
 }
 
 GameSetting* GameSettingsManager::GetSetting(const std::string& name) {

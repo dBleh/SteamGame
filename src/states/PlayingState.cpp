@@ -158,7 +158,8 @@ PlayingState::PlayingState(Game* game)
 }
 void PlayingState::InitializeForceFields() {
     if (forceFieldsInitialized) return; // Only do this once
-    
+    GameSettingsManager* settingsManager = game->GetGameSettingsManager();
+
     std::cout << "[PlayingState] Now initializing force fields after settings are applied\n";
     
     CSteamID myID = SteamUser()->GetSteamID();
@@ -176,7 +177,7 @@ void PlayingState::InitializeForceFields() {
             // Initialize force field if not already done
             if (!rp.player.HasForceField()) {
                 try {
-                    rp.player.InitializeForceField();
+                    rp.player.InitializeForceField(settingsManager);
                     std::cout << "[PlayingState] Initialized force field for player " << rp.baseName << "\n";
                     
                     // Always explicitly enable the force field after initialization
@@ -185,8 +186,13 @@ void PlayingState::InitializeForceFields() {
                     std::cerr << "[ERROR] Exception initializing force field for " 
                              << rp.baseName << ": " << e.what() << std::endl;
                 }
+            } else if (settingsManager) {
+                // If force field exists, apply settings
+                ForceField* forceField = rp.player.GetForceField();
+                if (forceField) {
+                    forceField->ApplySettings(settingsManager);
+                }
             }
-            
             // Ensure the force field has a zap callback set
             try {
                 if (rp.player.HasForceField() && rp.player.GetForceField()) {
