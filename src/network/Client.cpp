@@ -388,6 +388,7 @@ void ClientNetwork::Update() {
         // ... (existing validation logic)
     }
 }
+
 void ClientNetwork::ProcessPlayerDeathMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed) {
     std::string normalizedID = parsed.steamID;
     try {
@@ -545,14 +546,17 @@ void ClientNetwork::ProcessForceFieldZapMessage(Game& game, ClientNetwork& clien
                     rp.player.InitializeForceField();
                 }
                 
-                // Get player and enemy positions
-                sf::Vector2f playerPos = rp.player.GetPosition() + sf::Vector2f(25.0f, 25.0f); // Assuming 50x50 player
-                sf::Vector2f enemyPos = enemy->GetPosition();
-                
-                // Create the zap effect
-                rp.player.GetForceField()->CreateZapEffect(playerPos, enemyPos);
-                rp.player.GetForceField()->SetIsZapping(true);
-                rp.player.GetForceField()->SetZapEffectTimer(0.3f); // Show effect for 0.3 seconds
+                ForceField* forceField = rp.player.GetForceField();
+                if (forceField) {
+                    // Get player and enemy positions
+                    sf::Vector2f playerPos = rp.player.GetPosition() + sf::Vector2f(25.0f, 25.0f); // Assuming 50x50 player
+                    sf::Vector2f enemyPos = enemy->GetPosition();
+                    
+                    // Create the zap effect
+                    forceField->CreateZapEffect(playerPos, enemyPos);
+                    forceField->SetIsZapping(true);
+                    forceField->SetZapEffectTimer(0.3f); // Show effect for 0.3 seconds
+                }
             }
         }
     }
@@ -691,11 +695,12 @@ void ClientNetwork::EnsureForceFieldInitialization() {
             }
             
             // Ensure the force field has a zap callback set
-            if (rp.player.HasForceField() && rp.player.GetForceField() && !rp.player.GetForceField()->HasZapCallback()) {
+            ForceField* forceField = rp.player.GetForceField();
+            if (forceField && !forceField->HasZapCallback()) {
                 std::cout << "[CLIENT] Setting zap callback for player " << rp.baseName << "\n";
                 
                 // Set the zap callback
-                rp.player.GetForceField()->SetZapCallback([this, playerID](int enemyId, float damage, bool killed) {
+                forceField->SetZapCallback([this, playerID](int enemyId, float damage, bool killed) {
                     // Handle zap event safely
                     if (playerManager) {
                         playerManager->HandleForceFieldZap(playerID, enemyId, damage, killed);

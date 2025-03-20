@@ -332,6 +332,11 @@ void ForceField::Render(sf::RenderWindow& window) {
 
 void ForceField::FindAndZapEnemy(PlayerManager& playerManager, EnemyManager& enemyManager) {
     // Get player position
+    if (!player) {
+        std::cerr << "[ERROR] ForceField::FindAndZapEnemy called with null player pointer" << std::endl;
+        return;
+    }
+    
     sf::Vector2f playerCenter = player->GetPosition() + sf::Vector2f(25.0f, 25.0f);
     
     // Find enemies within range
@@ -412,9 +417,13 @@ void ForceField::FindAndZapEnemy(PlayerManager& playerManager, EnemyManager& ene
             performChainLightning(enemyManager, playerCenter, closestEnemyId, closestEnemyPos, enemiesInRange);
         }
         
-        // Notify through callback
+        // Notify through callback if it exists
         if (zapCallback) {
-            zapCallback(closestEnemyId, effectiveDamage, killed);
+            try {
+                zapCallback(closestEnemyId, effectiveDamage, killed);
+            } catch (const std::exception& e) {
+                std::cerr << "[ERROR] Exception in zap callback: " << e.what() << std::endl;
+            }
         }
         
         // Show zap effect
