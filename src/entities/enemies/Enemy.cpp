@@ -1,5 +1,9 @@
 #include "Enemy.h"
 #include "../player/PlayerManager.h"
+#include "Enemy.h"
+#include "TriangleEnemy.h"
+#include "SquareEnemy.h"
+#include "PentagonEnemy.h"
 #include <cmath>
 #include <sstream>
 #include <iostream>
@@ -173,5 +177,19 @@ void Enemy::Deserialize(const std::string& data) {
     // Parse health
     if (std::getline(iss, token, '|')) {
         health = std::stof(token);
+    }
+}
+
+std::unique_ptr<Enemy> CreateEnemy(EnemyType type, int id, const sf::Vector2f& position) {
+    switch (type) {
+        case EnemyType::Triangle:
+            return std::unique_ptr<Enemy>(new TriangleEnemy(id, position));
+        case EnemyType::Square:
+            return std::unique_ptr<Enemy>(new SquareEnemy(id, position));
+        case EnemyType::Pentagon:
+            return std::unique_ptr<Enemy>(new PentagonEnemy(id, position));
+        default:
+            std::cerr << "Unknown enemy type: " << static_cast<int>(type) << std::endl;
+            return std::unique_ptr<Enemy>(new TriangleEnemy(id, position));
     }
 }

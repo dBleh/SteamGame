@@ -33,4 +33,16 @@
 #define TRIANGLE_FILL_COLOR sf::Color(255, 140, 0)
 #define TRIANGLE_OUTLINE_COLOR sf::Color(200, 80, 0)
 
+// Square enemy config
+#define SQUARE_SIZE 35.0f
+#define SQUARE_HEALTH 100.0f
+#define SQUARE_FILL_COLOR sf::Color(30, 144, 255)
+#define SQUARE_OUTLINE_COLOR sf::Color(0, 100, 200)
+
+// Pentagon enemy config
+#define PENTAGON_SIZE 40.0f
+#define PENTAGON_HEALTH 125.0f
+#define PENTAGON_FILL_COLOR sf::Color(128, 0, 128)
+#define PENTAGON_OUTLINE_COLOR sf::Color(75, 0, 75)
+
 #endif // ENEMY_CONFIG_H 

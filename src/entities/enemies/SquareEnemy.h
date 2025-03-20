@@ -1,5 +1,5 @@
-#ifndef TRIANGLE_ENEMY_H
-#define TRIANGLE_ENEMY_H
+#ifndef SQUARE_ENEMY_H
+#define SQUARE_ENEMY_H
 
 #include "Enemy.h"
 #include "../../utils/config/EnemyConfig.h"
@@ -8,34 +8,40 @@
 // Forward declarations
 class PlayerManager;
 
-class TriangleEnemy : public Enemy {
+class SquareEnemy : public Enemy {
 public:
-    TriangleEnemy(int id, const sf::Vector2f& position, float health = TRIANGLE_HEALTH, float speed = ENEMY_SPEED);
-    ~TriangleEnemy() override = default;
+    // Constructor with all parameters
+    SquareEnemy(int id, const sf::Vector2f& position, float health, float speed);
+    
+    // Constructor with default values for health and speed
+    SquareEnemy(int id, const sf::Vector2f& position);
+    
+    ~SquareEnemy() override = default;
+    
     void FindTarget(PlayerManager& playerManager) override;
     void Render(sf::RenderWindow& window) override;
-    EnemyType GetType() const override { return EnemyType::Triangle; }
+    EnemyType GetType() const override { return EnemyType::Square; }
     
     std::vector<sf::Vector2f> GetAxes() const;
+    
 protected:
     void UpdateVisualRepresentation() override;
     void UpdateMovement(float dt, PlayerManager& playerManager) override;
     
 private:
-    void InitializeAxes(); 
+    void InitializeAxes();
     sf::ConvexShape shape;
-    std::vector<sf::Vector2f> axes; 
+    std::vector<sf::Vector2f> axes;
     void UpdateAxes();
     float rotationAngle;
     float rotationSpeed;
     int currentAxisIndex;
-    float axisChangeTimer;
-    float axisChangeInterval; 
-    sf::Vector2f lastIntersectionPoint;
     float lineLength;
     bool playerIntersectsLine;
+    sf::Vector2f lastIntersectionPoint;
+    
     bool CheckPlayerIntersectsAnyLine(PlayerManager& playerManager);
     bool CheckLineIntersectsPlayer(const sf::Vector2f& lineStart, const sf::Vector2f& lineEnd, const sf::Vector2f& playerPos);
 };
 
-#endif // TRIANGLE_ENEMY_H
+#endif // SQUARE_ENEMY_H

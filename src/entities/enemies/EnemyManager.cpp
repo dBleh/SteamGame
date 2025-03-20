@@ -429,9 +429,50 @@ void EnemyManager::RemoteRemoveEnemy(int enemyId) {
     }
 }
 
+// Modify EnemyManager.cpp - StartNewWave method
+
 void EnemyManager::StartNewWave(int enemyCount, EnemyType type) {
     ClearEnemies();
     currentWave++;
+
+    // Determine enemy type based on the wave number
+    EnemyType waveType;
+    float waveHealth;
+    float minSpawnDistance;
+    float maxSpawnDistance;
+    
+    // Wave progression: Triangles -> Squares -> Pentagons
+    switch (currentWave % 3) {
+        case 1: // Wave 1, 4, 7, etc. - Triangles
+            waveType = EnemyType::Triangle;
+            waveHealth = TRIANGLE_HEALTH;
+            minSpawnDistance = TRIANGLE_MIN_SPAWN_DISTANCE;
+            maxSpawnDistance = TRIANGLE_MAX_SPAWN_DISTANCE;
+            break;
+            
+        case 2: // Wave 2, 5, 8, etc. - Squares
+            waveType = EnemyType::Square;
+            waveHealth = SQUARE_HEALTH;
+            minSpawnDistance = TRIANGLE_MIN_SPAWN_DISTANCE; // Reuse triangle distances
+            maxSpawnDistance = TRIANGLE_MAX_SPAWN_DISTANCE;
+            break;
+            
+        case 0: // Wave 3, 6, 9, etc. - Pentagons
+            waveType = EnemyType::Pentagon;
+            waveHealth = PENTAGON_HEALTH;
+            minSpawnDistance = TRIANGLE_MIN_SPAWN_DISTANCE; // Reuse triangle distances
+            maxSpawnDistance = TRIANGLE_MAX_SPAWN_DISTANCE;
+            break;
+            
+        default: // Fallback
+            waveType = EnemyType::Triangle;
+            waveHealth = TRIANGLE_HEALTH;
+            minSpawnDistance = TRIANGLE_MIN_SPAWN_DISTANCE;
+            maxSpawnDistance = TRIANGLE_MAX_SPAWN_DISTANCE;
+    }
+
+    // Override type parameter with our wave-based type
+    currentWaveEnemyType = waveType;
 
     auto& players = playerManager->GetPlayers();
     std::vector<sf::Vector2f> playerPositions;
@@ -446,15 +487,14 @@ void EnemyManager::StartNewWave(int enemyCount, EnemyType type) {
     playerPositionsCache = playerPositions;
 
     remainingEnemiesInWave = enemyCount;
-    currentWaveEnemyType = type;
     batchSpawnTimer = 0.0f;
 
     // Queue enemies for spawning instead of adding them immediately
     queuedEnemies.clear();
     for (int i = 0; i < enemyCount; ++i) {
         sf::Vector2f targetPos = playerPositionsCache[rand() % playerPositionsCache.size()];
-        sf::Vector2f spawnPos = GetRandomSpawnPosition(targetPos, TRIANGLE_MIN_SPAWN_DISTANCE, TRIANGLE_MAX_SPAWN_DISTANCE);
-        queuedEnemies.push_back({nextEnemyId++, type, spawnPos, TRIANGLE_HEALTH});
+        sf::Vector2f spawnPos = GetRandomSpawnPosition(targetPos, minSpawnDistance, maxSpawnDistance);
+        queuedEnemies.push_back({nextEnemyId++, waveType, spawnPos, waveHealth});
     }
 
     // If host, start broadcasting spawn chunks

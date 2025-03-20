@@ -109,3 +109,5 @@ add_executable(CubeShooter
 ErrorAction
 
 [LOBBY] Failed to create lobby. EResult=16
+
+add_executable(CubeShooter ${SOURCES})

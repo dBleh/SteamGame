@@ -1,39 +1,48 @@
-#include "TriangleEnemy.h"
+#include "SquareEnemy.h"
 #include "../player/PlayerManager.h"
 #include <cmath>
 #include <iostream>
 
-TriangleEnemy::TriangleEnemy(int id, const sf::Vector2f& position, float health, float speed)
-    : Enemy(id, position, health, speed), 
-      rotationAngle(0.0f), 
-      rotationSpeed(ENEMY_ROTATION_SPEED),
+SquareEnemy::SquareEnemy(int id, const sf::Vector2f& position, float health, float speed)
+    : Enemy(id, position, health, speed),
+      rotationAngle(0.0f),
+      rotationSpeed(ENEMY_ROTATION_SPEED * 0.8f), // Slightly slower rotation
       currentAxisIndex(0),
       playerIntersectsLine(false),
       lastIntersectionPoint(position),
-      lineLength(300.0f) {
+      lineLength(320.0f) {
     
-    // Setup the triangle shape
-    shape.setPointCount(3);
-    shape.setPoint(0, sf::Vector2f(0, -TRIANGLE_SIZE)); // Top
-    shape.setPoint(1, sf::Vector2f(-TRIANGLE_SIZE * 0.866f, TRIANGLE_SIZE * 0.5f)); // Bottom left
-    shape.setPoint(2, sf::Vector2f(TRIANGLE_SIZE * 0.866f, TRIANGLE_SIZE * 0.5f)); // Bottom right
+    // Setup the square shape
+    shape.setPointCount(4);
+    shape.setPoint(0, sf::Vector2f(-SQUARE_SIZE/2, -SQUARE_SIZE/2)); // Top-left
+    shape.setPoint(1, sf::Vector2f(SQUARE_SIZE/2, -SQUARE_SIZE/2));  // Top-right
+    shape.setPoint(2, sf::Vector2f(SQUARE_SIZE/2, SQUARE_SIZE/2));   // Bottom-right
+    shape.setPoint(3, sf::Vector2f(-SQUARE_SIZE/2, SQUARE_SIZE/2));  // Bottom-left
     
     // Set origin to center
     shape.setOrigin(0, 0);
     
     // Color
-    shape.setFillColor(TRIANGLE_FILL_COLOR); // Orange color
-    shape.setOutlineColor(TRIANGLE_OUTLINE_COLOR); // Darker orange outline
+    shape.setFillColor(SQUARE_FILL_COLOR); // Blue color
+    shape.setOutlineColor(SQUARE_OUTLINE_COLOR); // Darker blue outline
     shape.setOutlineThickness(ENEMY_OUTLINE_THICKNESS);
     
-    // Initialize axes (3 directions 120 degrees apart)
+    // Initialize axes (4 directions 90 degrees apart)
     InitializeAxes();
+    
     // Update position to match the starting position
     UpdateVisualRepresentation();
 }
-bool TriangleEnemy::CheckLineIntersectsPlayer(const sf::Vector2f& lineStart, const sf::Vector2f& lineEnd, const sf::Vector2f& playerPos) {
+
+// Constructor with default values for health and speed
+SquareEnemy::SquareEnemy(int id, const sf::Vector2f& position)
+    : SquareEnemy(id, position, SQUARE_HEALTH, ENEMY_SPEED) {
+    // This delegates to the full constructor - no additional code needed
+}
+
+bool SquareEnemy::CheckLineIntersectsPlayer(const sf::Vector2f& lineStart, const sf::Vector2f& lineEnd, const sf::Vector2f& playerPos) {
     // Player radius (approximate for collision)
-    const float playerRadius = 15.0f; 
+    const float playerRadius = 15.0f;
     
     // Calculate the closest point on the line to the player
     sf::Vector2f lineDir = lineEnd - lineStart;
@@ -55,7 +64,8 @@ bool TriangleEnemy::CheckLineIntersectsPlayer(const sf::Vector2f& lineStart, con
     
     return distanceSquared < (playerRadius * playerRadius);
 }
-void TriangleEnemy::FindTarget(PlayerManager& playerManager) {
+
+void SquareEnemy::FindTarget(PlayerManager& playerManager) {
     // First check if any player intersects with our lines
     playerIntersectsLine = CheckPlayerIntersectsAnyLine(playerManager);
     
@@ -65,7 +75,8 @@ void TriangleEnemy::FindTarget(PlayerManager& playerManager) {
         Enemy::FindTarget(playerManager);
     }
 }
-bool TriangleEnemy::CheckPlayerIntersectsAnyLine(PlayerManager& playerManager) {
+
+bool SquareEnemy::CheckPlayerIntersectsAnyLine(PlayerManager& playerManager) {
     const auto& players = playerManager.GetPlayers();
     
     for (const auto& pair : players) {
@@ -93,44 +104,44 @@ bool TriangleEnemy::CheckPlayerIntersectsAnyLine(PlayerManager& playerManager) {
     
     return false;
 }
-void TriangleEnemy::InitializeAxes() {
+
+void SquareEnemy::InitializeAxes() {
     axes.clear();
     
-    // Create three fixed axes at 120 degrees apart
+    // Create four fixed axes at 90 degrees apart
     // Up
     axes.push_back(sf::Vector2f(0.0f, -1.0f));
-    // Bottom-right (60 degrees)
-    axes.push_back(sf::Vector2f(0.866f, 0.5f));
-    // Bottom-left (120 degrees)
-    axes.push_back(sf::Vector2f(-0.866f, 0.5f));
+    // Right
+    axes.push_back(sf::Vector2f(1.0f, 0.0f));
+    // Down
+    axes.push_back(sf::Vector2f(0.0f, 1.0f));
+    // Left
+    axes.push_back(sf::Vector2f(-1.0f, 0.0f));
 }
 
-void TriangleEnemy::UpdateAxes() {
+void SquareEnemy::UpdateAxes() {
     axes.clear();
     
-    // Create three axes at 120 degrees apart
-    for (int i = 0; i < 3; i++) {
-        float angle = (rotationAngle + i * 120.0f) * 3.14159f / 180.0f; // Convert to radians
+    // Create four axes at 90 degrees apart
+    for (int i = 0; i < 4; i++) {
+        float angle = (rotationAngle + i * 90.0f) * 3.14159f / 180.0f; // Convert to radians
         axes.push_back(sf::Vector2f(std::cos(angle), std::sin(angle)));
     }
 }
 
-std::vector<sf::Vector2f> TriangleEnemy::GetAxes() const {
+std::vector<sf::Vector2f> SquareEnemy::GetAxes() const {
     return axes;
 }
 
-void TriangleEnemy::UpdateVisualRepresentation() {
+void SquareEnemy::UpdateVisualRepresentation() {
     // Set position
     shape.setPosition(position);
     
-    // Update rotation to face the target if we have one
-    if (hasTarget && (velocity.x != 0 || velocity.y != 0)) {
-        float angle = std::atan2(velocity.y, velocity.x) * 180 / 3.14159f;
-        shape.setRotation(angle + TRIANGLE_ROTATION_OFFSET); // +90 to point the triangle in the movement direction
-    }
+    // Update rotation to match the rotation angle
+    shape.setRotation(rotationAngle);
 }
 
-void TriangleEnemy::UpdateMovement(float dt, PlayerManager& playerManager) {
+void SquareEnemy::UpdateMovement(float dt, PlayerManager& playerManager) {
     if (!hasTarget) return;
     
     // If player is currently intersecting any line
@@ -164,7 +175,7 @@ void TriangleEnemy::UpdateMovement(float dt, PlayerManager& playerManager) {
             float bestDotProduct = -999999.0f;
             int bestAxisIndex = 0;
             
-            for (int i = 0; i < 3; i++) {
+            for (int i = 0; i < 4; i++) {
                 // Normalize direction
                 sf::Vector2f normalizedDir = direction / distance;
                 
@@ -187,7 +198,7 @@ void TriangleEnemy::UpdateMovement(float dt, PlayerManager& playerManager) {
             }
             
             // Apply velocity, but move slower when returning to last intersection
-            velocity = moveAxis * (speed * 0.6f);
+            velocity = moveAxis * (speed * 0.7f);
             position += velocity * dt;
         } else {
             // We've reached the last intersection point, stop moving
@@ -200,26 +211,15 @@ void TriangleEnemy::UpdateMovement(float dt, PlayerManager& playerManager) {
     if (rotationAngle > 360.0f) {
         rotationAngle -= 360.0f;
     }
+    
+    // Update axes based on rotation
+    UpdateAxes();
 }
 
-void TriangleEnemy::Render(sf::RenderWindow& window) {
+void SquareEnemy::Render(sf::RenderWindow& window) {
     if (!IsDead()) {
-        // Draw the triangle
+        // Draw the square
         window.draw(shape);
-        
-        // Draw the three axis lines
-        /*for (int i = 0; i < axes.size(); i++) {
-            const auto& axis = axes[i];
-            
-            // Line color: green if player is on this line, yellow otherwise
-            sf::Color lineColor = (playerIntersectsLine && i == currentAxisIndex) ? sf::Color::Green : sf::Color::Yellow;
-            
-            sf::Vertex line[] = {
-                sf::Vertex(position, lineColor),
-                sf::Vertex(position + axis * lineLength, lineColor)
-            };
-            window.draw(line, 2, sf::Lines);
-        }*/
         
         // Draw the last intersection point if we're not currently intersecting
         if (!playerIntersectsLine) {
@@ -231,4 +231,3 @@ void TriangleEnemy::Render(sf::RenderWindow& window) {
         }
     }
 }
-

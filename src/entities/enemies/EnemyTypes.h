@@ -7,6 +7,7 @@ enum class EnemyType {
     // Future enemy types...
     Circle,
     Square,
+    Pentagon,
     Boss
 };
 
