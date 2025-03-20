@@ -89,29 +89,45 @@ void ClientNetwork::ProcessForceFieldUpdateMessage(Game& game, ClientNetwork& cl
     if (it != players.end()) {
         RemotePlayer& rp = it->second;
         
-        // Make sure the player has a force field
-        if (!rp.player.HasForceField()) {
-            rp.player.InitializeForceField();
-        }
-        
-        ForceField* forceField = rp.player.GetForceField();
-        if (forceField) {
-            // Update the force field parameters
-            forceField->SetRadius(parsed.ffRadius);
-            forceField->SetDamage(parsed.ffDamage);
-            forceField->SetCooldown(parsed.ffCooldown);
-            forceField->SetChainLightningTargets(parsed.ffChainTargets);
-            forceField->SetChainLightningEnabled(parsed.ffChainEnabled);
-            forceField->SetPowerLevel(parsed.ffPowerLevel);
-            forceField->SetFieldType(static_cast<FieldType>(parsed.ffType));
+        try {
+            // Make sure the player has a force field
+            if (!rp.player.HasForceField()) {
+                rp.player.InitializeForceField();
+            }
             
-            std::cout << "[CLIENT] Updated force field for player " << normalizedPlayerID 
-                      << " - Radius: " << parsed.ffRadius
-                      << ", Damage: " << parsed.ffDamage
-                      << ", Type: " << parsed.ffType << "\n";
-            
-            // Make sure the force field is enabled for this player
-            rp.player.EnableForceField(true);
+            ForceField* forceField = rp.player.GetForceField();
+            if (forceField) {
+                // Update the force field parameters
+                forceField->SetRadius(parsed.ffRadius);
+                forceField->SetDamage(parsed.ffDamage);
+                forceField->SetCooldown(parsed.ffCooldown);
+                forceField->SetChainLightningTargets(parsed.ffChainTargets);
+                forceField->SetChainLightningEnabled(parsed.ffChainEnabled);
+                forceField->SetPowerLevel(parsed.ffPowerLevel);
+                forceField->SetFieldType(static_cast<FieldType>(parsed.ffType));
+                
+                // Ensure zap callback is set
+                if (!forceField->HasZapCallback()) {
+                    std::string playerID = normalizedPlayerID;
+                    forceField->SetZapCallback([this, playerID](int enemyId, float damage, bool killed) {
+                        // Handle zap event
+                        if (playerManager) {
+                            playerManager->HandleForceFieldZap(playerID, enemyId, damage, killed);
+                        }
+                    });
+                    std::cout << "[CLIENT] Set zap callback for player " << rp.baseName << " in force field update\n";
+                }
+                
+                std::cout << "[CLIENT] Updated force field for player " << normalizedPlayerID 
+                        << " - Radius: " << parsed.ffRadius
+                        << ", Damage: " << parsed.ffDamage
+                        << ", Type: " << parsed.ffType << "\n";
+                
+                // Make sure the force field is enabled for this player
+                rp.player.EnableForceField(true);
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "[CLIENT] Exception in force field update: " << e.what() << std::endl;
         }
     }
 }
@@ -353,6 +369,17 @@ void ClientNetwork::Update() {
                 m_settingsRequestTimer = 30.0f;
             }
         }
+    }
+    
+    // Periodically check force field initialization (every 3 seconds)
+    static float forceFieldCheckTimer = 0.0f;
+    forceFieldCheckTimer += elapsed;
+    if (forceFieldCheckTimer >= 3.0f) {
+        // Only check if we're in the playing state and have received settings
+        if (game->GetCurrentState() == GameState::Playing && m_initialSettingsReceived) {
+            EnsureForceFieldInitialization();
+        }
+        forceFieldCheckTimer = 0.0f;
     }
     
     // Handle validation timer
@@ -619,17 +646,65 @@ void ClientNetwork::ProcessSettingsUpdateMessage(Game& game, ClientNetwork& clie
         lastSettingsFingerprint = currentFingerprint;
         isProcessingSettings = true;
         
-        // Deserialize settings from the message
-        settingsManager->DeserializeSettings(parsed.chatMessage);
+        try {
+            // Deserialize settings from the message
+            settingsManager->DeserializeSettings(parsed.chatMessage);
+            
+            // Apply the settings ONCE
+            ApplySettings();
+            
+            // IMPORTANT: Mark that we've received the initial settings
+            // This should prevent further automatic requests
+            m_initialSettingsReceived = true;
+            
+            // Now that we have settings, initialize force fields
+            EnsureForceFieldInitialization();
+            
+            std::cout << "[CLIENT] Successfully applied settings from host" << std::endl;
+        } catch (const std::exception& e) {
+            std::cerr << "[CLIENT] Error applying settings: " << e.what() << std::endl;
+        }
         
-        // Apply the settings ONCE
-        ApplySettings();
-        
-        // IMPORTANT: Mark that we've received the initial settings
-        // This should prevent further automatic requests
-        m_initialSettingsReceived = true;
-        
-        std::cout << "[CLIENT] Successfully applied settings from host" << std::endl;
         isProcessingSettings = false;
+    }
+}
+
+void ClientNetwork::EnsureForceFieldInitialization() {
+    // Only initialize if we have received the initial settings
+    if (!m_initialSettingsReceived) {
+        std::cout << "[CLIENT] Skipping force field initialization until settings are received\n";
+        return;
+    }
+
+    std::cout << "[CLIENT] Ensuring all players have properly initialized force fields\n";
+    auto& players = playerManager->GetPlayers();
+    
+    for (auto& pair : players) {
+        RemotePlayer& rp = pair.second;
+        std::string playerID = pair.first;
+        
+        try {
+            // Initialize force field if it doesn't exist
+            if (!rp.player.HasForceField()) {
+                std::cout << "[CLIENT] Initializing force field for player " << rp.baseName << "\n";
+                rp.player.InitializeForceField();
+            }
+            
+            // Ensure the force field has a zap callback set
+            if (rp.player.HasForceField() && rp.player.GetForceField() && !rp.player.GetForceField()->HasZapCallback()) {
+                std::cout << "[CLIENT] Setting zap callback for player " << rp.baseName << "\n";
+                
+                // Set the zap callback
+                rp.player.GetForceField()->SetZapCallback([this, playerID](int enemyId, float damage, bool killed) {
+                    // Handle zap event safely
+                    if (playerManager) {
+                        playerManager->HandleForceFieldZap(playerID, enemyId, damage, killed);
+                    }
+                });
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "[CLIENT] Exception in force field initialization for player " 
+                    << rp.baseName << ": " << e.what() << std::endl;
+        }
     }
 }

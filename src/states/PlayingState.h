@@ -38,7 +38,7 @@ public:
     // Settings management
     void OnSettingsChanged();
     void ApplyAllSettings();
-
+    void UpdateForceFields(float dt);
 private:
     // Static shop instance
     static Shop* shopInstance;

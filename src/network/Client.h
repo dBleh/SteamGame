@@ -49,6 +49,7 @@ public:
     void ProcessForceFieldZapMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed);
     void ProcessForceFieldUpdateMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed);
     void ProcessKillMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed);
+    void EnsureForceFieldInitialization();
 private:
     Game* game;
     std::chrono::steady_clock::time_point lastSendTime;
