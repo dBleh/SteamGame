@@ -16,7 +16,6 @@
 #include <iostream>
 
 class Game;
-class GameSettingsUI;  // Add forward declaration
 class PlayerRenderer;
 class LobbyState : public State {
 public:
@@ -25,7 +24,7 @@ public:
     bool IsFullyLoaded();
     void Update(float dt) override;
     void Render() override;
-    void RefreshSettingsUI();
+    
     void ProcessEvent(const sf::Event& event) override;
     
 private:
@@ -58,8 +57,7 @@ private:
     Grid grid;
     bool showGrid;
     
-    // Game settings
-    std::unique_ptr<GameSettingsUI> settingsUI;
+  
     bool showSettings = false;
 };
 

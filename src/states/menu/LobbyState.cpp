@@ -11,8 +11,7 @@
 #include "../../network/messages/EnemyMessageHandler.h"
 #include "../../network/messages/StateMessageHandler.h"
 #include "../../network/messages/SystemMessageHandler.h" // Updated import
-#include "../GameSettingsManager.h"
-#include "../../ui/GameSettingsUI.h"
+
 
 LobbyState::LobbyState(Game* game)
     : State(game), 
@@ -122,8 +121,6 @@ LobbyState::LobbyState(Game* game)
                              "", "");
     game->GetHUD().updateBaseColor("returnMain", sf::Color::Black);
     
-    // Initialize the settings UI
-    settingsUI = std::make_unique<GameSettingsUI>(game, game->GetGameSettingsManager());
     
     // ===== PLAYER SETUP =====
     CSteamID myID = SteamUser()->GetSteamID();
@@ -233,19 +230,13 @@ void LobbyState::Render() {
     game->GetWindow().setView(game->GetUIView());
     game->GetHUD().render(game->GetWindow(), game->GetUIView(), GameState::Lobby);
     
-    // Render settings UI on top of everything else using UI view
-    if (settingsUI && showSettings) {
-        settingsUI->Render(game->GetWindow());
-    }
+    
     
     game->GetWindow().display();
 }
 
 void LobbyState::ProcessEvents(const sf::Event& event) {
-    if (settingsUI && settingsUI->IsVisible()) {
-        settingsUI->ProcessEvent(event);
-        return; // Don't process any other inputs when settings UI is open
-    }
+    
     InputManager& inputManager = game->GetInputManager();
     
     if (event.type == sf::Event::KeyPressed) {
@@ -340,15 +331,7 @@ void LobbyState::ProcessEvents(const sf::Event& event) {
                             // Return to main menu
                             game->SetCurrentState(GameState::MainMenu);
                         }
-                        else if (id == "settingsButton") {
-                            // Toggle settings panel
-                            showSettings = !showSettings;
-                            if (showSettings) {
-                                settingsUI->Show();
-                            } else {
-                                settingsUI->Hide();
-                            }
-                        }
+                       
                         
                         // We found a UI element that was clicked, so don't process as a game click
                         return;
@@ -395,15 +378,7 @@ void LobbyState::ProcessEvents(const sf::Event& event) {
              event.key.code != sf::Keyboard::Unknown) {
         mouseHeld = false;
     }
-    else if (event.key.code == sf::Keyboard::S) {
-        // Toggle settings panel
-        showSettings = !showSettings;
-        if (showSettings) {
-            settingsUI->Show();
-        } else {
-            settingsUI->Hide();
-        }
-    }
+    
 }
 LobbyState::~LobbyState() {
     // Make sure to destroy in the correct order to avoid crashes
@@ -438,9 +413,7 @@ void LobbyState::Update(float dt) {
         // Update PlayerManager (includes local player movement)
         // Ensure we're passing the Game pointer for InputManager access
         playerManager->Update(game);
-        if (settingsUI) {
-            settingsUI->Update(dt);
-        }
+       
         if (clientNetwork) clientNetwork->Update();
         if (hostNetwork) hostNetwork->Update();
         
@@ -611,8 +584,3 @@ void LobbyState::AttemptShoot(int mouseX, int mouseY) {
     }
 }
 
-void LobbyState::RefreshSettingsUI() {
-    if (settingsUI) {
-        settingsUI->RefreshUI();
-    }
-}

@@ -7,7 +7,6 @@
 #include "../utils/input/InputManager.h" 
 #include "ForceField.h"
 #include "../utils/config/Config.h"
-#include "../states/GameSettingsManager.h"
 
 class ForceField;
 class Player {
@@ -73,7 +72,7 @@ public:
     void SetMaxHealth(float newMaxHealth) { maxHealth = newMaxHealth; }
     
     // Force field methods
-    void InitializeForceField(GameSettingsManager* settingsManager = nullptr);
+    void InitializeForceField();
     void EnableForceField(bool enable);
     bool HasForceField() { return forceFieldEnabled; }
     ForceField* GetForceField() const { return forceField.get(); }
@@ -83,7 +82,6 @@ public:
     void SetBulletDamage(float newDamage) { bulletDamage = newDamage; }
     
     // Settings management
-    void ApplySettings(GameSettingsManager* settingsManager);
     
 private:
     // Visual representation

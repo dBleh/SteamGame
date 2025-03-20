@@ -14,7 +14,6 @@
 
 class State;
 class NetworkManager;
-class GameSettingsManager; 
 
 class Game {
 public:
@@ -45,7 +44,6 @@ public:
     float GetDeltaTime() const { return deltaTime; }
         
     InputManager& GetInputManager() { return inputManager; }
-    GameSettingsManager* GetGameSettingsManager() { return gameSettingsManager.get(); }
     bool IsInLobby() const { return inLobby; }
     void SetInLobby(bool status) { 
         inLobby = status; 
@@ -68,7 +66,7 @@ private:
     std::unique_ptr<State> state;
     std::unique_ptr<NetworkManager> networkManager;
     std::shared_ptr<SettingsManager> settingsManager;
-    std::unique_ptr<GameSettingsManager> gameSettingsManager;
+  
     std::shared_ptr<InputHandler> inputHandler;   
     InputManager inputManager;
     GameState currentState{GameState::MainMenu};

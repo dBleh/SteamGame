@@ -12,7 +12,6 @@
 #include "Player.h"
 #include "Bullet.h"
 #include "../utils/SteamHelpers.h"
-#include "../states/GameSettingsManager.h"
 
 class Game;
 
