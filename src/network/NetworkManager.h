@@ -52,7 +52,7 @@ private:
     bool lobbyListUpdated{false};
     std::function<void(const std::string&, CSteamID)> messageHandler;
     CSteamID m_currentLobbyID;
-
+    bool SendMessageDirect(CSteamID target, const std::string& msg);
     // STEAM_CALLBACKs
     STEAM_CALLBACK(NetworkManager, OnLobbyCreated, LobbyCreated_t, m_cbLobbyCreated);
     STEAM_CALLBACK(NetworkManager, OnGameLobbyJoinRequested, GameLobbyJoinRequested_t, m_cbGameLobbyJoinRequested);

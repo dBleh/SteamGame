@@ -86,15 +86,37 @@ void NetworkManager::ReceiveMessages() {
 }
 
 bool NetworkManager::SendMessage(CSteamID target, const std::string& msg) {
+    // Add packet size check
+    if (msg.size() > MAX_PACKET_SIZE) {
+        std::cerr << "[NETWORK] Message too large for direct send: " msg.size() << "\n";
+        
+        // Extract message type and create chunks
+        std::string messageType = msg.substr(0, msg.find('|'));
+        std::vector<std::string> chunks = SystemMessageHandler::ChunkMessage(
+            msg.substr(msg.find('|') + 1), messageType);
+        
+        // Send each chunk using the direct method
+        bool allSuccess = true;
+        for (const auto& chunk : chunks) {
+            if (!SendMessageDirect(target, chunk)) {
+                allSuccess = false;
+            }
+        }
+        return allSuccess;
+    }
+    
+    // For smaller messages, use the direct method
+    return SendMessageDirect(target, msg);
+}
+bool NetworkManager::SendMessageDirect(CSteamID target, const std::string& msg) {
     if (!m_networking || !SteamUser()) return false;
     uint32 msgSize = static_cast<uint32>(msg.size() + 1);
     bool success = m_networking->SendP2PPacket(target, msg.c_str(), msgSize, k_EP2PSendReliable);
     if (!success) {
-        std::cout << "[NETWORK] Failed to send message to " << target.ConvertToUint64() << ": " << msg << "\n";
+        std::cout << "[NETWORK] Failed to send message to " << target.ConvertToUint64() << "\n";
     }
     return success;
 }
-
 void NetworkManager::SendConnectionMessageOnJoin(CSteamID hostID) {
     CSteamID myID = SteamUser()->GetSteamID();
     std::string steamIDStr = std::to_string(myID.ConvertToUint64());

@@ -322,12 +322,22 @@ void EnemyManager::SyncEnemyPositions() {
         }
     }
     
-    // Send the message with updated format including velocities
-    if (!enemyIds.empty()) {
-        std::string epMessage = EnemyMessageHandler::FormatEnemyPositionUpdateMessage(
-            enemyIds, positions, velocities);
-        game->GetNetworkManager().BroadcastMessage(epMessage);
+    std::string epMessage = EnemyMessageHandler::FormatEnemyPositionUpdateMessage(enemyIds, positions, velocities);
+    
+    // Check if message is too large
+    if (epMessage.length() > MAX_PACKET_SIZE) {
+        std::cout << "[EnemyManager] Chunk too large: " << epMessage.length() << std::endl;
+        // Either chunk the message or reduce the number of updates
+        int maxEnemiesToUpdate = std::max(5, MAX_ENEMIES_PER_UPDATE / 2);
+        // Recreate with fewer enemies
+        enemyIds.resize(maxEnemiesToUpdate);
+        positions.resize(maxEnemiesToUpdate);
+        velocities.resize(maxEnemiesToUpdate);
+        
+        epMessage = EnemyMessageHandler::FormatEnemyPositionUpdateMessage(enemyIds, positions, velocities);
     }
+    
+    game->GetNetworkManager().BroadcastMessage(epMessage);
 }
 
 void EnemyManager::HandleSyncFullState(bool forceSend) {
