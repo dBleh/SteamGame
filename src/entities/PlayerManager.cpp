@@ -703,9 +703,15 @@ void PlayerManager::InitializeForceFields() {
     }
 }
 void PlayerManager::HandleForceFieldZap(const std::string& playerID, int enemyId, float damage, bool killed) {
+    // Validate inputs to prevent crashes
+    if (playerID.empty() || enemyId < 0) {
+        std::cerr << "[PM] Invalid parameters in HandleForceFieldZap" << std::endl;
+        return;
+    }
+    
     // Only update rewards for hits, not kills (as those are handled by HandleKill)
     if (!killed) {
-        // Reward for hits (not kills)
+        // Reward for hits (not kills) - with safe lookup
         auto it = players.find(playerID);
         if (it != players.end()) {
             it->second.money += 10; // 10 money for hitting an enemy with force field
@@ -713,24 +719,32 @@ void PlayerManager::HandleForceFieldZap(const std::string& playerID, int enemyId
     } else {
         // If the enemy was killed, use the centralized kill handling
         // This ensures consistent kill tracking for all kill types
-        HandleKill(playerID, enemyId);
+        try {
+            HandleKill(playerID, enemyId);
+        } catch (const std::exception& e) {
+            std::cerr << "[PM] Exception in HandleKill: " << e.what() << std::endl;
+        }
     }
     
     // If this is the local player, send a network message for the zap effect
     if (playerID == localPlayerID) {
-        // Format and send force field zap message
-        std::string zapMsg = PlayerMessageHandler::FormatForceFieldZapMessage(playerID, enemyId, damage);
-        
-        // Check if we're the host
-        CSteamID localSteamID = SteamUser()->GetSteamID();
-        CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
-        
-        if (localSteamID == hostID) {
-            // We are the host, broadcast to all clients
-            game->GetNetworkManager().BroadcastMessage(zapMsg);
-        } else {
-            // We are a client, send to host
-            game->GetNetworkManager().SendMessage(hostID, zapMsg);
+        try {
+            // Format and send force field zap message
+            std::string zapMsg = PlayerMessageHandler::FormatForceFieldZapMessage(playerID, enemyId, damage);
+            
+            // Check if we're the host
+            CSteamID localSteamID = SteamUser()->GetSteamID();
+            CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+            
+            if (localSteamID == hostID) {
+                // We are the host, broadcast to all clients
+                game->GetNetworkManager().BroadcastMessage(zapMsg);
+            } else {
+                // We are a client, send to host
+                game->GetNetworkManager().SendMessage(hostID, zapMsg);
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "[PM] Exception in network message: " << e.what() << std::endl;
         }
     }
 }

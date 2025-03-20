@@ -282,95 +282,108 @@ void ForceField::FindAndZapEnemy(PlayerManager& playerManager, EnemyManager& ene
     int closestEnemyId = -1;
     sf::Vector2f closestEnemyPos;
     
-    // Search for enemies using random sampling (more efficient)
-    int samplingPoints = 200 + powerLevel * 50; // More sampling at higher power levels
-    for (int i = 0; i < samplingPoints; i++) {
-        // Generate random point within field radius
-        float angle = (float)(rand() % 360) * 3.14159f / 180.0f;
-        float distance = (float)(rand() % (int)effectiveRadius);
-        
-        sf::Vector2f checkPos = playerCenter + sf::Vector2f(
-            cosf(angle) * distance,
-            sinf(angle) * distance
-        );
-        
-        int enemyId = -1;
-        if (enemyManager.CheckBulletCollision(checkPos, 10.0f, enemyId)) {
-            if (enemyId != -1) {
-                Enemy* enemy = enemyManager.FindEnemy(enemyId);
-                if (enemy && !enemy->IsDead()) {
-                    sf::Vector2f enemyPos = enemy->GetPosition();
-                    float distSquared = std::pow(enemyPos.x - playerCenter.x, 2) + 
-                                      std::pow(enemyPos.y - playerCenter.y, 2);
-                    
-                    // Store all enemies in range for chain lightning
-                    if (distSquared < effectiveRadius * effectiveRadius) {
-                        // Check if we already found this enemy
-                        bool alreadyFound = false;
-                        for (const auto& e : enemiesInRange) {
-                            if (e.first == enemyId) {
-                                alreadyFound = true;
-                                break;
+    try {
+        // Search for enemies using random sampling (more efficient)
+        int samplingPoints = 200 + powerLevel * 50; // More sampling at higher power levels
+        for (int i = 0; i < samplingPoints; i++) {
+            // Generate random point within field radius
+            float angle = (float)(rand() % 360) * 3.14159f / 180.0f;
+            float distance = (float)(rand() % (int)effectiveRadius);
+            
+            sf::Vector2f checkPos = playerCenter + sf::Vector2f(
+                cosf(angle) * distance,
+                sinf(angle) * distance
+            );
+            
+            int enemyId = -1;
+            if (enemyManager.CheckBulletCollision(checkPos, 10.0f, enemyId)) {
+                if (enemyId != -1) {
+                    Enemy* enemy = enemyManager.FindEnemy(enemyId);
+                    if (enemy && !enemy->IsDead()) {
+                        sf::Vector2f enemyPos = enemy->GetPosition();
+                        float distSquared = std::pow(enemyPos.x - playerCenter.x, 2) + 
+                                          std::pow(enemyPos.y - playerCenter.y, 2);
+                        
+                        // Store all enemies in range for chain lightning
+                        if (distSquared < effectiveRadius * effectiveRadius) {
+                            // Check if we already found this enemy
+                            bool alreadyFound = false;
+                            for (const auto& e : enemiesInRange) {
+                                if (e.first == enemyId) {
+                                    alreadyFound = true;
+                                    break;
+                                }
                             }
-                        }
-                        
-                        if (!alreadyFound) {
-                            enemiesInRange.push_back(std::make_pair(enemyId, enemyPos));
-                        }
-                        
-                        // Track closest enemy
-                        if (distSquared < closestDistanceSquared) {
-                            closestDistanceSquared = distSquared;
-                            closestEnemyId = enemyId;
-                            closestEnemyPos = enemyPos;
+                            
+                            if (!alreadyFound) {
+                                enemiesInRange.push_back(std::make_pair(enemyId, enemyPos));
+                            }
+                            
+                            // Track closest enemy
+                            if (distSquared < closestDistanceSquared) {
+                                closestDistanceSquared = distSquared;
+                                closestEnemyId = enemyId;
+                                closestEnemyPos = enemyPos;
+                            }
                         }
                     }
                 }
             }
         }
+    } catch (const std::exception& e) {
+        std::cerr << "[ERROR] Exception in enemy sampling: " << e.what() << std::endl;
+        return;
     }
     
     // If we found at least one enemy, zap it
     if (closestEnemyId != -1) {
-        // Apply damage with power level and combo bonus
-        float damageMultiplier = 1.0f + 0.2f * (powerLevel - 1) + 0.1f * consecutiveHits;
-        float effectiveDamage = zapDamage * damageMultiplier;
-        
-        // Apply damage to primary target and check if killed
-        bool killed = enemyManager.InflictDamage(closestEnemyId, effectiveDamage);
-        
-        // Increment consecutive hits and reset combo timer
-        consecutiveHits++;
-        comboTimer = 3.0f; // 3 seconds to maintain combo
-        
-        // Increase charge level
-        chargeLevel = std::min(1.0f, chargeLevel + 0.1f);
-        
-        // Chain lightning if enabled and we have multiple enemies
-        if (chainLightningEnabled && enemiesInRange.size() > 1) {
-            performChainLightning(enemyManager, playerCenter, closestEnemyId, closestEnemyPos, enemiesInRange);
-        }
-        
-        // Notify through callback if it exists
-        if (zapCallback) {
-            try {
-                zapCallback(closestEnemyId, effectiveDamage, killed);
-            } catch (const std::exception& e) {
-                std::cerr << "[ERROR] Exception in zap callback: " << e.what() << std::endl;
+        try {
+            // Apply damage with power level and combo bonus
+            float damageMultiplier = 1.0f + 0.2f * (powerLevel - 1) + 0.1f * consecutiveHits;
+            float effectiveDamage = zapDamage * damageMultiplier;
+            
+            // Apply damage to primary target and check if killed
+            bool killed = enemyManager.InflictDamage(closestEnemyId, effectiveDamage);
+            
+            // Increment consecutive hits and reset combo timer
+            consecutiveHits++;
+            comboTimer = 3.0f; // 3 seconds to maintain combo
+            
+            // Increase charge level
+            chargeLevel = std::min(1.0f, chargeLevel + 0.1f);
+            
+            // Chain lightning if enabled and we have multiple enemies
+            if (chainLightningEnabled && enemiesInRange.size() > 1) {
+                try {
+                    performChainLightning(enemyManager, playerCenter, closestEnemyId, closestEnemyPos, enemiesInRange);
+                } catch (const std::exception& e) {
+                    std::cerr << "[ERROR] Exception in chain lightning: " << e.what() << std::endl;
+                }
             }
+            
+            // Notify through callback if it exists
+            if (zapCallback) {
+                try {
+                    zapCallback(closestEnemyId, effectiveDamage, killed);
+                } catch (const std::exception& e) {
+                    std::cerr << "[ERROR] Exception in zap callback: " << e.what() << std::endl;
+                }
+            }
+            
+            // Show zap effect
+            CreateZapEffect(playerCenter, closestEnemyPos);
+            
+            // Save target info
+            targetEnemyId = closestEnemyId;
+            zapEndPosition = closestEnemyPos;
+            isZapping = true;
+            zapEffectTimer = zapEffectDuration;
+            
+            // Create impact particles
+            createImpactParticles(closestEnemyPos);
+        } catch (const std::exception& e) {
+            std::cerr << "[ERROR] Exception in zap effect creation: " << e.what() << std::endl;
         }
-        
-        // Show zap effect
-        CreateZapEffect(playerCenter, closestEnemyPos);
-        
-        // Save target info
-        targetEnemyId = closestEnemyId;
-        zapEndPosition = closestEnemyPos;
-        isZapping = true;
-        zapEffectTimer = zapEffectDuration;
-        
-        // Create impact particles
-        createImpactParticles(closestEnemyPos);
     }
 }
 

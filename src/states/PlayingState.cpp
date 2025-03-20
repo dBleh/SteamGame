@@ -739,19 +739,24 @@ void PlayingState::ApplyAllSettings() {
 void PlayingState::UpdateForceFields(float dt) {
     if (!playerLoaded || !playerManager) return;
     
-    // Check if we're a client and have network
-    bool isClient = false;
-    CSteamID myID = SteamUser()->GetSteamID();
-    CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+    // Thread safe copy of player IDs to avoid iterator invalidation during callback
+    std::vector<std::string> playerIDs;
     
-    if (myID != hostID) {
-        isClient = true;
+    {
+        auto& players = playerManager->GetPlayers();
+        playerIDs.reserve(players.size());
+        for (const auto& pair : players) {
+            playerIDs.push_back(pair.first);
+        }
     }
     
-    // Loop through all players and safely update their force fields
-    for (auto& pair : playerManager->GetPlayers()) {
-        RemotePlayer& rp = pair.second;
-        std::string playerID = pair.first;
+    // Now iterate through the copied IDs
+    for (const std::string& playerID : playerIDs) {
+        auto& players = playerManager->GetPlayers();
+        auto playerIt = players.find(playerID);
+        if (playerIt == players.end()) continue;
+        
+        RemotePlayer& rp = playerIt->second;
         
         // Skip dead players
         if (rp.player.IsDead()) continue;
@@ -765,23 +770,34 @@ void PlayingState::UpdateForceFields(float dt) {
             
             ForceField* forceField = rp.player.GetForceField();
             if (forceField) {
-                // Make sure the zap callback is set for clients
+                // Check if we're a client and need a zap callback
+                CSteamID myID = SteamUser()->GetSteamID();
+                CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+                bool isClient = (myID != hostID);
+                
                 if (isClient && !forceField->HasZapCallback()) {
                     std::cout << "[CLIENT] Setting missing zap callback for player " << rp.baseName << "\n";
                     
-                    forceField->SetZapCallback([this, playerID](int enemyId, float damage, bool killed) {
+                    // Store player ID by value to avoid reference issues
+                    std::string callbackPlayerID = playerID;
+                    forceField->SetZapCallback([this, callbackPlayerID](int enemyId, float damage, bool killed) {
                         // Handle zap event safely
                         if (playerManager) {
-                            playerManager->HandleForceFieldZap(playerID, enemyId, damage, killed);
+                            playerManager->HandleForceFieldZap(callbackPlayerID, enemyId, damage, killed);
                         }
                     });
                 }
                 
-                // Update the force field
-                forceField->Update(dt, *playerManager, *enemyManager);
+                // Update the force field with careful exception handling
+                try {
+                    forceField->Update(dt, *playerManager, *enemyManager);
+                } catch (const std::exception& e) {
+                    std::cerr << "[ERROR] Exception in force field update for player " 
+                             << rp.baseName << ": " << e.what() << std::endl;
+                }
             }
         } catch (const std::exception& e) {
-            std::cerr << "[ERROR] Exception in force field update for player " 
+            std::cerr << "[ERROR] Exception in force field processing for player " 
                      << rp.baseName << ": " << e.what() << std::endl;
         }
     }
