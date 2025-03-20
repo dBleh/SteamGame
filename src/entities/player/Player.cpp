@@ -4,17 +4,17 @@
 #include <cmath>
 
 Player::Player()
-    : movementSpeed(200.f), shootCooldown(0.f), health(PLAYER_HEALTH), isDead(false), respawnPosition(0.f, 0.f),
+    : movementSpeed(PLAYER_DEFAULT_MOVE_SPEED), shootCooldown(0.f), health(PLAYER_HEALTH), isDead(false), respawnPosition(0.f, 0.f),
       bulletSpeedMultiplier(1.0f), moveSpeedMultiplier(1.0f), maxHealth(PLAYER_HEALTH) {
-    shape.setSize(sf::Vector2f(50.f, 50.f));
-    shape.setFillColor(sf::Color::Blue);
-    shape.setPosition(100.f, 100.f);
+    shape.setSize(sf::Vector2f(PLAYER_WIDTH, PLAYER_HEIGHT));
+    shape.setFillColor(PLAYER_DEFAULT_COLOR);
+    shape.setPosition(PLAYER_DEFAULT_START_X, PLAYER_DEFAULT_START_Y);
 }
 
 Player::Player(const sf::Vector2f& startPosition, const sf::Color& color)
-    : movementSpeed(200.f), shootCooldown(0.f), health(PLAYER_HEALTH), isDead(false), respawnPosition(startPosition),
+    : movementSpeed(PLAYER_DEFAULT_MOVE_SPEED), shootCooldown(0.f), health(PLAYER_HEALTH), isDead(false), respawnPosition(startPosition),
       bulletSpeedMultiplier(1.0f), moveSpeedMultiplier(1.0f), maxHealth(PLAYER_HEALTH) {
-    shape.setSize(sf::Vector2f(50.f, 50.f));
+    shape.setSize(sf::Vector2f(PLAYER_WIDTH, PLAYER_HEIGHT));
     shape.setFillColor(color);
     shape.setPosition(startPosition);
 }
@@ -242,16 +242,16 @@ sf::Vector2f Player::GetRespawnPosition() const {
 }
 
 void Player::InitializeForceField() {
-    // Initialize with default values
-    forceField = std::make_unique<ForceField>(this, 100.0f);
+    // Initialize with default values from config
+    forceField = std::make_unique<ForceField>(this, DEFAULT_RADIUS);
     
     // Set initial properties appropriate for starting level
     if (forceField) {
-        forceField->SetDamage(15.0f);
-        forceField->SetCooldown(0.5f);
+        forceField->SetDamage(DEFAULT_DAMAGE);
+        forceField->SetCooldown(DEFAULT_COOLDOWN);
         forceField->SetChainLightningEnabled(false);
-        forceField->SetChainLightningTargets(1);
-        forceField->SetPowerLevel(1);
+        forceField->SetChainLightningTargets(FIELD_DEFAULT_CHAIN_TARGETS);
+        forceField->SetPowerLevel(DEFAULT_POWER_LEVEL);
         forceField->SetFieldType(FieldType::STANDARD);
     }
     
@@ -296,11 +296,11 @@ void Player::EnableForceField(bool enable) {
         if (enable && !previousState) {
             // Make it pulse by temporarily increasing size
             float originalRadius = forceField->GetRadius();
-            forceField->SetRadius(originalRadius * 1.2f); // 20% larger
+            forceField->SetRadius(originalRadius * FIELD_PULSE_FACTOR);
             
-            // Return to normal size after 0.2 seconds
+            // Return to normal size after pulse duration
             sf::Clock timer;
-            sf::Time duration = sf::seconds(0.2f);
+            sf::Time duration = sf::seconds(FIELD_PULSE_DURATION);
             
             // This is a simple approach; in a real implementation,
             // you'd want to add this to a queue of effects to apply during update

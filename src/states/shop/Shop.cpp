@@ -8,10 +8,6 @@
 #include <steam/steam_api.h>
 #include <iostream>
 
-// Constants for shop layout and scrolling
-const float ITEM_Y_OFFSET = 110.0f;
-const float ITEM_SPACING = 90.0f;
-
 // ShopItem implementation
 ShopItem::ShopItem(ShopItemType type, const std::string& name, const std::string& description, 
                    int baseCost, int level, int maxLevel)

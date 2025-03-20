@@ -106,7 +106,7 @@ void PlayerManager::UpdateBullets(float dt) {
                                     (bulletPos.y - playerPos.y) * (bulletPos.y - playerPos.y);
                 
                 // If bullet is within reasonable distance of any player, keep it
-                if (distSquared < 1000*1000) {  // 1000 pixels
+                if (distSquared < BULLET_CLEANUP_DISTANCE * BULLET_CLEANUP_DISTANCE) {
                     tooFarFromAllPlayers = false;
                     break;
                 }
@@ -204,12 +204,12 @@ void PlayerManager::AddLocalPlayer(const std::string& id, const std::string& nam
     rp.nameText.setFont(game->GetFont());
     rp.nameText.setString(name);
     rp.baseName = name;
-    rp.nameText.setCharacterSize(16);
-    rp.nameText.setFillColor(sf::Color::Black);
+    rp.nameText.setCharacterSize(PLAYER_NAME_FONT_SIZE);
+    rp.nameText.setFillColor(PLAYER_NAME_COLOR);
     rp.previousPosition = position;
     rp.targetPosition = position;
     rp.lastUpdateTime = std::chrono::steady_clock::now();
-    rp.interpDuration = 0.1f;
+    rp.interpDuration = PLAYER_INTERP_DURATION;
     rp.kills = 0;
     rp.money = 0;
     rp.cubeColor = color;
@@ -371,7 +371,7 @@ void PlayerManager::IncrementPlayerKills(const std::string& playerID) {
         players[normalizedPlayerID].kills++;
         
         // Also reward the player with some money
-        players[normalizedPlayerID].money += 50;
+        players[normalizedPlayerID].money += ENEMY_KILL_REWARD;
         
         // Enhanced logging
         std::cout << "[KILL TRACKING] Incremented kills for " << normalizedPlayerID 
@@ -514,7 +514,7 @@ void PlayerManager::HandleKill(const std::string& killerID, int enemyId) {
             players[normalizedKillerID].kills++;
             
             // Award money for kill
-            players[normalizedKillerID].money += 50;
+            players[normalizedKillerID].money += ENEMY_KILL_REWARD;
             
             // Broadcast kill information to all clients
             std::string killMsg = PlayerMessageHandler::FormatKillMessage(normalizedKillerID, enemyId);
@@ -584,7 +584,7 @@ void PlayerManager::HandleForceFieldZap(const std::string& playerID, int enemyId
         // Reward for hits (not kills)
         auto it = players.find(playerID);
         if (it != players.end()) {
-            it->second.money += 10; // 10 money for hitting an enemy with force field
+            it->second.money += FIELD_ZAP_HIT_REWARD; // Use constant for reward
         }
     } else {
         // If the enemy was killed, use the centralized kill handling
@@ -609,4 +609,3 @@ void PlayerManager::HandleForceFieldZap(const std::string& playerID, int enemyId
         }
     }
 }
-

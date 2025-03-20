@@ -12,6 +12,8 @@
 #include "Player.h"
 #include "Bullet.h"
 #include "../../utils/SteamHelpers.h"
+#include "../../utils/config/PlayerConfig.h"
+#include "../../utils/config/BulletConfig.h"
 
 class Game;
 class EnemyManager;

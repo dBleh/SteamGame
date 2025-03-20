@@ -6,7 +6,9 @@
 #include <unordered_map>
 #include <SFML/Graphics.hpp>
 #include "Enemy.h"
-#include "../../utils/config/Config.h"
+#include "../../utils/config/EnemyConfig.h"
+#include "../../utils/config/GameplayConfig.h"
+#include "../../utils/config/Config.h" // For MAX_PACKET_SIZE
 
 // Forward declarations
 class Game;

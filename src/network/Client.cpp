@@ -7,6 +7,7 @@
 #include "messages/StateMessageHandler.h"
 #include "messages/SystemMessageHandler.h"
 #include "../states/PlayingState.h"
+#include "../utils/config/Config.h"
 #include <iostream>
 
 ClientNetwork::ClientNetwork(Game* game, PlayerManager* manager)
@@ -136,7 +137,7 @@ void ClientNetwork::ProcessKillMessage(Game& game, ClientNetwork& client, const 
     auto it = players.find(normalizedKillerID);
     if (it != players.end()) {
         it->second.kills++;
-        it->second.money += 50; // Award money for the kill
+        it->second.money += ENEMY_KILL_REWARD; // Award money for the kill
         
         std::cout << "[CLIENT] Player " << normalizedKillerID << " awarded kill by host for enemy " 
                   << enemyId << " - New kill count: " << it->second.kills << "\n";
@@ -171,8 +172,8 @@ void ClientNetwork::ProcessConnectionMessage(Game& game, ClientNetwork& client, 
     rp.nameText.setFont(game.GetFont());
     rp.nameText.setString(parsed.steamName);
     rp.baseName = parsed.steamName;
-    rp.nameText.setCharacterSize(16);
-    rp.nameText.setFillColor(sf::Color::Black);
+    rp.nameText.setCharacterSize(PLAYER_NAME_FONT_SIZE);
+    rp.nameText.setFillColor(PLAYER_NAME_COLOR);
     
     // Move into the players map
     playerManager->AddOrUpdatePlayer(parsed.steamID, std::move(rp));
@@ -196,10 +197,10 @@ void ClientNetwork::ProcessMovementMessage(Game& game, ClientNetwork& client, co
             // Create a new player
             RemotePlayer rp;
             rp.playerID = parsed.steamID;
-            rp.player = Player(parsed.position, sf::Color::Blue);
+            rp.player = Player(parsed.position, PLAYER_DEFAULT_COLOR);
             rp.nameText.setFont(game.GetFont());
-            rp.nameText.setCharacterSize(16);
-            rp.nameText.setFillColor(sf::Color::Black);
+            rp.nameText.setCharacterSize(PLAYER_NAME_FONT_SIZE);
+            rp.nameText.setFillColor(PLAYER_NAME_COLOR);
             CSteamID id = CSteamID(std::stoull(parsed.steamID));
             const char* name = SteamFriends()->GetFriendPersonaName(id);
             std::string steamName = name ? name : "Unknown Player";
@@ -253,7 +254,7 @@ void ClientNetwork::SendConnectionMessage() {
     CSteamID myID = SteamUser()->GetSteamID();
     std::string steamIDStr = std::to_string(myID.ConvertToUint64());
     std::string steamName = SteamFriends()->GetPersonaName();
-    sf::Color color = sf::Color::Blue;
+    sf::Color color = PLAYER_DEFAULT_COLOR;
     std::string connectMsg = PlayerMessageHandler::FormatConnectionMessage(steamIDStr, steamName, color, false, false);
     game->GetNetworkManager().SendMessage(hostID, connectMsg);
 }
@@ -306,8 +307,8 @@ void ClientNetwork::ProcessPlayerDeathMessage(Game& game, ClientNetwork& client,
         RemotePlayer& player = it->second;
         sf::Vector2f currentPos = player.player.GetPosition();
         player.player.SetRespawnPosition(currentPos);
-        player.player.TakeDamage(100);
-        player.respawnTimer = 3.0f;
+        player.player.TakeDamage(player.player.GetHealth()); // Take full damage to ensure death
+        player.respawnTimer = RESPAWN_TIME;
         std::cout << "[CLIENT] Player " << normalizedID 
                   << " died at position (" << currentPos.x << "," << currentPos.y 
                   << "), respawn position set to same location\n";
@@ -351,9 +352,9 @@ void ClientNetwork::ProcessPlayerRespawnMessage(Game& game, ClientNetwork& clien
         bool wasDead = player.player.IsDead();
         player.player.SetRespawnPosition(parsed.position);
         player.player.Respawn();
-        if (player.player.GetHealth() < 100) {
-            std::cout << "[CLIENT] WARNING: Player health not fully restored after respawn, forcing to 100\n";
-            player.player.TakeDamage(-100);
+        if (player.player.GetHealth() < PLAYER_HEALTH) {
+            std::cout << "[CLIENT] WARNING: Player health not fully restored after respawn, forcing to full health\n";
+            player.player.TakeDamage(-PLAYER_HEALTH); // Heal to full health
         }
     } else {
         std::cout << "[CLIENT] Could not find player " << normalizedID << " to respawn from network message\n";
@@ -436,13 +437,13 @@ void ClientNetwork::ProcessForceFieldZapMessage(Game& game, ClientNetwork& clien
                 }
                 
                 // Get player and enemy positions
-                sf::Vector2f playerPos = rp.player.GetPosition() + sf::Vector2f(25.0f, 25.0f); // Assuming 50x50 player
+                sf::Vector2f playerPos = rp.player.GetPosition() + sf::Vector2f(PLAYER_WIDTH/2.0f, PLAYER_HEIGHT/2.0f);
                 sf::Vector2f enemyPos = enemy->GetPosition();
                 
                 // Create the zap effect
                 rp.player.GetForceField()->CreateZapEffect(playerPos, enemyPos);
                 rp.player.GetForceField()->SetIsZapping(true);
-                rp.player.GetForceField()->SetZapEffectTimer(0.3f); // Show effect for 0.3 seconds
+                rp.player.GetForceField()->SetZapEffectTimer(FIELD_ZAP_EFFECT_DURATION);
             }
         }
     }

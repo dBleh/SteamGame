@@ -45,7 +45,7 @@ void EnemyManager::Update(float dt) {
     CheckPlayerCollisions();
     
     // Optimize enemy list if we have a large number
-    if (enemies.size() > 200) {
+    if (enemies.size() > ENEMY_OPTIMIZATION_THRESHOLD) {
         OptimizeEnemyList();
     }
     
@@ -56,14 +56,14 @@ void EnemyManager::Update(float dt) {
     if (myID == hostID) {
         // Sync enemy positions more frequently
         syncTimer += dt;
-        if (syncTimer >= 0.05f) { // Reduced from ENEMY_SYNC_INTERVAL to 50ms
+        if (syncTimer >= ENEMY_SYNC_INTERVAL) { // Reduced from ENEMY_SYNC_INTERVAL to 50ms
             SyncEnemyPositions();
             syncTimer = 0.0f;
         }
         
         // Send full state more frequently as well
         fullSyncTimer += dt;
-        if (fullSyncTimer >= 0.5f) { // Reduced from FULL_SYNC_INTERVAL to 500ms
+        if (fullSyncTimer >= FULL_SYNC_INTERVAL) { // Reduced from FULL_SYNC_INTERVAL to 500ms
             SyncFullState();
             fullSyncTimer = 0.0f;
         }
@@ -285,8 +285,8 @@ void EnemyManager::SyncEnemyPositions() {
     // Get priority list of enemies to sync
     std::vector<int> priorities = GetEnemyUpdatePriorities();
     
-    // Increase limit to 20 enemies per update for better coverage
-    size_t updateCount = std::min(priorities.size(), static_cast<size_t>(20));
+    // Increase limit to MAX_ENEMIES_PER_UPDATE enemies per update for better coverage
+    size_t updateCount = std::min(priorities.size(), static_cast<size_t>(MAX_ENEMIES_PER_UPDATE));
     
     // Create vectors for batch update
     std::vector<int> enemyIds;
@@ -431,7 +431,7 @@ void EnemyManager::OptimizeEnemyList() {
                                 std::pow(enemyPos.y - playerPos.y, 2);
             
             // Keep enemies within 2000 units of any player
-            if (distSquared < 2000.0f * 2000.0f) {
+            if (distSquared < ENEMY_CULLING_DISTANCE * ENEMY_CULLING_DISTANCE) {
                 tooFar = false;
                 break;
             }

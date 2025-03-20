@@ -7,13 +7,12 @@
 #include "../../utils/input/InputHandler.h"
 #include "../../utils/input/InputManager.h" 
 #include "ForceField.h"
-#include "../../utils/config/Config.h"
+#include "../../utils/config/PlayerConfig.h"  // Using specific config
+#include "../../utils/config/BulletConfig.h"   // Need bullet config for shooting
 
 class ForceField;
 class Player {
 public:
-    static constexpr float SHOOT_COOLDOWN_DURATION = 0.1f; // seconds between shots
-    
     // Structure to hold bullet creation parameters
     struct BulletParams {
         sf::Vector2f position;
@@ -125,7 +124,6 @@ private:
     sf::Vector2f respawnPosition;
     float respawnTimer;
     bool isRespawning;
-    static constexpr float RESPAWN_TIME = 3.0f;
     
     // Force field properties
     std::unique_ptr<ForceField> forceField;

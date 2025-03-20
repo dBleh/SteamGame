@@ -18,155 +18,148 @@ ForceField::ForceField(Player* player, float radius)
       zapDamage(DEFAULT_DAMAGE),
       targetEnemyId(-1),
       isZapping(false),
-      zapEffectDuration(0.3f),
+      zapEffectDuration(FIELD_ZAP_EFFECT_DURATION),
       zapEffectTimer(0.0f),
       fieldRotation(0.0f),
       fieldPulsePhase(0.0f),
-      fieldIntensity(1.0f),
+      fieldIntensity(FIELD_INTENSITY_DEFAULT),
       chargeLevel(0.0f),
-      powerLevel(5),
+      powerLevel(MAX_POWER_LEVEL),
       consecutiveHits(0),
       comboTimer(0.0f),
-      fieldColor(sf::Color(100, 100, 255, 50)),
+      fieldColor(FIELD_STANDARD_COLOR),
       chainLightningEnabled(true),
-      chainLightningTargets(3),
+      chainLightningTargets(FIELD_DEFAULT_CHAIN_TARGETS),
       fieldType(FieldType::STANDARD), 
       zapCallback(nullptr) {
     
-    // Add more field types that can be selected
+    // Randomly select a field type based on predefined probabilities
     const int randomFieldType = rand() % 100;
-    if (randomFieldType < 25) {
+    if (randomFieldType < FIELD_TYPE_SHOCK_PROB) {
         fieldType = FieldType::SHOCK;
-        fieldColor = sf::Color(70, 130, 255, 50);
-    } else if (randomFieldType < 50) {
+        fieldColor = FIELD_SHOCK_COLOR;
+    } else if (randomFieldType < FIELD_TYPE_PLASMA_PROB) {
         fieldType = FieldType::PLASMA;
-        fieldColor = sf::Color(255, 90, 40, 50);
-    } else if (randomFieldType < 75) {
+        fieldColor = FIELD_PLASMA_COLOR;
+    } else if (randomFieldType < FIELD_TYPE_VORTEX_PROB) {
         fieldType = FieldType::VORTEX;
-        fieldColor = sf::Color(180, 70, 255, 50);
+        fieldColor = FIELD_VORTEX_COLOR;
     } else {
-        // For the standard type, create a more iridescent base color
-        fieldColor = sf::Color(120, 140, 255, 50);
+        // For the standard type, use the standard color
+        fieldColor = FIELD_STANDARD_COLOR;
     }
     
-    // Setup field shape with more dynamic effects
+    // Setup field shape with dynamic effects
     fieldShape.setRadius(radius);
     fieldShape.setFillColor(fieldColor);
     
-    // Create a more vibrant outline
+    // Set outline color based on field type
     sf::Color outlineColor;
     switch(fieldType) {
         case FieldType::SHOCK:
-            outlineColor = sf::Color(100, 210, 255, 180);
+            outlineColor = FIELD_SHOCK_OUTLINE_COLOR;
             break;
         case FieldType::PLASMA:
-            outlineColor = sf::Color(255, 170, 90, 180);
+            outlineColor = FIELD_PLASMA_OUTLINE_COLOR;
             break;
         case FieldType::VORTEX:
-            outlineColor = sf::Color(220, 130, 255, 180);
+            outlineColor = FIELD_VORTEX_OUTLINE_COLOR;
             break;
         default:
-            outlineColor = sf::Color(160, 200, 255, 180);
+            outlineColor = FIELD_STANDARD_OUTLINE_COLOR;
     }
     
     fieldShape.setOutlineColor(outlineColor);
-    fieldShape.setOutlineThickness(4.0f);
+    fieldShape.setOutlineThickness(FIELD_OUTLINE_THICKNESS);
     fieldShape.setOrigin(radius, radius);
     
     // Setup secondary field effects with colorful variations
     for (int i = 0; i < NUM_FIELD_RINGS; i++) {
-        fieldRings[i].setRadius(radius * (0.4f + 0.2f * i));
+        float ringRadius = radius * (FIELD_RING_INNER_RADIUS_FACTOR + FIELD_RING_RADIUS_INCREMENT * i);
+        fieldRings[i].setRadius(ringRadius);
         fieldRings[i].setFillColor(sf::Color::Transparent);
         
-        // Create colorful ring variations
+        // Create colorful ring variations based on field type
         sf::Color ringColor;
         switch(fieldType) {
             case FieldType::SHOCK:
-                // Electric blue with cyan accents
-                ringColor = sf::Color(70 + i * 30, 170 + i * 20, 255, 120 - i * 20);
+                ringColor = SHOCK_RING_COLOR(i);
                 break;
             case FieldType::PLASMA:
-                // Fiery gradient from red to orange to yellow
-                ringColor = sf::Color(255, 100 + i * 50, 50 + i * 40, 120 - i * 20);
+                ringColor = PLASMA_RING_COLOR(i);
                 break;
             case FieldType::VORTEX:
-                // Violet to magenta spectrum
-                ringColor = sf::Color(180 + i * 20, 70 + i * 10, 255 - i * 30, 120 - i * 20);
+                ringColor = VORTEX_RING_COLOR(i);
                 break;
             default:
-                // Iridescent blue-green-cyan
-                ringColor = sf::Color(120 + i * 10, 170 + i * 20, 255 - i * 10, 120 - i * 20);
+                ringColor = STANDARD_RING_COLOR(i);
         }
         
         fieldRings[i].setOutlineColor(ringColor);
-        fieldRings[i].setOutlineThickness(2.0f + (NUM_FIELD_RINGS - i) * 0.5f); // Thicker inner rings
-        fieldRings[i].setOrigin(radius * (0.4f + 0.2f * i), radius * (0.4f + 0.2f * i));
+        fieldRings[i].setOutlineThickness(FIELD_RING_MIN_THICKNESS + (NUM_FIELD_RINGS - i) * FIELD_RING_THICKNESS_DECREMENT);
+        fieldRings[i].setOrigin(ringRadius, ringRadius);
     }
     
-    // Setup energy orbs that orbit the force field with more variety
+    // Setup energy orbs that orbit the force field
     for (int i = 0; i < NUM_ENERGY_ORBS; i++) {
-        float orbSize = 5.0f + (rand() % 10);
+        float orbSize = ENERGY_ORB_MIN_SIZE + (rand() % (int)ENERGY_ORB_SIZE_VARIATION);
         energyOrbs[i].setRadius(orbSize);
         
         // Create varied orb colors based on position in sequence and field type
         sf::Color orbColor;
-        int orbGroup = i % 3; // Create 3 different color groups for orbs
+        int orbGroup = i % ENERGY_ORB_COLOR_GROUPS;
         
         switch(fieldType) {
             case FieldType::SHOCK:
-                // Electric blue with white and cyan variations
                 if (orbGroup == 0)
-                    orbColor = sf::Color(220, 240, 255, 180); // Near white
+                    orbColor = SHOCK_ORB_COLOR_1;
                 else if (orbGroup == 1)
-                    orbColor = sf::Color(80, 180, 255, 180);  // Electric blue
+                    orbColor = SHOCK_ORB_COLOR_2;
                 else
-                    orbColor = sf::Color(0, 220, 230, 180);   // Cyan
+                    orbColor = SHOCK_ORB_COLOR_3;
                 break;
                 
             case FieldType::PLASMA:
-                // Fire colors: yellow, orange, red
                 if (orbGroup == 0)
-                    orbColor = sf::Color(255, 230, 120, 180); // Yellow
+                    orbColor = PLASMA_ORB_COLOR_1;
                 else if (orbGroup == 1)
-                    orbColor = sf::Color(255, 140, 50, 180);  // Orange
+                    orbColor = PLASMA_ORB_COLOR_2;
                 else
-                    orbColor = sf::Color(255, 60, 30, 180);   // Red
+                    orbColor = PLASMA_ORB_COLOR_3;
                 break;
                 
             case FieldType::VORTEX:
-                // Purple spectrum
                 if (orbGroup == 0)
-                    orbColor = sf::Color(230, 140, 255, 180); // Light purple
+                    orbColor = VORTEX_ORB_COLOR_1;
                 else if (orbGroup == 1)
-                    orbColor = sf::Color(180, 70, 255, 180);  // Medium purple
+                    orbColor = VORTEX_ORB_COLOR_2;
                 else
-                    orbColor = sf::Color(140, 0, 230, 180);   // Deep purple
+                    orbColor = VORTEX_ORB_COLOR_3;
                 break;
                 
             default:
-                // Iridescent colors
                 if (orbGroup == 0)
-                    orbColor = sf::Color(180, 220, 255, 180); // Light blue
+                    orbColor = STANDARD_ORB_COLOR_1;
                 else if (orbGroup == 1)
-                    orbColor = sf::Color(130, 200, 220, 180); // Teal
+                    orbColor = STANDARD_ORB_COLOR_2;
                 else
-                    orbColor = sf::Color(180, 255, 220, 180); // Aqua
+                    orbColor = STANDARD_ORB_COLOR_3;
         }
         
         energyOrbs[i].setFillColor(orbColor);
         energyOrbs[i].setOrigin(orbSize, orbSize);
         
-        // Varied orbit parameters
+        // Set varied orbit parameters
         orbAngles[i] = (float)(rand() % 360);
-        orbSpeeds[i] = 1.0f + (rand() % 100) / 50.0f;
+        orbSpeeds[i] = ENERGY_ORB_MIN_SPEED + (rand() % 100) / 50.0f;
         
         // Create layered orbit distances
         if (i < NUM_ENERGY_ORBS / 3)
-            orbDistances[i] = radius * 0.7f + (rand() % 20); // Inner orbit
+            orbDistances[i] = radius * ENERGY_ORB_INNER_ORBIT_FACTOR + (rand() % (int)ENERGY_ORB_DISTANCE_VARIATION);
         else if (i < 2 * NUM_ENERGY_ORBS / 3)
-            orbDistances[i] = radius * 0.85f + (rand() % 20); // Middle orbit
+            orbDistances[i] = radius * ENERGY_ORB_MIDDLE_ORBIT_FACTOR + (rand() % (int)ENERGY_ORB_DISTANCE_VARIATION);
         else
-            orbDistances[i] = radius * 1.0f + (rand() % 20); // Outer orbit
+            orbDistances[i] = radius * ENERGY_ORB_OUTER_ORBIT_FACTOR + (rand() % (int)ENERGY_ORB_DISTANCE_VARIATION);
     }
     
     // Setup zap effect as a line strip
@@ -181,7 +174,7 @@ ForceField::ForceField(Player* player, float radius)
     initializeParticles();
     
     // Fire initial zap quickly
-    zapTimer = 0.5f;
+    zapTimer = INITIAL_ZAP_TIMER;
     
     // Initialize with correct field color based on type
     updateFieldColor();
@@ -199,8 +192,8 @@ void ForceField::Update(float dt, PlayerManager& playerManager, EnemyManager& en
     fieldShape.setPosition(playerCenter);
     
     // Update field rotation for dynamic effect
-    fieldRotation += dt * 15.0f * powf(fieldIntensity, 0.5f); // Rotation speed increases with intensity
-    fieldPulsePhase += dt * 3.0f;
+    fieldRotation += dt * FIELD_ROTATION_SPEED * powf(fieldIntensity, 0.5f); // Rotation speed increases with intensity
+    fieldPulsePhase += dt * FIELD_PULSE_SPEED;
     
     // Update field rings
     for (int i = 0; i < NUM_FIELD_RINGS; i++) {
@@ -267,7 +260,7 @@ void ForceField::Update(float dt, PlayerManager& playerManager, EnemyManager& en
     
     // Update charge level - slowly decay when not zapping
     if (!isZapping) {
-        chargeLevel = std::max(0.0f, chargeLevel - dt * 0.2f);
+        chargeLevel = std::max(0.0f, chargeLevel - dt * FIELD_CHARGE_DECAY_RATE);
     }
     
     // Update zap effect timer
@@ -290,7 +283,7 @@ void ForceField::Update(float dt, PlayerManager& playerManager, EnemyManager& en
     }
     
     // Field intensity increases during zapping and with charge level
-    fieldIntensity = 1.0f + (isZapping ? 0.5f : 0.0f) + chargeLevel * 0.5f;
+    fieldIntensity = FIELD_INTENSITY_DEFAULT + (isZapping ? 0.5f : 0.0f) + chargeLevel * 0.5f;
     
     // Update field color based on type and intensity
     updateFieldColor();
@@ -402,10 +395,10 @@ void ForceField::FindAndZapEnemy(PlayerManager& playerManager, EnemyManager& ene
         
         // Increment consecutive hits and reset combo timer
         consecutiveHits++;
-        comboTimer = 3.0f; // 3 seconds to maintain combo
+        comboTimer = FIELD_COMBO_DURATION;
         
         // Increase charge level
-        chargeLevel = std::min(1.0f, chargeLevel + 0.1f);
+        chargeLevel = std::min(1.0f, chargeLevel + FIELD_CHARGE_GAIN_RATE);
         
         // Chain lightning if enabled and we have multiple enemies
         if (chainLightningEnabled && enemiesInRange.size() > 1) {
@@ -436,7 +429,7 @@ void ForceField::CreateZapEffect(const sf::Vector2f& start, const sf::Vector2f& 
     zapEffect.clear();
     
     // Number of line segments for the zap - more at higher power levels
-    const int segments = 12 + powerLevel * 2;
+    const int segments = ZAP_BASE_SEGMENTS + powerLevel * ZAP_SEGMENTS_PER_POWER;
     
     // Direction vector
     sf::Vector2f direction = end - start;
@@ -453,20 +446,20 @@ void ForceField::CreateZapEffect(const sf::Vector2f& start, const sf::Vector2f& 
     
     switch (fieldType) {
         case FieldType::SHOCK:
-            zapBaseColor = sf::Color(80, 180, 255, 255);
-            zapBrightColor = sf::Color(180, 230, 255, 255);
+            zapBaseColor = ZAP_SHOCK_BASE_COLOR;
+            zapBrightColor = ZAP_SHOCK_BRIGHT_COLOR;
             break;
         case FieldType::PLASMA:
-            zapBaseColor = sf::Color(255, 150, 80, 255);
-            zapBrightColor = sf::Color(255, 220, 180, 255);
+            zapBaseColor = ZAP_PLASMA_BASE_COLOR;
+            zapBrightColor = ZAP_PLASMA_BRIGHT_COLOR;
             break;
         case FieldType::VORTEX:
-            zapBaseColor = sf::Color(180, 80, 255, 255);
-            zapBrightColor = sf::Color(220, 180, 255, 255);
+            zapBaseColor = ZAP_VORTEX_BASE_COLOR;
+            zapBrightColor = ZAP_VORTEX_BRIGHT_COLOR;
             break;
         default:
-            zapBaseColor = sf::Color(150, 220, 255, 255);
-            zapBrightColor = sf::Color(200, 240, 255, 255);
+            zapBaseColor = ZAP_STANDARD_BASE_COLOR;
+            zapBrightColor = ZAP_STANDARD_BRIGHT_COLOR;
     }
     
     // Create a jagged lightning effect with power level influencing complexity
@@ -478,7 +471,8 @@ void ForceField::CreateZapEffect(const sf::Vector2f& start, const sf::Vector2f& 
         
         // Add some randomness for zig-zag effect (more pronounced at higher power)
         if (i < segments - 1) {
-            float offset = (rand() % 120 - 60) * (1.0f + powerLevel * 0.2f) / 2.0f;
+            float offset = (rand() % (ZAP_OFFSET_MAX - ZAP_OFFSET_MIN + 1) + ZAP_OFFSET_MIN) * 
+                           (1.0f + powerLevel * ZAP_OFFSET_POWER_FACTOR) / 2.0f;
             nextPos += perpendicular * offset;
         }
         
@@ -495,7 +489,7 @@ void ForceField::CreateZapEffect(const sf::Vector2f& start, const sf::Vector2f& 
         zapEffect.append(sf::Vertex(nextPos, endColor));
         
         // Add parallel lines for thickness effect
-        float thickness = 2.0f * (1.0f + 0.2f * powerLevel);
+        float thickness = ZAP_THICKNESS_BASE * (1.0f + ZAP_THICKNESS_POWER_FACTOR * powerLevel);
         sf::Vector2f offsetPerp = perpendicular * thickness;
         
         zapEffect.append(sf::Vertex(currentPos + offsetPerp, startColor));
@@ -505,7 +499,7 @@ void ForceField::CreateZapEffect(const sf::Vector2f& start, const sf::Vector2f& 
         zapEffect.append(sf::Vertex(nextPos - offsetPerp, endColor));
         
         // Add branches based on power level
-        int branchChance = 20 + powerLevel * 10; // 30-70% chance based on power
+        int branchChance = ZAP_BRANCH_CHANCE_BASE + powerLevel * ZAP_BRANCH_CHANCE_PER_POWER;
         if (i > 0 && i < segments - 2 && rand() % 100 < branchChance) {
             createLightningBranch(currentPos, direction, distance, i, segments, zapBaseColor, zapBrightColor);
         }
@@ -532,7 +526,7 @@ void ForceField::createLightningBranch(
     }
     
     // Add some randomness to branch angle
-    float angleAdjust = (rand() % 60 - 30) * 3.14159f / 180.0f;
+    float angleAdjust = (rand() % (ZAP_BRANCH_ANGLE_MAX - ZAP_BRANCH_ANGLE_MIN + 1) + ZAP_BRANCH_ANGLE_MIN) * PI / 180.0f;
     float cosA = cos(angleAdjust);
     float sinA = sin(angleAdjust);
     branchDir = sf::Vector2f(
@@ -541,13 +535,13 @@ void ForceField::createLightningBranch(
     );
     
     // Normalize and scale branch direction
-    float branchLen = mainDistance * (0.2f + (rand() % 100) / 500.0f) * (1.0f + 0.1f * powerLevel);
+    float branchLen = mainDistance * (ZAP_BRANCH_LENGTH_FACTOR + (rand() % 100) / 500.0f) * (1.0f + ZAP_BRANCH_LENGTH_VARIATION * powerLevel);
     float branchDirMag = std::hypot(branchDir.x, branchDir.y);
     branchDir = branchDir * (branchLen / branchDirMag);
     
-    // Create the branch using 3-5 segments (more at higher power)
+    // Create the branch using configurable number of segments (more at higher power)
     sf::Vector2f branchPos = branchStart;
-    int branchSegments = 3 + rand() % (1 + powerLevel);
+    int branchSegments = ZAP_BRANCH_MIN_SEGMENTS + rand() % (1 + powerLevel);
     
     for (int j = 0; j < branchSegments; j++) {
         float bt = (j + 1.0f) / branchSegments;
@@ -555,8 +549,8 @@ void ForceField::createLightningBranch(
         
         // Add randomness to branch
         nextBranchPos += sf::Vector2f(
-            (rand() % 40 - 20) * (1.0f + 0.1f * powerLevel),
-            (rand() % 40 - 20) * (1.0f + 0.1f * powerLevel)
+            (rand() % ZAP_BRANCH_RANDOMNESS - ZAP_BRANCH_RANDOMNESS/2) * (1.0f + ZAP_BRANCH_LENGTH_VARIATION * powerLevel),
+            (rand() % ZAP_BRANCH_RANDOMNESS - ZAP_BRANCH_RANDOMNESS/2) * (1.0f + ZAP_BRANCH_LENGTH_VARIATION * powerLevel)
         );
         
         // Calculate colors with alpha fade
@@ -572,17 +566,20 @@ void ForceField::createLightningBranch(
         zapEffect.append(sf::Vertex(nextBranchPos, endBranchColor));
         
         // Chance for sub-branches at higher power levels
-        if (powerLevel >= 3 && j < branchSegments - 1 && rand() % 100 < 30) {
+        if (powerLevel >= ZAP_SUB_BRANCH_POWER_MIN && j < branchSegments - 1 && rand() % 100 < ZAP_SUB_BRANCH_CHANCE) {
             sf::Vector2f subBranchDir(branchDir.y, -branchDir.x);
             if (rand() % 2 == 0) subBranchDir = -subBranchDir;
             
-            float subLen = branchLen * 0.4f;
+            float subLen = branchLen * ZAP_SUB_BRANCH_LENGTH;
             subBranchDir = subBranchDir * (subLen / std::hypot(subBranchDir.x, subBranchDir.y));
             
             sf::Vector2f subBranchEnd = branchPos + subBranchDir;
             
             // Add randomness
-            subBranchEnd += sf::Vector2f((rand() % 30 - 15), (rand() % 30 - 15));
+            subBranchEnd += sf::Vector2f(
+                (rand() % 30 - 15), 
+                (rand() % 30 - 15)
+            );
             
             // Add sub-branch
             sf::Color subColor = startBranchColor;
@@ -637,8 +634,8 @@ void ForceField::performChainLightning(
     
     // Create chain lightning effects and apply damage
     sf::Vector2f prevPos = primaryTargetPos;
-    float damageMultiplier = 1.0f + 0.1f * (powerLevel - 1);
-    float chainDamage = zapDamage * 0.6f * damageMultiplier; // Chain does 60% of primary damage
+    float damageMultiplier = 1.0f + CHAIN_POWER_FACTOR * (powerLevel - 1);
+    float chainDamage = zapDamage * CHAIN_DAMAGE_FACTOR * damageMultiplier; // Chain does percentage of primary damage
     
     for (size_t i = 0; i < chainTargets.size(); i++) {
         int enemyId = chainTargets[i].first;
@@ -647,8 +644,8 @@ void ForceField::performChainLightning(
         // Create lightning effect between previous target and this one
         createChainLightningEffect(prevPos, enemyPos);
         
-        // Apply reduced damage to chained targets
-        float targetDamage = chainDamage * (1.0f - 0.1f * i); // Damage falls off with each jump
+        // Apply reduced damage to chained targets - damage falls off with each jump
+        float targetDamage = chainDamage * (1.0f - CHAIN_DAMAGE_DROPOFF * i);
         bool killed = enemyManager.InflictDamage(enemyId, targetDamage);
         
         // Notify through callback
@@ -679,24 +676,24 @@ void ForceField::createChainLightningEffect(const sf::Vector2f& start, const sf:
     
     switch (fieldType) {
         case FieldType::SHOCK:
-            chainBaseColor = sf::Color(80, 180, 255, 200);
-            chainBrightColor = sf::Color(180, 230, 255, 180);
+            chainBaseColor = CHAIN_SHOCK_BASE_COLOR;
+            chainBrightColor = CHAIN_SHOCK_BRIGHT_COLOR;
             break;
         case FieldType::PLASMA:
-            chainBaseColor = sf::Color(255, 150, 80, 200);
-            chainBrightColor = sf::Color(255, 220, 180, 180);
+            chainBaseColor = CHAIN_PLASMA_BASE_COLOR;
+            chainBrightColor = CHAIN_PLASMA_BRIGHT_COLOR;
             break;
         case FieldType::VORTEX:
-            chainBaseColor = sf::Color(180, 80, 255, 200);
-            chainBrightColor = sf::Color(220, 180, 255, 180);
+            chainBaseColor = CHAIN_VORTEX_BASE_COLOR;
+            chainBrightColor = CHAIN_VORTEX_BRIGHT_COLOR;
             break;
         default:
-            chainBaseColor = sf::Color(150, 220, 255, 200);
-            chainBrightColor = sf::Color(200, 240, 255, 180);
+            chainBaseColor = CHAIN_STANDARD_BASE_COLOR;
+            chainBrightColor = CHAIN_STANDARD_BRIGHT_COLOR;
     }
     
     // Create chain lightning with fewer segments than primary
-    const int segments = 8 + powerLevel;
+    const int segments = CHAIN_ZAP_BASE_SEGMENTS + powerLevel;
     sf::Vector2f currentPos = start;
     
     for (int i = 0; i < segments; i++) {
@@ -706,7 +703,8 @@ void ForceField::createChainLightningEffect(const sf::Vector2f& start, const sf:
         
         // Add some randomness for zig-zag effect
         if (i < segments - 1) {
-            float offset = (rand() % 80 - 40) * (1.0f + powerLevel * 0.1f) / 2.0f;
+            float offset = (rand() % (CHAIN_OFFSET_MAX - CHAIN_OFFSET_MIN + 1) + CHAIN_OFFSET_MIN) * 
+                          (1.0f + powerLevel * CHAIN_OFFSET_POWER_FACTOR) / 2.0f;
             nextPos += perpendicular * offset;
         }
         
@@ -730,7 +728,7 @@ void ForceField::renderZapEffects(sf::RenderWindow& window) {
     if (zapEffect.getVertexCount() > 0) {
         // Add background glow effect for more dramatic lighting
         sf::CircleShape backgroundGlow;
-        backgroundGlow.setRadius(20.0f + 5.0f * powerLevel);
+        backgroundGlow.setRadius(ZAP_GLOW_RADIUS_BASE + ZAP_GLOW_RADIUS_PER_POWER * powerLevel);
         
         sf::Color bgGlowColor;
         switch (fieldType) {
@@ -758,7 +756,7 @@ void ForceField::renderZapEffects(sf::RenderWindow& window) {
         
         // Add primary glow effect
         sf::CircleShape zapGlow;
-        zapGlow.setRadius(8.0f + 2.0f * powerLevel);
+        zapGlow.setRadius(ZAP_PRIMARY_GLOW_RADIUS_BASE + ZAP_PRIMARY_GLOW_RADIUS_PER_POWER * powerLevel);
         
         sf::Color glowColor;
         switch (fieldType) {
@@ -793,10 +791,10 @@ void ForceField::renderZapEffects(sf::RenderWindow& window) {
         window.draw(zapEffect);
         
         // Add dynamic electricity particles along the zap path
-        if (powerLevel >= 2) {
+        if (powerLevel >= ZAP_SPARKLE_MIN_POWER) {
             sf::CircleShape sparkle;
-            sparkle.setRadius(2.0f);
-            sparkle.setOrigin(1.0f, 1.0f);
+            sparkle.setRadius(ZAP_SPARKLE_RADIUS);
+            sparkle.setOrigin(sparkle.getRadius() / 2, sparkle.getRadius() / 2);
             
             sf::Color sparkleColor;
             switch (fieldType) {
@@ -815,7 +813,7 @@ void ForceField::renderZapEffects(sf::RenderWindow& window) {
             sparkle.setFillColor(sparkleColor);
             
             // Add random sparkles along the path
-            int numSparkles = 10 + 5 * powerLevel;
+            int numSparkles = ZAP_SPARKLE_BASE + ZAP_SPARKLE_PER_POWER * powerLevel;
             for (int i = 0; i < numSparkles; i++) {
                 // Pick a random point along the zap
                 size_t idx = rand() % (zapEffect.getVertexCount() / 2);
@@ -828,8 +826,10 @@ void ForceField::renderZapEffects(sf::RenderWindow& window) {
                     
                     // Offset slightly
                     pos += sf::Vector2f(
-                        (rand() % 20 - 10) * (1.0f + 0.2f * powerLevel),
-                        (rand() % 20 - 10) * (1.0f + 0.2f * powerLevel)
+                        (rand() % (ZAP_SPARKLE_OFFSET_MAX - ZAP_SPARKLE_OFFSET_MIN + 1) + ZAP_SPARKLE_OFFSET_MIN) * 
+                        (1.0f + ZAP_SPARKLE_OFFSET_POWER_FACTOR * powerLevel),
+                        (rand() % (ZAP_SPARKLE_OFFSET_MAX - ZAP_SPARKLE_OFFSET_MIN + 1) + ZAP_SPARKLE_OFFSET_MIN) * 
+                        (1.0f + ZAP_SPARKLE_OFFSET_POWER_FACTOR * powerLevel)
                     );
                     
                     sparkle.setPosition(pos);
@@ -842,12 +842,12 @@ void ForceField::renderZapEffects(sf::RenderWindow& window) {
         
         // Add impact flash at target with enhanced effects
         sf::CircleShape impactFlash;
-        impactFlash.setRadius(15.0f + 5.0f * powerLevel);
+        impactFlash.setRadius(ZAP_IMPACT_FLASH_RADIUS_BASE + ZAP_IMPACT_FLASH_RADIUS_PER_POWER * powerLevel);
         impactFlash.setOrigin(impactFlash.getRadius(), impactFlash.getRadius());
         impactFlash.setPosition(zapEndPosition);
         
         // Pulsing impact flash
-        float flashPulse = 0.7f + 0.3f * std::sin(fieldPulsePhase * 8.0f);
+        float flashPulse = ZAP_IMPACT_PULSE_MIN + ZAP_IMPACT_PULSE_MAX * std::sin(fieldPulsePhase * ZAP_IMPACT_PULSE_FREQUENCY);
         impactFlash.setScale(flashPulse, flashPulse);
         
         // Impact color based on field type
@@ -869,7 +869,7 @@ void ForceField::renderZapEffects(sf::RenderWindow& window) {
         window.draw(impactFlash);
         
         // Add secondary impact rings for more dramatic effect
-        if (zapEffectTimer > zapEffectDuration * 0.7f) { // Only during initial part of effect
+        if (zapEffectTimer > zapEffectDuration * ZAP_IMPACT_RING_DURATION_FACTOR) { // Only during initial part of effect
             int ringCount = 1 + powerLevel / 2; // More rings at higher power
             
             for (int i = 0; i < ringCount; i++) {
@@ -894,10 +894,11 @@ void ForceField::renderZapEffects(sf::RenderWindow& window) {
         }
         
         // Add dramatic shockwave if this was a critical hit (combo >= 3 or full charge)
-        if (consecutiveHits >= 3 || chargeLevel > 0.8f) {
+        if (consecutiveHits >= ZAP_CRITICAL_COMBO_THRESHOLD || chargeLevel > ZAP_CRITICAL_CHARGE_THRESHOLD) {
             sf::CircleShape shockwave;
             float shockwaveProgress = 1.0f - (zapEffectTimer / zapEffectDuration);
-            float shockwaveSize = 60.0f * shockwaveProgress * (1.0f + 0.2f * powerLevel);
+            float shockwaveSize = ZAP_SHOCKWAVE_SIZE_BASE * shockwaveProgress * 
+                                  (1.0f + ZAP_SHOCKWAVE_POWER_FACTOR * powerLevel);
             
             shockwave.setRadius(shockwaveSize);
             shockwave.setOrigin(shockwaveSize, shockwaveSize);
@@ -918,22 +919,22 @@ void ForceField::renderZapEffects(sf::RenderWindow& window) {
     if (chainEffect.getVertexCount() > 0) {
         // Add glow along chain lightning path
         sf::CircleShape chainGlow;
-        chainGlow.setRadius(5.0f + powerLevel);
+        chainGlow.setRadius(CHAIN_GLOW_RADIUS_BASE + powerLevel);
         chainGlow.setOrigin(chainGlow.getRadius(), chainGlow.getRadius());
         
         sf::Color chainGlowColor;
         switch (fieldType) {
             case FieldType::SHOCK:
-                chainGlowColor = sf::Color(100, 200, 255, 60);
+                chainGlowColor = sf::Color(100, 200, 255, CHAIN_GLOW_ALPHA);
                 break;
             case FieldType::PLASMA:
-                chainGlowColor = sf::Color(255, 150, 100, 60);
+                chainGlowColor = sf::Color(255, 150, 100, CHAIN_GLOW_ALPHA);
                 break;
             case FieldType::VORTEX:
-                chainGlowColor = sf::Color(200, 100, 255, 60);
+                chainGlowColor = sf::Color(200, 100, 255, CHAIN_GLOW_ALPHA);
                 break;
             default:
-                chainGlowColor = sf::Color(150, 200, 255, 60);
+                chainGlowColor = sf::Color(150, 200, 255, CHAIN_GLOW_ALPHA);
         }
         chainGlow.setFillColor(chainGlowColor);
         
@@ -1014,75 +1015,17 @@ void ForceField::renderParticles(sf::RenderWindow& window) {
     }
 }
 
-void ForceField::createAmbientParticle(const sf::Vector2f& center) {
-    // Find an inactive particle
-    for (int i = 0; i < MAX_PARTICLES; i++) {
-        if (!particles[i].active) {
-            // Random angle and distance from center
-            float angle = (rand() % 360) * 3.14159f / 180.0f;
-            float distance = radius * (0.2f + 0.8f * (rand() % 100) / 100.0f);
-            
-            particles[i].active = true;
-            particles[i].position = center + sf::Vector2f(
-                cosf(angle) * distance,
-                sinf(angle) * distance
-            );
-            
-            // Random type with weights based on field type
-            int typeRoll = rand() % 100;
-            if (typeRoll < 70) { // 70% chance for ambient
-                particles[i].type = ParticleType::AMBIENT;
-                particles[i].velocity = sf::Vector2f(
-                    (rand() % 20 - 10) * 5.0f,
-                    (rand() % 20 - 10) * 5.0f
-                );
-                particles[i].baseSize = 1.0f + (rand() % 3);
-                particles[i].size = particles[i].baseSize;
-                particles[i].maxLifetime = 0.5f + (rand() % 100) / 100.0f;
-            } else { // 30% chance for orbiting
-                particles[i].type = ParticleType::ORBIT;
-                particles[i].orbitAngle = angle;
-                particles[i].orbitSpeed = (60.0f + rand() % 60) * (rand() % 2 == 0 ? 1.0f : -1.0f);
-                particles[i].orbitDistance = distance;
-                particles[i].baseSize = 2.0f + (rand() % 4);
-                particles[i].size = particles[i].baseSize;
-                particles[i].maxLifetime = 1.0f + (rand() % 200) / 100.0f;
-            }
-            
-            particles[i].lifetime = particles[i].maxLifetime;
-            
-            // Color based on field type
-            switch (fieldType) {
-                case FieldType::SHOCK:
-                    particles[i].color = sf::Color(100 + rand() % 100, 180 + rand() % 75, 255, 200);
-                    break;
-                case FieldType::PLASMA:
-                    particles[i].color = sf::Color(255, 100 + rand() % 100, 50 + rand() % 100, 200);
-                    break;
-                case FieldType::VORTEX:
-                    particles[i].color = sf::Color(150 + rand() % 100, 50 + rand() % 100, 255, 200);
-                    break;
-                default:
-                    particles[i].color = sf::Color(150 + rand() % 100, 150 + rand() % 100, 255, 200);
-            }
-            
-            // Only create one particle per call
-            break;
-        }
-    }
-}
-
 void ForceField::createImpactParticles(const sf::Vector2f& impactPos) {
     // Create a burst of particles at impact position
-    const int numParticles = 15 + powerLevel * 5;
+    const int numParticles = IMPACT_PARTICLES_BASE + powerLevel * IMPACT_PARTICLES_PER_POWER;
     
     for (int j = 0; j < numParticles; j++) {
         // Find an inactive particle
         for (int i = 0; i < MAX_PARTICLES; i++) {
             if (!particles[i].active) {
                 // Random angle
-                float angle = (rand() % 360) * 3.14159f / 180.0f;
-                float speed = 50.0f + (rand() % 150);
+                float angle = (rand() % 360) * PI / 180.0f;
+                float speed = IMPACT_PARTICLE_SPEED_MIN + (rand() % (int)(IMPACT_PARTICLE_SPEED_MAX - IMPACT_PARTICLE_SPEED_MIN));
                 
                 particles[i].active = true;
                 particles[i].type = ParticleType::IMPACT;
@@ -1092,9 +1035,11 @@ void ForceField::createImpactParticles(const sf::Vector2f& impactPos) {
                     sinf(angle) * speed
                 );
                 
-                particles[i].baseSize = 1.0f + (rand() % 4);
+                particles[i].baseSize = IMPACT_PARTICLE_SIZE_MIN + (rand() % (int)(IMPACT_PARTICLE_SIZE_MAX - IMPACT_PARTICLE_SIZE_MIN));
                 particles[i].size = particles[i].baseSize;
-                particles[i].maxLifetime = 0.3f + (rand() % 100) / 200.0f;
+                particles[i].maxLifetime = IMPACT_PARTICLE_LIFETIME_MIN + 
+                                         (rand() % 100) / 200.0f * 
+                                         (IMPACT_PARTICLE_LIFETIME_MAX - IMPACT_PARTICLE_LIFETIME_MIN);
                 particles[i].lifetime = particles[i].maxLifetime;
                 
                 // Color based on field type, but brighter
@@ -1118,21 +1063,98 @@ void ForceField::createImpactParticles(const sf::Vector2f& impactPos) {
     }
 }
 
+void ForceField::createAmbientParticle(const sf::Vector2f& center) {
+    // Find an inactive particle
+    for (int i = 0; i < MAX_PARTICLES; i++) {
+        if (!particles[i].active) {
+            // Random angle and distance from center
+            float angle = (rand() % 360) * PI / 180.0f;
+            float distance = radius * (0.2f + 0.8f * (rand() % 100) / 100.0f);
+            
+            particles[i].active = true;
+            particles[i].position = center + sf::Vector2f(
+                cosf(angle) * distance,
+                sinf(angle) * distance
+            );
+            
+            // Random type with weights based on field type
+            int typeRoll = rand() % 100;
+            if (typeRoll < PARTICLE_AMBIENT_CHANCE) { // Chance for ambient particles
+                particles[i].type = ParticleType::AMBIENT;
+                particles[i].velocity = sf::Vector2f(
+                    (rand() % (PARTICLE_VELOCITY_RANGE * 2) - PARTICLE_VELOCITY_RANGE) * PARTICLE_VELOCITY_MULTIPLIER,
+                    (rand() % (PARTICLE_VELOCITY_RANGE * 2) - PARTICLE_VELOCITY_RANGE) * PARTICLE_VELOCITY_MULTIPLIER
+                );
+                particles[i].baseSize = PARTICLE_AMBIENT_SIZE_MIN + (rand() % (int)(PARTICLE_AMBIENT_SIZE_MAX - PARTICLE_AMBIENT_SIZE_MIN));
+                particles[i].size = particles[i].baseSize;
+                particles[i].maxLifetime = PARTICLE_AMBIENT_LIFETIME_MIN + (rand() % 100) / 100.0f * 
+                                         (PARTICLE_AMBIENT_LIFETIME_MAX - PARTICLE_AMBIENT_LIFETIME_MIN);
+            } else { // Chance for orbiting particles
+                particles[i].type = ParticleType::ORBIT;
+                particles[i].orbitAngle = angle;
+                particles[i].orbitSpeed = (PARTICLE_ORBIT_SPEED_MIN + rand() % (int)(PARTICLE_ORBIT_SPEED_MAX - PARTICLE_ORBIT_SPEED_MIN)) * 
+                                         (rand() % 2 == 0 ? 1.0f : -1.0f);
+                particles[i].orbitDistance = distance;
+                particles[i].baseSize = PARTICLE_ORBIT_SIZE_MIN + (rand() % (int)(PARTICLE_ORBIT_SIZE_MAX - PARTICLE_ORBIT_SIZE_MIN));
+                particles[i].size = particles[i].baseSize;
+                particles[i].maxLifetime = PARTICLE_ORBIT_LIFETIME_MIN + (rand() % 200) / 100.0f * 
+                                         (PARTICLE_ORBIT_LIFETIME_MAX - PARTICLE_ORBIT_LIFETIME_MIN);
+            }
+            
+            particles[i].lifetime = particles[i].maxLifetime;
+            
+            // Color based on field type
+            switch (fieldType) {
+                case FieldType::SHOCK:
+                    particles[i].color = sf::Color(
+                        100 + rand() % PARTICLE_COLOR_VARIATION, 
+                        180 + rand() % (int)(PARTICLE_COLOR_VARIATION * 0.75f), 
+                        255, 
+                        PARTICLE_DEFAULT_ALPHA);
+                    break;
+                case FieldType::PLASMA:
+                    particles[i].color = sf::Color(
+                        255, 
+                        100 + rand() % PARTICLE_COLOR_VARIATION, 
+                        50 + rand() % PARTICLE_COLOR_VARIATION, 
+                        PARTICLE_DEFAULT_ALPHA);
+                    break;
+                case FieldType::VORTEX:
+                    particles[i].color = sf::Color(
+                        150 + rand() % PARTICLE_COLOR_VARIATION, 
+                        50 + rand() % PARTICLE_COLOR_VARIATION, 
+                        255, 
+                        PARTICLE_DEFAULT_ALPHA);
+                    break;
+                default:
+                    particles[i].color = sf::Color(
+                        150 + rand() % PARTICLE_COLOR_VARIATION, 
+                        150 + rand() % PARTICLE_COLOR_VARIATION, 
+                        255, 
+                        PARTICLE_DEFAULT_ALPHA);
+            }
+            
+            // Only create one particle per call
+            break;
+        }
+    }
+}
+
 void ForceField::renderPowerIndicator(sf::RenderWindow& window, const sf::Vector2f& playerCenter) {
     // Only show indicator when charged or at higher power levels
-    if (powerLevel <= 1 && chargeLevel < 0.1f) return;
+    if (powerLevel <= POWER_MIN_LEVEL && chargeLevel < POWER_INDICATOR_MIN) return;
     
     // Power level indicator as orbiting diamonds
     for (int i = 0; i < powerLevel; i++) {
-        sf::CircleShape powerMarker(5.0f, 4); // Diamond shape
-        powerMarker.setOrigin(5.0f, 5.0f);
+        sf::CircleShape powerMarker(POWER_MARKER_RADIUS, POWER_MARKER_SIDES); // Diamond shape
+        powerMarker.setOrigin(POWER_MARKER_RADIUS, POWER_MARKER_RADIUS);
         
         // Position in orbit around player
         float markerAngle = fieldRotation * 0.5f + (i * 360.0f / powerLevel);
-        float markerDist = radius * 1.2f;
+        float markerDist = radius * POWER_MARKER_DISTANCE_FACTOR;
         sf::Vector2f markerPos = playerCenter + sf::Vector2f(
-            cosf(markerAngle * 3.14159f / 180.0f) * markerDist,
-            sinf(markerAngle * 3.14159f / 180.0f) * markerDist
+            cosf(markerAngle * PI / 180.0f) * markerDist,
+            sinf(markerAngle * PI / 180.0f) * markerDist
         );
         
         powerMarker.setPosition(markerPos);
@@ -1141,53 +1163,55 @@ void ForceField::renderPowerIndicator(sf::RenderWindow& window, const sf::Vector
         sf::Color markerColor;
         switch (fieldType) {
             case FieldType::SHOCK:
-                markerColor = sf::Color(100, 200, 255, 200);
+                markerColor = sf::Color(100, 200, 255, POWER_MARKER_ALPHA);
                 break;
             case FieldType::PLASMA:
-                markerColor = sf::Color(255, 150, 100, 200);
+                markerColor = sf::Color(255, 150, 100, POWER_MARKER_ALPHA);
                 break;
             case FieldType::VORTEX:
-                markerColor = sf::Color(200, 100, 255, 200);
+                markerColor = sf::Color(200, 100, 255, POWER_MARKER_ALPHA);
                 break;
             default:
-                markerColor = sf::Color(150, 220, 255, 200);
+                markerColor = sf::Color(150, 220, 255, POWER_MARKER_ALPHA);
         }
         powerMarker.setFillColor(markerColor);
         
         // Pulsing size
-        float pulseFactor = 1.0f + 0.3f * std::sin(fieldPulsePhase * 3.0f + i * 0.5f);
+        float pulseFactor = POWER_MARKER_PULSE_MIN + POWER_MARKER_PULSE_MAX * 
+                           std::sin(fieldPulsePhase * POWER_MARKER_PULSE_FREQUENCY + i * 0.5f);
         powerMarker.setScale(pulseFactor, pulseFactor);
         
         window.draw(powerMarker);
     }
     
     // Charge level indicator
-    if (chargeLevel > 0.05f) {
+    if (chargeLevel > CHARGE_DISPLAY_THRESHOLD) {
         sf::RectangleShape chargeBar;
-        float chargeWidth = 50.0f * chargeLevel;
-        chargeBar.setSize(sf::Vector2f(chargeWidth, 4.0f));
-        chargeBar.setPosition(playerCenter.x - 25.0f, playerCenter.y - radius * 1.3f);
+        float chargeWidth = CHARGE_BAR_WIDTH * chargeLevel;
+        chargeBar.setSize(sf::Vector2f(chargeWidth, CHARGE_BAR_HEIGHT));
+        chargeBar.setPosition(playerCenter.x - CHARGE_BAR_WIDTH/2, playerCenter.y - radius * CHARGE_BAR_DISTANCE_FACTOR);
         
         // Color based on charge level and field type
         sf::Color chargeColor;
         switch (fieldType) {
             case FieldType::SHOCK:
-                chargeColor = sf::Color(100, 150 + static_cast<int>(105 * chargeLevel), 255, 200);
+                chargeColor = sf::Color(100, 150 + static_cast<int>(105 * chargeLevel), 255, POWER_MARKER_ALPHA);
                 break;
             case FieldType::PLASMA:
-                chargeColor = sf::Color(255, 100 + static_cast<int>(155 * chargeLevel), 50, 200);
+                chargeColor = sf::Color(255, 100 + static_cast<int>(155 * chargeLevel), 50, POWER_MARKER_ALPHA);
                 break;
             case FieldType::VORTEX:
-                chargeColor = sf::Color(150 + static_cast<int>(105 * chargeLevel), 50, 255, 200);
+                chargeColor = sf::Color(150 + static_cast<int>(105 * chargeLevel), 50, 255, POWER_MARKER_ALPHA);
                 break;
             default:
-                chargeColor = sf::Color(100 + static_cast<int>(155 * chargeLevel), 200, 255, 200);
+                chargeColor = sf::Color(100 + static_cast<int>(155 * chargeLevel), 200, 255, POWER_MARKER_ALPHA);
         }
         chargeBar.setFillColor(chargeColor);
         
         // Pulsing opacity for high charge
-        if (chargeLevel > 0.8f) {
-            float pulseAlpha = 150 + 105 * std::sin(fieldPulsePhase * 5.0f);
+        if (chargeLevel > CHARGE_HIGH_THRESHOLD) {
+            float pulseAlpha = CHARGE_PULSE_ALPHA_MIN + CHARGE_PULSE_ALPHA_MAX * 
+                              std::sin(fieldPulsePhase * CHARGE_PULSE_FREQUENCY);
             chargeColor.a = static_cast<sf::Uint8>(pulseAlpha);
             chargeBar.setFillColor(chargeColor);
         }
@@ -1203,25 +1227,25 @@ void ForceField::updateFieldColor() {
     
     switch (fieldType) {
         case FieldType::SHOCK:
-            newBaseColor = sf::Color(50, 150, 255, 50);
-            newOutlineColor = sf::Color(100, 200, 255, 180);
+            newBaseColor = UPDATE_SHOCK_FIELD_COLOR;
+            newOutlineColor = UPDATE_SHOCK_OUTLINE_COLOR;
             break;
         case FieldType::PLASMA:
-            newBaseColor = sf::Color(255, 100, 50, 50);
-            newOutlineColor = sf::Color(255, 150, 100, 180);
+            newBaseColor = UPDATE_PLASMA_FIELD_COLOR;
+            newOutlineColor = UPDATE_PLASMA_OUTLINE_COLOR;
             break;
         case FieldType::VORTEX:
-            newBaseColor = sf::Color(150, 50, 255, 50);
-            newOutlineColor = sf::Color(200, 100, 255, 180);
+            newBaseColor = UPDATE_VORTEX_FIELD_COLOR;
+            newOutlineColor = UPDATE_VORTEX_OUTLINE_COLOR;
             break;
         default:
-            newBaseColor = sf::Color(100, 100, 255, 50);
-            newOutlineColor = sf::Color(150, 150, 255, 180);
+            newBaseColor = UPDATE_STANDARD_FIELD_COLOR;
+            newOutlineColor = UPDATE_STANDARD_OUTLINE_COLOR;
     }
     
     // Adjust based on field intensity
-    newBaseColor.a = static_cast<sf::Uint8>(newBaseColor.a * (0.7f + 0.3f * fieldIntensity));
-    newOutlineColor.a = static_cast<sf::Uint8>(newOutlineColor.a * (0.7f + 0.3f * fieldIntensity));
+    newBaseColor.a = static_cast<sf::Uint8>(newBaseColor.a * (FIELD_COLOR_INTENSITY_MIN + FIELD_COLOR_INTENSITY_MAX * fieldIntensity));
+    newOutlineColor.a = static_cast<sf::Uint8>(newOutlineColor.a * (FIELD_COLOR_INTENSITY_MIN + FIELD_COLOR_INTENSITY_MAX * fieldIntensity));
     
     // Apply updated colors
     fieldShape.setFillColor(newBaseColor);

@@ -6,7 +6,7 @@
 #include <memory>
 #include <string>
 #include "../../network/messages/MessageHandler.h"
-#include "../../utils/config/Config.h"
+#include "../../utils/config/EnemyConfig.h"
 #include "EnemyTypes.h"
 
 // Forward declarations

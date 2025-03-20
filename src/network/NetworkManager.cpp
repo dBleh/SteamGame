@@ -11,9 +11,7 @@
 #include "messages/EnemyMessageHandler.h"
 #include "messages/StateMessageHandler.h"
 #include "messages/SystemMessageHandler.h"
-
-#define GAME_ID "SteamGame_v1"
-#define MAX_PACKET_SIZE 1024
+#include "../utils/config/Config.h"
 
 NetworkManager::NetworkManager(Game* gameInstance)
     : game(gameInstance),
@@ -101,7 +99,7 @@ void NetworkManager::SendConnectionMessageOnJoin(CSteamID hostID) {
     CSteamID myID = SteamUser()->GetSteamID();
     std::string steamIDStr = std::to_string(myID.ConvertToUint64());
     std::string steamName = SteamFriends()->GetPersonaName();
-    sf::Color playerColor = sf::Color::Blue;
+    sf::Color playerColor = PLAYER_DEFAULT_COLOR;
     std::string connectMsg = PlayerMessageHandler::FormatConnectionMessage(steamIDStr, steamName, playerColor, false, false);
 
     if (SendMessage(hostID, connectMsg)) {

@@ -7,6 +7,7 @@
 #include <memory>
 #include <vector>
 #include <array>
+#include "../../utils/config/ForceFieldConfig.h"
 
 // Forward declarations
 class Player;
@@ -49,17 +50,10 @@ struct Particle {
 
 class ForceField {
 public:
-    // Constants
-    static constexpr float DEFAULT_RADIUS = 150.0f;
-    static constexpr float DEFAULT_COOLDOWN = .3f; // seconds between zaps
-    static constexpr float DEFAULT_DAMAGE = 25.0f;  // damage per zap
-    static constexpr int MAX_PARTICLES = 1000;       // Maximum particles for effects
-    static constexpr int NUM_FIELD_RINGS = 3;       // Number of decorative rings
-    static constexpr int NUM_ENERGY_ORBS = 12;       // Number of orbiting energy orbs
-    
     // Callback type for zap events
     using ZapCallback = std::function<void(int enemyId, float damage, bool killed)>;
-    
+
+    // Using constants from config
     ForceField(Player* player, float radius = DEFAULT_RADIUS);
     ~ForceField() = default;
     
@@ -83,6 +77,7 @@ public:
     void renderPowerIndicator(sf::RenderWindow& window, const sf::Vector2f& playerCenter);
     void updateFieldColor();
     bool HasZapCallback() const { return zapCallback != nullptr; }
+    
     // Particle system
     void initializeParticles();
     void updateParticles(float dt, const sf::Vector2f& playerCenter);
@@ -99,8 +94,9 @@ public:
         
         // Update ring sizes
         for (int i = 0; i < NUM_FIELD_RINGS; i++) {
-            fieldRings[i].setRadius(radius * (0.4f + 0.2f * i));
-            fieldRings[i].setOrigin(radius * (0.4f + 0.2f * i), radius * (0.4f + 0.2f * i));
+            fieldRings[i].setRadius(radius * (FIELD_RING_INNER_RADIUS_FACTOR + FIELD_RING_RADIUS_INCREMENT * i));
+            fieldRings[i].setOrigin(radius * (FIELD_RING_INNER_RADIUS_FACTOR + FIELD_RING_RADIUS_INCREMENT * i), 
+                                    radius * (FIELD_RING_INNER_RADIUS_FACTOR + FIELD_RING_RADIUS_INCREMENT * i));
         }
     }
     
@@ -121,8 +117,8 @@ public:
     
     // Power level control
     int GetPowerLevel() const { return powerLevel; }
-    void SetPowerLevel(int level) { powerLevel = std::max(1, std::min(5, level)); }
-    void IncreasePowerLevel() { powerLevel = std::min(powerLevel + 1, 5); }
+    void SetPowerLevel(int level) { powerLevel = std::max(1, std::min(MAX_POWER_LEVEL, level)); }
+    void IncreasePowerLevel() { powerLevel = std::min(powerLevel + 1, MAX_POWER_LEVEL); }
     
     // Chain lightning control
     bool IsChainLightningEnabled() const { return chainLightningEnabled; }
@@ -145,7 +141,7 @@ public:
     
     // Event callback
     void SetZapCallback(ZapCallback callback) { zapCallback = callback; }
-    
+        
 private:
     Player* player;                       // The player this force field belongs to
     sf::CircleShape fieldShape;           // Visual representation of the force field

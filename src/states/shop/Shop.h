@@ -99,13 +99,13 @@ private:
     void UpdateMoneyDisplay();
     
     // Constants for ForceField upgrades
-    static constexpr float FORCE_FIELD_RADIUS_BASE = 150.0f;
+    static constexpr float FORCE_FIELD_RADIUS_BASE = DEFAULT_RADIUS;
     static constexpr float FORCE_FIELD_RADIUS_INCREMENT = 50.0f;
-    static constexpr float FORCE_FIELD_DAMAGE_BASE = 25.0f;
+    static constexpr float FORCE_FIELD_DAMAGE_BASE = DEFAULT_DAMAGE;
     static constexpr float FORCE_FIELD_DAMAGE_INCREMENT = 5.0f;
-    static constexpr float FORCE_FIELD_COOLDOWN_BASE = 0.3f;
+    static constexpr float FORCE_FIELD_COOLDOWN_BASE = DEFAULT_COOLDOWN;
     static constexpr float FORCE_FIELD_COOLDOWN_DECREMENT = 0.03f;
-    static constexpr int FORCE_FIELD_CHAIN_BASE = 3;
+    static constexpr int FORCE_FIELD_CHAIN_BASE = FIELD_DEFAULT_CHAIN_TARGETS;
     static constexpr int FORCE_FIELD_CHAIN_INCREMENT = 1;
 };
 

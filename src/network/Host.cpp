@@ -7,6 +7,7 @@
 #include "messages/StateMessageHandler.h"
 #include "messages/SystemMessageHandler.h"
 #include "../states/PlayingState.h"
+#include "../utils/config/Config.h"
 #include <iostream>
 
 HostNetwork::HostNetwork(Game* game, PlayerManager* manager)
@@ -17,13 +18,13 @@ HostNetwork::HostNetwork(Game* game, PlayerManager* manager)
     RemotePlayer hostPlayer;
     hostPlayer.playerID = hostIDStr;
     hostPlayer.isHost = true;
-    hostPlayer.player = Player(sf::Vector2f(200.f, 200.f), sf::Color::Blue);
-    hostPlayer.cubeColor = sf::Color::Blue;
+    hostPlayer.player = Player(sf::Vector2f(PLAYER_DEFAULT_START_X * 2, PLAYER_DEFAULT_START_Y * 2), PLAYER_DEFAULT_COLOR);
+    hostPlayer.cubeColor = PLAYER_DEFAULT_COLOR;
     hostPlayer.nameText.setFont(game->GetFont());
     hostPlayer.nameText.setString(hostName);
     hostPlayer.baseName = hostName;
-    hostPlayer.nameText.setCharacterSize(16);
-    hostPlayer.nameText.setFillColor(sf::Color::Black);
+    hostPlayer.nameText.setCharacterSize(PLAYER_NAME_FONT_SIZE);
+    hostPlayer.nameText.setFillColor(PLAYER_NAME_COLOR);
     hostPlayer.isReady = false;
     playerManager->AddOrUpdatePlayer(hostIDStr, std::move(hostPlayer));
     std::cout << "[HOST] Added host to player list: " << hostName << " (" << hostIDStr << ")\n";
@@ -56,13 +57,13 @@ void HostNetwork::ProcessConnectionMessage(Game& game, HostNetwork& host, const 
         RemotePlayer rp;
         rp.playerID = parsed.steamID;
         rp.isHost = false;
-        rp.player = Player(sf::Vector2f(200.f, 200.f), parsed.color);
+        rp.player = Player(sf::Vector2f(PLAYER_DEFAULT_START_X * 2, PLAYER_DEFAULT_START_Y * 2), parsed.color);
         rp.cubeColor = parsed.color;
         rp.nameText.setFont(game.GetFont());
         rp.nameText.setString(parsed.steamName);
         rp.baseName = parsed.steamName;
-        rp.nameText.setCharacterSize(16);
-        rp.nameText.setFillColor(sf::Color::Black);
+        rp.nameText.setCharacterSize(PLAYER_NAME_FONT_SIZE);
+        rp.nameText.setFillColor(PLAYER_NAME_COLOR);
         playerManager->AddOrUpdatePlayer(parsed.steamID, std::move(rp));
         
         // Initialize force field for the newly connected client
@@ -75,7 +76,7 @@ void HostNetwork::ProcessConnectionMessage(Game& game, HostNetwork& host, const 
         std::cout << "[HOST] New player connected: " << parsed.steamName << " (" << parsed.steamID << ")\n";
     } else {
         // Update existing player's position
-        it->second.player.SetPosition(sf::Vector2f(200.f, 200.f));
+        it->second.player.SetPosition(sf::Vector2f(PLAYER_DEFAULT_START_X * 2, PLAYER_DEFAULT_START_Y * 2));
         it->second.cubeColor = parsed.color;
         if (it->second.baseName != parsed.steamName) {
             it->second.baseName = parsed.steamName;
@@ -112,10 +113,10 @@ void HostNetwork::ProcessMovementMessage(Game& game, HostNetwork& host, const Pa
         // Create a new player if needed
         RemotePlayer rp;
         rp.playerID = parsed.steamID;
-        rp.player = Player(parsed.position, sf::Color::Blue);
+        rp.player = Player(parsed.position, PLAYER_DEFAULT_COLOR);
         rp.nameText.setFont(game.GetFont());
-        rp.nameText.setCharacterSize(16);
-        rp.nameText.setFillColor(sf::Color::Black);
+        rp.nameText.setCharacterSize(PLAYER_NAME_FONT_SIZE);
+        rp.nameText.setFillColor(PLAYER_NAME_COLOR);
         playerManager->AddOrUpdatePlayer(parsed.steamID, std::move(rp));
     }
     
@@ -298,8 +299,8 @@ void HostNetwork::ProcessPlayerDeathMessage(Game& game, HostNetwork& host, const
     auto& players = playerManager->GetPlayers();
     if (players.find(playerID) != players.end()) {
         RemotePlayer& player = players[playerID];
-        player.player.TakeDamage(100);
-        player.respawnTimer = 3.0f;
+        player.player.TakeDamage(player.player.GetHealth()); // Take full damage to ensure death
+        player.respawnTimer = RESPAWN_TIME;
     }
     if (players.find(killerID) != players.end()) {
         playerManager->IncrementPlayerKills(killerID);
@@ -392,13 +393,13 @@ void HostNetwork::ProcessForceFieldZapMessage(Game& game, HostNetwork& host, con
                     }
                     
                     // Get player and enemy positions
-                    sf::Vector2f playerPos = rp.player.GetPosition() + sf::Vector2f(25.0f, 25.0f); // Assuming 50x50 player
+                    sf::Vector2f playerPos = rp.player.GetPosition() + sf::Vector2f(PLAYER_WIDTH/2.0f, PLAYER_HEIGHT/2.0f);
                     sf::Vector2f enemyPos = enemy->GetPosition();
                     
                     // Create the zap effect
                     rp.player.GetForceField()->CreateZapEffect(playerPos, enemyPos);
                     rp.player.GetForceField()->SetIsZapping(true);
-                    rp.player.GetForceField()->SetZapEffectTimer(0.3f); // Show effect for 0.3 seconds
+                    rp.player.GetForceField()->SetZapEffectTimer(FIELD_ZAP_EFFECT_DURATION);
                 }
             }
         }

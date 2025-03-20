@@ -32,7 +32,8 @@ PlayingState::PlayingState(Game* game)
       showEscapeMenu(false),
       waveTimer(0.0f),
       showShop(false),
-      waitingForNextWave(false) {
+      waitingForNextWave(false),
+      currentZoom(DEFAULT_ZOOM) {
     
     std::cout << "[DEBUG] PlayingState constructor start\n";
     
@@ -68,13 +69,13 @@ PlayingState::PlayingState(Game* game)
     RemotePlayer localPlayer;
     localPlayer.playerID = myIDStr;
     localPlayer.isHost = (myID == hostIDSteam);
-    localPlayer.player = Player(sf::Vector2f(0.f, 0.f), sf::Color::Blue);
+    localPlayer.player = Player(sf::Vector2f(0.f, 0.f), PLAYER_DEFAULT_COLOR);
     localPlayer.nameText.setFont(game->GetFont());
     localPlayer.nameText.setString(myName);
     localPlayer.baseName = myName;
-    localPlayer.cubeColor = sf::Color::Blue;
-    localPlayer.nameText.setCharacterSize(16);
-    localPlayer.nameText.setFillColor(sf::Color::Black);
+    localPlayer.cubeColor = PLAYER_DEFAULT_COLOR;
+    localPlayer.nameText.setCharacterSize(PLAYER_NAME_FONT_SIZE);
+    localPlayer.nameText.setFillColor(PLAYER_NAME_COLOR);
     localPlayer.kills = 0;
     localPlayer.money = 0;
     playerManager->AddOrUpdatePlayer(myIDStr, localPlayer);
@@ -109,7 +110,7 @@ PlayingState::PlayingState(Game* game)
         std::string hostConnectMsg = PlayerMessageHandler::FormatConnectionMessage(
             myIDStr,
             myName,
-            sf::Color::Blue,
+            PLAYER_DEFAULT_COLOR,
             false,
             true
         );
@@ -305,7 +306,7 @@ void PlayingState::Update(float dt) {
                         playerManager->PlayerShoot(mouseWorldPos);
                     }
                     
-                    shootTimer = 0.1f; // Shoot every 0.1 seconds when holding down
+                    shootTimer = SHOOT_COOLDOWN_DURATION; // Use constant instead of hardcoded value
                 }
             }
         }

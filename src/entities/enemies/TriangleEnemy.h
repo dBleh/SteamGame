@@ -2,6 +2,7 @@
 #define TRIANGLE_ENEMY_H
 
 #include "Enemy.h"
+#include "../../utils/config/EnemyConfig.h"
 #include <SFML/Graphics.hpp>
 
 class TriangleEnemy : public Enemy {

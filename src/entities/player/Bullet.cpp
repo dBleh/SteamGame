@@ -1,13 +1,13 @@
 #include "Bullet.h"
 
 Bullet::Bullet(const sf::Vector2f& position, const sf::Vector2f& direction, float speed, const std::string& shooterID)
-    : lifetime(5.f), shooterID(shooterID) {
+    : lifetime(BULLET_LIFETIME), shooterID(shooterID) {
     // Create smaller bullet for better precision
     shape.setSize(sf::Vector2f(BULLET_RADIUS, BULLET_RADIUS));  
-    shape.setFillColor(sf::Color::Black);
+    shape.setFillColor(BULLET_COLOR);
     
     // Center the bullet shape (important for accurate collision)
-    shape.setOrigin(4.f, 4.f);
+    shape.setOrigin(BULLET_RADIUS / 2.0f, BULLET_RADIUS / 2.0f);
     
     // Set the bullet position 
     shape.setPosition(position);

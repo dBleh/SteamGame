@@ -3,7 +3,7 @@
 #include <iostream>
 
 TriangleEnemy::TriangleEnemy(int id, const sf::Vector2f& position, float health, float speed)
-    : Enemy(id, position, health, speed), rotationAngle(0.0f), rotationSpeed(90.0f) {
+    : Enemy(id, position, health, speed), rotationAngle(0.0f), rotationSpeed(ENEMY_ROTATION_SPEED) {
     
     // Setup the triangle shape
     shape.setPointCount(3);
@@ -15,9 +15,9 @@ TriangleEnemy::TriangleEnemy(int id, const sf::Vector2f& position, float health,
     shape.setOrigin(0, 0);
     
     // Color
-    shape.setFillColor(sf::Color(255, 140, 0)); // Orange color
-    shape.setOutlineColor(sf::Color(200, 80, 0)); // Darker orange outline
-    shape.setOutlineThickness(1.0f);
+    shape.setFillColor(TRIANGLE_FILL_COLOR); // Orange color
+    shape.setOutlineColor(TRIANGLE_OUTLINE_COLOR); // Darker orange outline
+    shape.setOutlineThickness(ENEMY_OUTLINE_THICKNESS);
     
     // Update position to match the starting position
     UpdateVisualRepresentation();
@@ -30,7 +30,7 @@ void TriangleEnemy::UpdateVisualRepresentation() {
     // Update rotation to face the target if we have one
     if (hasTarget && (velocity.x != 0 || velocity.y != 0)) {
         float angle = std::atan2(velocity.y, velocity.x) * 180 / 3.14159f;
-        shape.setRotation(angle + 90); // +90 to point the triangle in the movement direction
+        shape.setRotation(angle + TRIANGLE_ROTATION_OFFSET); // +90 to point the triangle in the movement direction
     }
 }
 
