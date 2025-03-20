@@ -68,7 +68,9 @@ private:
     float m_settingsRequestTimer = 1.0f;  // Request settings 1 second after connecting
     bool m_initialSettingsReceived = false;
     bool m_hasInitializedForceFields = false;
-    
+    std::atomic<bool> m_forceFieldInitInProgress{false};
+    bool m_calledFromMessageHandler{false};
+
 };
 
 #endif // CLIENT_H

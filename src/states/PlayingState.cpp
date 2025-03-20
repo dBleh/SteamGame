@@ -799,105 +799,72 @@ void PlayingState::ApplyAllSettings() {
 }
 
 void PlayingState::UpdateForceFields(float dt) {
-    if (!playerLoaded || !playerManager || !forceFieldsInitialized) return;
+    if (!playerLoaded || !playerManager) return;
     
-    // Make a vector of player IDs to avoid iteration issues if the map changes
-    std::vector<std::string> playerIDs;
-    {
-        auto& players = playerManager->GetPlayers();
-        for (const auto& pair : players) {
-            playerIDs.push_back(pair.first);
-        }
-    }
+    CSteamID myID = SteamUser()->GetSteamID();
+    CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
+    bool isHost = (myID == hostID);
     
-    // Now iterate through the copied IDs
-    for (const std::string& playerID : playerIDs) {
-        try {
-            auto& players = playerManager->GetPlayers();
-            auto playerIt = players.find(playerID);
-            if (playerIt == players.end()) continue;
-            
-            RemotePlayer& rp = playerIt->second;
-            
-            // Skip dead players
-            if (rp.player.IsDead()) continue;
-            
-            // Skip if player doesn't have a force field and we can't initialize one
-            if (!rp.player.HasForceField()) {
-                try {
-                    rp.player.InitializeForceField();
-                    std::cout << "[PlayingState] Re-initialized missing force field for player " << rp.baseName << "\n";
-                    
-                    // Don't enable until the force field is fully initialized
-                    rp.player.EnableForceField(true);
-                } catch (const std::exception& e) {
-                    std::cerr << "[ERROR] Failed to initialize force field: " << e.what() << std::endl;
-                    continue;
-                }
-            }
-            
-            ForceField* forceField = rp.player.GetForceField();
-            if (!forceField) {
-                std::cerr << "[ERROR] Null force field pointer for player " << rp.baseName << std::endl;
-                continue;
-            }
-            
-            // Check if we're a client and need a zap callback
-            CSteamID myID = SteamUser()->GetSteamID();
-            CSteamID hostID = SteamMatchmaking()->GetLobbyOwner(game->GetLobbyID());
-            bool isClient = (myID != hostID);
-            
-            if (isClient && !forceField->HasZapCallback()) {
-                std::cout << "[CLIENT] Setting missing zap callback for player " << rp.baseName << "\n";
-                
-                // Store player ID by value to avoid reference issues
-                std::string callbackPlayerID = playerID;
-                forceField->SetZapCallback([this, callbackPlayerID](int enemyId, float damage, bool killed) {
-                    // Handle zap event safely with null checks
-                    if (this->playerManager) {
-                        this->playerManager->HandleForceFieldZap(callbackPlayerID, enemyId, damage, killed);
-                    }
-                });
-            }
-            
-            // Update the force field with careful exception handling
+    // For clients, use a very simplified update to avoid triggering more network messages
+    if (!isHost) {
+        // Only update force field positions and visuals
+        for (auto& pair : playerManager->GetPlayers()) {
             try {
-                // Don't directly call Update, which might trigger FindAndZapEnemy too early
-                // Instead, just update the visual aspects
+                RemotePlayer& rp = pair.second;
                 
-                // Get player position
+                // Skip dead players or those without force fields
+                if (rp.player.IsDead() || !rp.player.HasForceField()) continue;
+                
+                ForceField* forceField = rp.player.GetForceField();
+                if (!forceField) continue;
+                
+                // Update position to follow player
                 sf::Vector2f playerCenter = rp.player.GetPosition() + sf::Vector2f(25.0f, 25.0f);
-                
-                // Update field position
                 forceField->fieldShape.setPosition(playerCenter);
                 
-                // Update field rings
+                // Update force field rings
                 for (int i = 0; i < ForceField::NUM_FIELD_RINGS; i++) {
                     forceField->fieldRings[i].setPosition(playerCenter);
                 }
                 
-                // Update energy orbs
-                for (int i = 0; i < ForceField::NUM_ENERGY_ORBS; i++) {
-                    float angle = forceField->orbAngles[i] + dt * forceField->orbSpeeds[i] * 50.0f;
-                    forceField->orbAngles[i] = angle;
-                    
-                    float x = playerCenter.x + std::cos(angle * 3.14159f / 180.0f) * forceField->orbDistances[i];
-                    float y = playerCenter.y + std::sin(angle * 3.14159f / 180.0f) * forceField->orbDistances[i];
-                    
-                    forceField->energyOrbs[i].setPosition(sf::Vector2f(x, y));
+                // Decrease zap timer if active
+                if (forceField->isZapping) {
+                    forceField->zapEffectTimer -= dt;
+                    if (forceField->zapEffectTimer <= 0.0f) {
+                        forceField->isZapping = false;
+                    }
                 }
                 
-                // Only perform full update (including zapping) for client's own force field
-                if (playerID == playerManager->GetLocalPlayer().playerID) {
+                // Only perform full update for local player
+                if (pair.first == playerManager->GetLocalPlayer().playerID) {
+                    forceField->fieldRotation += dt * 15.0f;
+                    forceField->fieldPulsePhase += dt * 3.0f;
+                }
+            } catch (...) {
+                // Silently handle errors to prevent crashes
+            }
+        }
+    } else {
+        // Host uses regular update
+        for (auto& pair : playerManager->GetPlayers()) {
+            try {
+                RemotePlayer& rp = pair.second;
+                
+                // Skip dead players
+                if (rp.player.IsDead()) continue;
+                
+                // Ensure player has a force field initialized
+                if (!rp.player.HasForceField()) {
+                    rp.player.InitializeForceField();
+                }
+                
+                ForceField* forceField = rp.player.GetForceField();
+                if (forceField) {
                     forceField->Update(dt, *playerManager, *enemyManager);
                 }
             } catch (const std::exception& e) {
-                std::cerr << "[ERROR] Exception in force field update for player " 
-                         << rp.baseName << ": " << e.what() << std::endl;
+                std::cerr << "[ERROR] Exception in force field update: " << e.what() << std::endl;
             }
-        } catch (const std::exception& e) {
-            std::cerr << "[ERROR] Exception in force field processing for player " 
-                     << playerID << ": " << e.what() << std::endl;
         }
     }
 }

@@ -321,35 +321,59 @@ void ForceField::Update(float dt, PlayerManager& playerManager, EnemyManager& en
 }
 
 void ForceField::Render(sf::RenderWindow& window) {
-    // Skip if player is dead
-    if (player->IsDead()) return;
-    
-    // Get player position
-    sf::Vector2f playerCenter = player->GetPosition() + sf::Vector2f(25.0f, 25.0f);
-    
-    // Render particles behind everything else
-    renderParticles(window);
-    
-    // Render field rings
-    for (int i = 0; i < NUM_FIELD_RINGS; i++) {
-        window.draw(fieldRings[i]);
+    try {
+        // Skip if player is dead
+        if (!player || player->IsDead()) return;
+        
+        // Get player position
+        sf::Vector2f playerCenter = player->GetPosition() + sf::Vector2f(25.0f, 25.0f);
+        
+        // Render main force field
+        try {
+            fieldShape.setPosition(playerCenter);
+            window.draw(fieldShape);
+        } catch (...) {
+            // Silently handle errors in base rendering
+        }
+        
+        // Render field rings
+        for (int i = 0; i < NUM_FIELD_RINGS; i++) {
+            try {
+                fieldRings[i].setPosition(playerCenter);
+                window.draw(fieldRings[i]);
+            } catch (...) {
+                // Continue with next ring if one fails
+            }
+        }
+        
+        // Render energy orbs
+        for (int i = 0; i < NUM_ENERGY_ORBS; i++) {
+            try {
+                // Calculate orbit position
+                float angle = orbAngles[i] * 3.14159f / 180.0f;
+                float x = playerCenter.x + cosf(angle) * orbDistances[i];
+                float y = playerCenter.y + sinf(angle) * orbDistances[i];
+                
+                energyOrbs[i].setPosition(x, y);
+                window.draw(energyOrbs[i]);
+            } catch (...) {
+                // Continue with next orb if one fails
+            }
+        }
+        
+        // Render zap effects if active
+        if (isZapping && zapEffect.getVertexCount() > 0) {
+            try {
+                window.draw(zapEffect);
+            } catch (...) {
+                // Clear effect on error
+                zapEffect.clear();
+                isZapping = false;
+            }
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "[FORCEFIELD] Exception in Render: " << e.what() << std::endl;
     }
-    
-    // Render main force field
-    window.draw(fieldShape);
-    
-    // Render energy orbs
-    for (int i = 0; i < NUM_ENERGY_ORBS; i++) {
-        window.draw(energyOrbs[i]);
-    }
-    
-    // Render zap effects if active
-    if (isZapping) {
-        renderZapEffects(window);
-    }
-    
-    // Render power level indicator
-    renderPowerIndicator(window, playerCenter);
 }
 
 // This method needs to be updated in ForceField.cpp to properly handle kills
