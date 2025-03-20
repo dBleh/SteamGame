@@ -50,6 +50,7 @@ public:
     void ProcessForceFieldUpdateMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed);
     void ProcessKillMessage(Game& game, ClientNetwork& client, const ParsedMessage& parsed);
     void EnsureForceFieldInitialization();
+    bool HasReceivedInitialSettings() const { return m_initialSettingsReceived; }
 private:
     Game* game;
     std::chrono::steady_clock::time_point lastSendTime;

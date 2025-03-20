@@ -685,13 +685,11 @@ void ClientNetwork::ProcessSettingsUpdateMessage(Game& game, ClientNetwork& clie
             ApplySettings();
             
             // IMPORTANT: Mark that we've received the initial settings
-            // This should prevent further automatic requests
+            // PlayingState will wait for this flag before initializing force fields
             m_initialSettingsReceived = true;
+            std::cout << "[CLIENT] Successfully received and applied settings from host" << std::endl;
             
-            // Now that we have settings, initialize force fields
-            EnsureForceFieldInitialization();
-            
-            std::cout << "[CLIENT] Successfully applied settings from host" << std::endl;
+            // Don't initialize force fields here - PlayingState will do it
         } catch (const std::exception& e) {
             std::cerr << "[CLIENT] Error applying settings: " << e.what() << std::endl;
         }
