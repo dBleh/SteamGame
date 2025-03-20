@@ -192,27 +192,43 @@ ParsedMessage EnemyMessageHandler::ParseEnemyPositionUpdateMessage(const std::ve
     parsed.type = MessageType::EnemyPositionUpdate;
     
     // Format: EP|id,x,y,vx,vy|id,x,y,vx,vy|...
+    // Or potentially older format: EP|id,x,y|id,x,y|...
     for (size_t i = 1; i < parts.size(); ++i) {
         std::string chunk = parts[i];
         std::vector<std::string> subParts = MessageHandler::SplitString(chunk, ',');
         
-        if (subParts.size() >= 5) {  // id,x,y,vx,vy
-            int id = std::stoi(subParts[0]);
-            float x = std::stof(subParts[1]);
-            float y = std::stof(subParts[2]);
-            float vx = std::stof(subParts[3]);
-            float vy = std::stof(subParts[4]);
-            
-            parsed.enemyIds.push_back(id);
-            parsed.enemyPositions.push_back(sf::Vector2f(x, y));
-            parsed.enemyVelocities.push_back(sf::Vector2f(vx, vy));
-            
-            std::cout << "[MessageHandler] Parsed enemy position update: id=" << id 
-                      << ", pos=(" << x << "," << y << ")"
-                      << ", vel=(" << vx << "," << vy << ")" << std::endl;
+        // Check if we have at least id,x,y (3 components)
+        if (subParts.size() >= 3) {
+            try {
+                int id = std::stoi(subParts[0]);
+                float x = std::stof(subParts[1]);
+                float y = std::stof(subParts[2]);
+                
+                // Default velocities
+                float vx = 0.0f;
+                float vy = 0.0f;
+                
+                // If we have velocity components, use them
+                if (subParts.size() >= 5) {
+                    vx = std::stof(subParts[3]);
+                    vy = std::stof(subParts[4]);
+                }
+                
+                parsed.enemyIds.push_back(id);
+                parsed.enemyPositions.push_back(sf::Vector2f(x, y));
+                parsed.enemyVelocities.push_back(sf::Vector2f(vx, vy));
+                
+                std::cout << "[MessageHandler] Parsed enemy position update: id=" << id 
+                          << ", pos=(" << x << "," << y << ")"
+                          << ", vel=(" << vx << "," << vy << ")" << std::endl;
+            } catch (const std::exception& e) {
+                std::cout << "[MessageHandler] Error parsing enemy position data: " 
+                          << chunk << " - Error: " << e.what() << std::endl;
+            }
         } else {
             std::cout << "[MessageHandler] Ignoring malformed enemy position data: " 
-                      << chunk << " (expected 5 components, got " << subParts.size() << ")" << std::endl;
+                      << chunk << " (need at least 3 components for id,x,y, got " 
+                      << subParts.size() << ")" << std::endl;
         }
     }
     
@@ -315,13 +331,27 @@ std::string EnemyMessageHandler::FormatEnemyDamageMessage(int enemyId, float dam
     return oss.str();
 }
 
-std::string EnemyMessageHandler::FormatEnemyPositionUpdateMessage(const std::vector<int>& enemyIds, const std::vector<sf::Vector2f>& positions) {
+std::string EnemyMessageHandler::FormatEnemyPositionUpdateMessage(
+    const std::vector<int>& enemyIds, 
+    const std::vector<sf::Vector2f>& positions,
+    const std::vector<sf::Vector2f>& velocities) {
+    
     std::ostringstream oss;
     oss << "EP";
     
     size_t count = std::min(enemyIds.size(), positions.size());
     for (size_t i = 0; i < count; ++i) {
-        oss << "|" << enemyIds[i] << "," << positions[i].x << "," << positions[i].y;
+        // Add velocity parameters (defaulting to 0,0 if velocities aren't provided)
+        float vx = 0.0f;
+        float vy = 0.0f;
+        
+        if (i < velocities.size()) {
+            vx = velocities[i].x;
+            vy = velocities[i].y;
+        }
+        
+        oss << "|" << enemyIds[i] << "," << positions[i].x << "," << positions[i].y 
+            << "," << vx << "," << vy;
     }
     
     return oss.str();

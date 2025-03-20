@@ -303,8 +303,8 @@ void EnemyManager::SyncEnemyPositions() {
         }
     }
     
-    // Send the message using the existing EP format
-    std::string epMessage = EnemyMessageHandler::FormatEnemyPositionUpdateMessage(enemyIds, positions);
+    // Send the message with updated format including velocities
+    std::string epMessage = EnemyMessageHandler::FormatEnemyPositionUpdateMessage(enemyIds, positions, velocities);
     game->GetNetworkManager().BroadcastMessage(epMessage);
 }
 
