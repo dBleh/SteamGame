@@ -2,10 +2,10 @@
 #define ENEMY_CONFIG_H
 
 // Basic enemy configuration
-#define ENEMY_SIZE 20.0f
+#define ENEMY_SIZE 30.0f
 #define ENEMY_ORIGIN 10.0f // Half of ENEMY_SIZE
-#define ENEMY_SPEED 30.0f
-#define ENEMY_HEALTH 40.0f
+#define ENEMY_SPEED 120.0f
+#define ENEMY_HEALTH 3000.0f
 
 // Spawning configuration
 #define SPAWN_RADIUS 300.0f
@@ -19,7 +19,7 @@
 #define ENEMY_OPTIMIZATION_THRESHOLD 200
 
 // Triangle Enemy configuration
-#define TRIANGLE_SIZE 10.0f
+#define TRIANGLE_SIZE 30.0f
 #define TRIANGLE_MIN_SPAWN_DISTANCE 200.0f  // Minimum spawn distance from players
 #define TRIANGLE_MAX_SPAWN_DISTANCE 500.0f  // Maximum spawn distance from players
 #define TRIANGLE_DAMAGE 10                  // Damage dealt to players on collision

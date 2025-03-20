@@ -1,0 +1,31 @@
+Modify these file to:
+
+Add the option to exit game beneath the settings button on the main menu ("Dont add a line below it)
+
+Push the menu option lower down on the main menu screen so the title doesnt look like a button
+
+ Add  a robust check in the launch to ensure everything is loaded and connected to that is required to create a lobby ensuring  that any e26 error results in a message in the console describing the reason ( create a loading state and a loading menu
+
+Add an option in the gameplay pause setting to return to lobby and properly handle the state change for all players in the game. Ensuring a proper warning is displayed for the host before triggering the change.
+
+Add different enemy types
+
+Turn bullet into an object that a gun uses
+Create a weapons folder
+Create weapons for the user
+Create a passive folder for the user
+IN passives put movespeed buff, health buff, damage buff. * 
+
+passives will be based off kills and dependent on user apm.
+
+Game should be running a visible timer to show players current duration. easy to timestamp with.
+
+
+Enemy spawn at set intervels - random waves? enemy type - randnum? total enemy num?
+
+
+
+ENEMIES ______________ All enemies can move only along their axies. 
+
+triangle enemy moves along its axis towards player. zig zagging. spawn at random angle.
+

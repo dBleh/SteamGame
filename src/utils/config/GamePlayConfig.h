@@ -2,9 +2,9 @@
 #define GAMEPLAY_CONFIG_H
 
 // Wave configuration
-#define FIRST_WAVE_ENEMY_COUNT 5           // Number of enemies in first wave
-#define BASE_ENEMIES_PER_WAVE 50           // Base number of enemies per wave (after first)
-#define ENEMIES_SCALE_PER_WAVE 100         // Additional enemies per wave number
+#define FIRST_WAVE_ENEMY_COUNT 4           // Number of enemies in first wave
+#define BASE_ENEMIES_PER_WAVE 5           // Base number of enemies per wave (after first)
+#define ENEMIES_SCALE_PER_WAVE 1         // Additional enemies per wave number
 #define WAVE_COOLDOWN_TIME 2.0f            // Seconds between waves
 
 // Camera/zoom configuration
