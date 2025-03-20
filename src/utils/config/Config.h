@@ -16,7 +16,7 @@ constexpr int BASE_HEIGHT = 720;
 // Network constants
 #define MAX_PACKET_SIZE 800
 #define ENEMY_SYNC_INTERVAL 0.05f          // Interval for position updates
-#define FULL_SYNC_INTERVAL 2.0f            // Interval for full state sync
+#define FULL_SYNC_INTERVAL .5f            // Interval for full state sync
 
 // Include specific configurations
 #include "PlayerConfig.h"
