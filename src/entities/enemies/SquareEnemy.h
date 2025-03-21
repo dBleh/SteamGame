@@ -8,6 +8,14 @@
 // Forward declarations
 class PlayerManager;
 
+// Define movement phases for the revamped square enemy behavior
+enum class MovementPhase {
+    Seeking,    // Approaching the player
+    FlyBy,      // Fast direct movement past the player
+    Orbiting,   // Circling around the player
+    Retreating  // Moving away from the player
+};
+
 class SquareEnemy : public Enemy {
 public:
     // Constructor with all parameters
@@ -40,8 +48,37 @@ private:
     bool playerIntersectsLine;
     sf::Vector2f lastIntersectionPoint;
     
+    // Store reference to the target player's shape
+    const sf::RectangleShape* lastTargetShape;
+    
+    // Helper function to find the closest point on a rectangle
+    sf::Vector2f FindClosestPointOnRect(const sf::RectangleShape& rect);
+    
     bool CheckPlayerIntersectsAnyLine(PlayerManager& playerManager);
     bool CheckLineIntersectsPlayer(const sf::Vector2f& lineStart, const sf::Vector2f& lineEnd, const sf::RectangleShape& playerShape);
+    
+    // New movement behavior properties
+    float flyByTimer;
+    bool flyByActive;
+    float flyByDuration;
+    float flyBySpeedMultiplier;
+    sf::Vector2f flyByDirection;
+    
+    float orbitDistance;
+    float orbitSpeedMultiplier;
+    
+    MovementPhase movementPhase;
+    MovementPhase lastState;
+    float phaseTimer;
+    float targetPlayerDistance;
+    float directionChangeTimer;
+    
+    // New movement behavior methods
+    void UpdateMovementPhase(float dt);
+    void HandleSeekingMovement(float dt);
+    void HandleFlyByMovement(float dt);
+    void HandleOrbitingMovement(float dt);
+    void HandleRetreatMovement(float dt);
 };
 
 #endif // SQUARE_ENEMY_H
